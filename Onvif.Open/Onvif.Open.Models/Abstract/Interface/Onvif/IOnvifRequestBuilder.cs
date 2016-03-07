@@ -7,7 +7,7 @@ using Onvif.Open.Core.Implementation;
 
 namespace Onvif.Open.Core.Abstract.Interface.Onvif
 {
-    public interface IOnvifRequestBuilder<T>
+    public interface IOnvifRequestBuilder<in T, out TInformation>
     {
         #region Constructor
 
@@ -26,13 +26,13 @@ namespace Onvif.Open.Core.Abstract.Interface.Onvif
 
         #region Public Methods
 
-        T Build();
-        IOnvifRequestBuilder<T> SetProperties(T obj);
-        IOnvifRequestBuilder<T> SetCamera(ICameraInformation camera);
-        IOnvifRequestBuilder<T> SetEndpoint(IOnvifEndpoint endpoint);
-        IOnvifRequestBuilder<T> SetEndpoint();
-        IOnvifRequestBuilder<T> SetAuthentication(IEndpointBehavior authenticator);
-        IOnvifRequestBuilder<T> SetClient();
+        TInformation Build();
+        IOnvifRequestBuilder<T, TInformation> SetProperties(T obj);
+        IOnvifRequestBuilder<T, TInformation> SetCamera(ICameraInformation camera);
+        IOnvifRequestBuilder<T, TInformation> SetEndpoint(IOnvifEndpoint endpoint);
+        IOnvifRequestBuilder<T, TInformation> SetEndpoint();
+        IOnvifRequestBuilder<T, TInformation> SetAuthentication(IEndpointBehavior authenticator);
+        IOnvifRequestBuilder<T, TInformation> SetClient();
 
         #endregion
 

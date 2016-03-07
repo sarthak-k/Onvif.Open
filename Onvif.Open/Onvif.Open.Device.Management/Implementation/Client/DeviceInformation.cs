@@ -6,11 +6,11 @@ using Onvif.Open.Device.Management.Ver10.DeviceManagement;
 
 namespace Onvif.Open.Device.Management.Implementation.Client
 {
-    public class DeviceInfo : IDeviceInfo
+    public class DeviceInformation : IDeviceInfo, IDeviceInformation
     {
         #region Constructor
 
-        private DeviceInfo(DeviceClient client)
+        private DeviceInformation(DeviceClient client)
         {
             _client = client;
         }
@@ -45,12 +45,12 @@ namespace Onvif.Open.Device.Management.Implementation.Client
 
         #region Public Methods
 
-        internal static DeviceInfo CreateInstance(DeviceClient client)
+        internal static IDeviceInformation CreateInstance(DeviceClient client)
         {
-            return new DeviceInfo(client);
+            return new DeviceInformation(client);
         }
 
-        internal IDeviceInfo Initialize()
+        public IDeviceInfo Get()
         {
             _manufacturer = _client.GetDeviceInformation(out _model, out _firmwareVersion, out _serialNumber,
                 out _hardwareId);

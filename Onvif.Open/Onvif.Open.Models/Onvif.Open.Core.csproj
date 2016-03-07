@@ -49,9 +49,11 @@
     <Compile Include="Abstract\Interface\Authenticator\IPasswordDigestBuilder.cs" />
     <Compile Include="Abstract\Interface\Camera\ICameraDeviceManagement.cs" />
     <Compile Include="Abstract\Interface\Camera\ICameraInformation.cs" />
+    <Compile Include="Abstract\Interface\Device\IDeviceDateTimeInformation.cs" />
+    <Compile Include="Abstract\Interface\Device\IDeviceInformation.cs" />
     <Compile Include="Abstract\Interface\Device\IDeviceInfo.cs" />
     <Compile Include="Abstract\Interface\Device\IDeviceManagement.cs" />
-    <Compile Include="Abstract\Interface\Device\ISystemDateAndTime.cs" />
+    <Compile Include="Abstract\Interface\Device\IDeviceDateAndTime.cs" />
     <Compile Include="Abstract\Interface\Camera\ICamera.cs" />
     <Compile Include="Abstract\Interface\Onvif\IOnvifClienBuilder.cs" />
     <Compile Include="Abstract\Interface\Onvif\IOnvifEndpoint.cs" />

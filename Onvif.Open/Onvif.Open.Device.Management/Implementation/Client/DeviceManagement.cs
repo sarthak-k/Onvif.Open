@@ -54,7 +54,7 @@ namespace Onvif.Open.Device.Management.Implementation.Client
                     .SetClient()
                     .Build();
 
-            return deviceInfo.Initialize();
+            return deviceInfo.Get();
         }
     }
 }

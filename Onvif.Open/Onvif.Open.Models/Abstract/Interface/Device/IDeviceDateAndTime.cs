@@ -6,7 +6,7 @@ using Onvif.Open.Core.Operations;
 
 namespace Onvif.Open.Core.Abstract.Interface.Device
 {
-    public interface ISystemDateAndTime
+    public interface IDeviceDateAndTime
     {
         #region Constructor
 
@@ -18,11 +18,11 @@ namespace Onvif.Open.Core.Abstract.Interface.Device
 
         #region Public Variables
 
-        CameraDateTimeType CameraDateTimeType { get; set; }
-        bool DaylightSavings { get; set; }
-        string TimeZone { get; set; }
-        DateTime UtctDateTime { get; set; }
-        DateTime? LocalDateTime { get; set; }
+        CameraDateTimeType CameraDateTimeType { get; }
+        bool DaylightSavings { get; }
+        string TimeZone { get; }
+        DateTime UtctDateTime { get; }
+        DateTime? LocalDateTime { get; }
         
         //TODO : Introduce Extension (SystemDateTimeExtension)
         #endregion

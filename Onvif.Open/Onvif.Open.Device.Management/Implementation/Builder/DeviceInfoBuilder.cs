@@ -7,6 +7,7 @@ using System.ServiceModel;
 using System.ServiceModel.Channels;
 using System.ServiceModel.Description;
 using Onvif.Open.Core.Abstract.Interface.Camera;
+using Onvif.Open.Core.Abstract.Interface.Device;
 using Onvif.Open.Core.Abstract.Interface.Onvif;
 using Onvif.Open.Core.Implementation;
 using Onvif.Open.Device.Management.Implementation.Client;
@@ -14,7 +15,7 @@ using Onvif.Open.Device.Management.Ver10.DeviceManagement;
 
 namespace Onvif.Open.Device.Management.Implementation.Builder
 {
-    internal class DeviceInfoBuilder : IOnvifRequestBuilder<DeviceInfo>
+    internal class DeviceInfoBuilder : IOnvifRequestBuilder<DeviceInformation, IDeviceInformation>
     {
         #region Constructor
 
@@ -45,17 +46,17 @@ namespace Onvif.Open.Device.Management.Implementation.Builder
 
         #region Public Methods
 
-        public DeviceInfo Build()
+        public IDeviceInformation Build()
         {
-            return DeviceInfo.CreateInstance(_deviceClient);
+            return DeviceInformation.CreateInstance(_deviceClient);
         }
 
-        public IOnvifRequestBuilder<DeviceInfo> SetProperties(DeviceInfo obj)
+        public IOnvifRequestBuilder<DeviceInformation, IDeviceInformation> SetProperties(DeviceInformation obj)
         {
             throw new ActionNotSupportedException("This Builder does not support properties.");
         }
 
-        public IOnvifRequestBuilder<DeviceInfo> SetCamera(ICameraInformation camera)
+        public IOnvifRequestBuilder<DeviceInformation, IDeviceInformation> SetCamera(ICameraInformation camera)
         {
             if (camera == null)
             {
@@ -67,7 +68,7 @@ namespace Onvif.Open.Device.Management.Implementation.Builder
             return this;
         }
 
-        public IOnvifRequestBuilder<DeviceInfo> SetEndpoint()
+        public IOnvifRequestBuilder<DeviceInformation, IDeviceInformation> SetEndpoint()
         {
             if (_camera == null)
             {
@@ -79,7 +80,7 @@ namespace Onvif.Open.Device.Management.Implementation.Builder
             return this;
         }
         
-        public IOnvifRequestBuilder<DeviceInfo> SetClient()
+        public IOnvifRequestBuilder<DeviceInformation, IDeviceInformation> SetClient()
         {
             _deviceClient =
                 DeviceClientBuilder.GetBuilder()
@@ -94,7 +95,7 @@ namespace Onvif.Open.Device.Management.Implementation.Builder
             return this;
         }
 
-        public IOnvifRequestBuilder<DeviceInfo> SetEndpoint(IOnvifEndpoint endpoint)
+        public IOnvifRequestBuilder<DeviceInformation, IDeviceInformation> SetEndpoint(IOnvifEndpoint endpoint)
         {
             if (endpoint == null)
             {
@@ -106,7 +107,7 @@ namespace Onvif.Open.Device.Management.Implementation.Builder
             return this;
         }
 
-        public IOnvifRequestBuilder<DeviceInfo> SetAuthentication(IEndpointBehavior authenticator)
+        public IOnvifRequestBuilder<DeviceInformation, IDeviceInformation> SetAuthentication(IEndpointBehavior authenticator)
         {
             if (authenticator == null)
             {

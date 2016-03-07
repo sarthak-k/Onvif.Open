@@ -43,7 +43,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Implementation\Builder\DeviceClientBuilder.cs" />
-    <Compile Include="Implementation\Client\DeviceInfo.cs" />
+    <Compile Include="Implementation\Client\DeviceDateTime.cs" />
+    <Compile Include="Implementation\Client\DeviceInformation.cs" />
     <Compile Include="Implementation\Builder\DeviceInfoBuilder.cs" />
     <Compile Include="Implementation\Client\DeviceManagement.cs" />
     <Compile Include="Implementation\Builder\DeviceManagementBuilder.cs" />

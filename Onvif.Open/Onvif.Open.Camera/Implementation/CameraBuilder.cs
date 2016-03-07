@@ -40,46 +40,34 @@ namespace Onvif.Open.Camera.Implementation
             return isValid;
         }
 
-        private bool SetHostname()
-        {
-            var isSucess = !IsNull() && IsAbsolute() && !IsLoopback() && !IsUnknown();
-
-            if (isSucess)
-            {
-                SetOnvif();
-                return true;
-            }
-            else
-            {
-                return false;
-            }
-
-        }
-
-        private bool IsNull()
-        {
-            return _cameraUri == null;
-        }
-
         private void SetOnvif()
         {
             CameraUrl = new Uri(string.Concat(_cameraUri.Scheme, Uri.SchemeDelimiter, _cameraUri.Authority, OnvifDeviceServiceUri));
         }
 
 
-        private bool IsUnknown()
+        private void IsUnknown()
         {
-            return _cameraUri.HostNameType == UriHostNameType.Unknown;
+            if (_cameraUri.HostNameType == UriHostNameType.Unknown)
+            {
+                throw new UriFormatException("Camera URL provided is of Unknown HostName Type.");
+            }
         }
 
-        private bool IsLoopback()
+        private void IsLoopback()
         {
-            return _cameraUri.IsLoopback;
+            if (_cameraUri.IsLoopback)
+            {
+                throw new UriFormatException("Camera URL provided is Loopback URL.");
+            }
         }
 
-        private bool IsAbsolute()
+        private void IsAbsolute()
         {
-            return _cameraUri.IsAbsoluteUri;
+            if (!_cameraUri.IsAbsoluteUri)
+            {
+                throw new UriFormatException("Camera URL provided is not Absolute URL.");
+            }
         }
 
         #endregion
@@ -102,12 +90,13 @@ namespace Onvif.Open.Camera.Implementation
 
             if (isValid)
             {
-                var isSuccess = SetHostname();
+                IsAbsolute();
 
-                if (!isSuccess)
-                {
-                    throw new UriFormatException("Provided Camera URL is incorrect or malfunctioned.");
-                }
+                IsLoopback();
+
+                IsUnknown();
+
+                SetOnvif();
             }
             else
             {

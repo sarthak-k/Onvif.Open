@@ -65,10 +65,13 @@
     <Otherwise />
   </Choose>
   <ItemGroup>
-    <Compile Include="Camera\CameraBuilderTest.cs" />
+    <Compile Include="Integration\DeviceManagement\DeviceManagmentTest.cs" />
+    <Compile Include="Unit\CameraTests\CameraBuilderTest.cs" />
+    <Compile Include="Unit\CameraTests\CameraTest.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="App.config" />
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>

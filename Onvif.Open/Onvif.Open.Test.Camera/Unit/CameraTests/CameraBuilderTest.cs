@@ -2,7 +2,7 @@
 using Onvif.Open.Camera.Implementation;
 using Xunit;
 
-namespace Onvif.Open.Test.Camera.Camera
+namespace Onvif.Open.Test.Camera.Unit.CameraTests
 {
     public class CameraBuilderTest
     {
@@ -63,6 +63,32 @@ namespace Onvif.Open.Test.Camera.Camera
         {
             _cameraBuilder.SetUrl("http://192.168.1.3");
             Assert.Throws<ArgumentNullException>(() => _cameraBuilder.SetPassword(string.Empty));
+        }
+
+        [Fact]
+        public void CameraBuilderShouldNotThrowErrorWhenBuildWithoutUsernameAndPassword()
+        {
+            _cameraBuilder.SetUrl("http://192.168.1.3");
+            var exception = Record.Exception(() => _cameraBuilder.Build());
+            Assert.Null(exception);
+        }
+
+        [Fact]
+        public void CameraBuilderShouldThrowExceptionWhenIncorrectUrlIsSet()
+        {
+            Assert.Throws<UriFormatException>(() => _cameraBuilder.SetUrl("4912rqfjvidnvoefgj499f9djVsfns"));
+        }
+
+        [Fact]
+        public void CameraBuilderShouldThrowExceptionWhenLoopbackUrlIsSet()
+        {
+            Assert.Throws<UriFormatException>(() => _cameraBuilder.SetUrl("127.0.0.1"));
+        }
+
+        [Fact]
+        public void CameraBuilderShouldThrowExceptionWhenRelativeUrlIsSet()
+        {
+            Assert.Throws<UriFormatException>(() => _cameraBuilder.SetUrl("~/Default.aspx"));
         }
 
         #endregion
