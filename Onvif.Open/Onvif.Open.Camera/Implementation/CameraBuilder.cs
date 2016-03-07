@@ -88,6 +88,11 @@ namespace Onvif.Open.Camera.Implementation
 
         public ICamera Build()
         {
+            if (_cameraUri == null)
+            {
+                throw new InvalidOperationException("Camera Builder must have Camera URL to Build Camera.");
+            }
+
             return Camera.CreateInstance(CameraUrl, Username, Password);
         }
 
