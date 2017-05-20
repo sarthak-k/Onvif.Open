@@ -4,6 +4,7 @@
 using System;
 using Onvif.Open.Core.Abstract.Interface.Device;
 using Onvif.Open.Core.Operations;
+using Onvif.Open.Device.Management.Implementation.Extention;
 using Onvif.Open.Device.Management.Ver10.DeviceManagement;
 using DateTime = System.DateTime;
 
@@ -13,16 +14,16 @@ namespace Onvif.Open.Device.Management.Implementation.Client
     {
         #region Constructor
 
-        private DeviceDateTime(DeviceClient deviceClient)
+        private DeviceDateTime(DeviceClient client)
         {
-            _deviceClient = deviceClient;
+            _client = client;
         }
 
         #endregion
 
         #region Private Variables
 
-        private readonly DeviceClient _deviceClient;
+        private readonly DeviceClient _client;
         #endregion
 
         #region Public Variables
@@ -43,13 +44,26 @@ namespace Onvif.Open.Device.Management.Implementation.Client
 
         public IDeviceDateAndTime Get()
         {
-            throw new NotImplementedException();
+            Parse(_client.GetSystemDateAndTime());
+            return this;
         }
 
-        internal DeviceDateTime CreateInstance(DeviceClient client)
+        private void Parse(SystemDateTime deviceDateTime)
+        {
+            CameraDateTimeType = deviceDateTime.DateTimeType == SetDateTimeType.Manual
+                ? CameraDateTimeType.Manual
+                : CameraDateTimeType.NetworkTimeProvider;
+            DaylightSavings = deviceDateTime.DaylightSavings;
+            TimeZone = deviceDateTime.TimeZone.TZ;
+            UtctDateTime = new DateTime().CreateDateTimeFromOnvifDateTime(deviceDateTime.UTCDateTime);
+            LocalDateTime = new DateTime().CreateDateTimeFromOnvifDateTime(deviceDateTime.LocalDateTime);
+        }
+
+        internal static IDeviceDateTimeInformation CreateInstance(DeviceClient client)
         {
             return new DeviceDateTime(client);
         }
+
         #endregion
 
     }

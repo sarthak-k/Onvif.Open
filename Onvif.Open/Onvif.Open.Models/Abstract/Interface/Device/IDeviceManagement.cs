@@ -23,6 +23,7 @@ namespace Onvif.Open.Core.Abstract.Interface.Device
         #region Public Methods
 
         IDeviceInfo GetDeviceInfo();
+        IDeviceDateAndTime GetDeviceDateTime();
 
         #endregion
 

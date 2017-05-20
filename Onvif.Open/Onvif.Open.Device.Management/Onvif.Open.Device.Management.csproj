@@ -43,11 +43,13 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Implementation\Builder\DeviceClientBuilder.cs" />
+    <Compile Include="Implementation\Builder\DeviceDateTimeBuilder.cs" />
     <Compile Include="Implementation\Client\DeviceDateTime.cs" />
     <Compile Include="Implementation\Client\DeviceInformation.cs" />
     <Compile Include="Implementation\Builder\DeviceInfoBuilder.cs" />
     <Compile Include="Implementation\Client\DeviceManagement.cs" />
     <Compile Include="Implementation\Builder\DeviceManagementBuilder.cs" />
+    <Compile Include="Implementation\Extention\DateTimeExtension.cs" />
     <Compile Include="Interface\IDeviceManagementBuilder.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Service References\Ver10.DeviceManagement\Reference.cs">

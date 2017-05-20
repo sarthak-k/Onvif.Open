@@ -56,5 +56,20 @@ namespace Onvif.Open.Device.Management.Implementation.Client
 
             return deviceInfo.Get();
         }
+
+        public IDeviceDateAndTime GetDeviceDateTime()
+        {
+            var authenticator = PasswordDigestBuilder.GetBuilder().SetCamera(_camera).Build();
+
+            var deviceInfo =
+                DeviceDateTimeBuilder.GetBuilder()
+                    .SetCamera(_camera)
+                    .SetEndpoint()
+                    .SetAuthentication(authenticator)
+                    .SetClient()
+                    .Build();
+
+            return deviceInfo.Get();
+        }
     }
 }
