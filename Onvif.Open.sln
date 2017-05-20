@@ -1,0 +1,40 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.26430.6
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Onvif.Open.Camera", "Onvif.Open\Onvif.Open.Camera\Onvif.Open.Camera.csproj", "{AA903107-F0F6-45B6-A231-0DA1ED0FB71E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Onvif.Open.Device.Management", "Onvif.Open\Onvif.Open.Device.Management\Onvif.Open.Device.Management.csproj", "{DA0952C7-657B-48C1-A42B-8D4A94D89355}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Onvif.Open.Core", "Onvif.Open\Onvif.Open.Models\Onvif.Open.Core.csproj", "{F6693C50-7153-443F-B822-C0D8DCEDB548}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Onvif.Open.Test.Camera", "Onvif.Open\Onvif.Open.Test.Camera\Onvif.Open.Test.Camera.csproj", "{2E3DF5C2-8A38-4A03-86D7-8D463C917E47}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{AA903107-F0F6-45B6-A231-0DA1ED0FB71E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AA903107-F0F6-45B6-A231-0DA1ED0FB71E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AA903107-F0F6-45B6-A231-0DA1ED0FB71E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AA903107-F0F6-45B6-A231-0DA1ED0FB71E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DA0952C7-657B-48C1-A42B-8D4A94D89355}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DA0952C7-657B-48C1-A42B-8D4A94D89355}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DA0952C7-657B-48C1-A42B-8D4A94D89355}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DA0952C7-657B-48C1-A42B-8D4A94D89355}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F6693C50-7153-443F-B822-C0D8DCEDB548}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F6693C50-7153-443F-B822-C0D8DCEDB548}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F6693C50-7153-443F-B822-C0D8DCEDB548}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F6693C50-7153-443F-B822-C0D8DCEDB548}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2E3DF5C2-8A38-4A03-86D7-8D463C917E47}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2E3DF5C2-8A38-4A03-86D7-8D463C917E47}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2E3DF5C2-8A38-4A03-86D7-8D463C917E47}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2E3DF5C2-8A38-4A03-86D7-8D463C917E47}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
