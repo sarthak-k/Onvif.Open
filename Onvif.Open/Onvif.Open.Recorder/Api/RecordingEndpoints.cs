@@ -1,0 +1,186 @@
+// Sarthak Killedar
+// 2026-11-07
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+using Onvif.Open.Core.Abstract.Interface.Recording;
+using Onvif.Open.Core.Recording;
+
+namespace Onvif.Open.Recorder.Api
+{
+    /// <summary>
+    /// REST API: camera status and control, segment listing / download / deletion, storage and retention.
+    /// </summary>
+    internal static class RecordingEndpoints
+    {
+        #region Public Methods
+
+        public static IEndpointRouteBuilder MapRecordingApi(this IEndpointRouteBuilder app)
+        {
+            var api = app.MapGroup("/api");
+
+            api.MapGet("/cameras", (IRecordingManager manager) => manager.GetStatus().Select(ToDto));
+
+            api.MapGet("/cameras/{id}", (string id, IRecordingManager manager) =>
+            {
+                var status = Find(manager, id);
+                return status == null ? Results.NotFound() : Results.Ok(ToDto(status));
+            });
+
+            api.MapPost("/cameras/{id}/start", async (string id, IRecordingManager manager, CancellationToken ct) =>
+            {
+                if (Find(manager, id) == null)
+                {
+                    return Results.NotFound();
+                }
+
+                await manager.StartCameraAsync(id, ct);
+                return Results.Accepted($"/api/cameras/{id}");
+            });
+
+            api.MapPost("/cameras/{id}/stop", async (string id, IRecordingManager manager, CancellationToken ct) =>
+            {
+                if (Find(manager, id) == null)
+                {
+                    return Results.NotFound();
+                }
+
+                await manager.StopCameraAsync(id, ct);
+                return Results.Ok(ToDto(Find(manager, id)));
+            });
+
+            api.MapGet("/cameras/{id}/segments", (string id, IRecordingManager manager, DateTimeOffset? from, DateTimeOffset? to) =>
+                manager.GetSegments(id)
+                    .Where(s => (!from.HasValue || s.LastWriteTime >= from) && (!to.HasValue || s.StartTime <= to))
+                    .Select(s => ToDto(s, id)));
+
+            // The file is looked up in the storage listing by name, so no user supplied path ever reaches the file system.
+            api.MapGet("/cameras/{id}/segments/{fileName}", (string id, string fileName, IRecordingManager manager) =>
+            {
+                var segment = FindSegment(manager, id, fileName);
+                return segment == null
+                    ? Results.NotFound()
+                    : Results.File(segment.Path, ContentType(segment.FileName), segment.FileName, enableRangeProcessing: true);
+            });
+
+            api.MapDelete("/cameras/{id}/segments/{fileName}", (string id, string fileName, IRecordingManager manager) =>
+            {
+                var segment = FindSegment(manager, id, fileName);
+
+                if (segment == null)
+                {
+                    return Results.NotFound();
+                }
+
+                if (!manager.DeleteSegment(segment))
+                {
+                    return Results.Conflict(new { error = "The segment is being recorded or could not be deleted." });
+                }
+
+                return Results.NoContent();
+            });
+
+            api.MapGet("/storage", (IRecordingManager manager) =>
+            {
+                var segments = manager.GetSegments();
+                var storage = manager.GetStorageInformation();
+
+                return new
+                {
+                    location = storage.Location,
+                    availableFreeBytes = storage.AvailableFreeBytes,
+                    totalBytes = segments.Sum(s => s.Size),
+                    segmentCount = segments.Count,
+                    cameras = segments.GroupBy(s => s.CameraId).Select(g => new
+                    {
+                        cameraId = g.Key,
+                        segmentCount = g.Count(),
+                        totalBytes = g.Sum(s => s.Size),
+                        oldest = g.Min(s => s.StartTime),
+                        newest = g.Max(s => s.LastWriteTime)
+                    })
+                };
+            });
+
+            api.MapPost("/retention", async (IRecordingManager manager, CancellationToken ct) =>
+            {
+                var deleted = await manager.ApplyRetentionAsync(ct);
+                return new { deleted = deleted.Select(s => ToDto(s, s.CameraId)) };
+            });
+
+            app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+
+            return app;
+        }
+
+        #endregion
+
+        #region Private Methods
+
+        private static CameraRecordingStatus Find(IRecordingManager manager, string id)
+        {
+            return manager.GetStatus().FirstOrDefault(s => string.Equals(s.CameraId, id, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static RecordingSegment FindSegment(IRecordingManager manager, string id, string fileName)
+        {
+            return manager.GetSegments(id).FirstOrDefault(s => string.Equals(s.FileName, fileName, StringComparison.Ordinal));
+        }
+
+        private static object ToDto(CameraRecordingStatus status)
+        {
+            return new
+            {
+                cameraId = status.CameraId,
+                state = status.State.ToString(),
+                codec = status.Codec.ToString(),
+                transport = status.Transport?.ToString(),
+                streamUri = Redact(status.StreamUri),
+                currentSegment = status.CurrentSegment == null ? null : System.IO.Path.GetFileName(status.CurrentSegment),
+                status.FramesRecorded,
+                status.BytesRecorded,
+                status.SegmentsCompleted,
+                status.LastFrameAt,
+                status.LastError,
+                status.LastErrorAt
+            };
+        }
+
+        private static object ToDto(RecordingSegment segment, string cameraId)
+        {
+            return new
+            {
+                cameraId = segment.CameraId,
+                fileName = segment.FileName,
+                segment.StartTime,
+                segment.LastWriteTime,
+                segment.Size,
+                segment.IsActive,
+                url = $"/api/cameras/{Uri.EscapeDataString(segment.CameraId)}/segments/{Uri.EscapeDataString(segment.FileName)}"
+            };
+        }
+
+        /// <summary>Never expose credentials embedded in a stream URI.</summary>
+        internal static string Redact(Uri uri)
+        {
+            if (uri == null)
+            {
+                return null;
+            }
+
+            return string.IsNullOrEmpty(uri.UserInfo) ? uri.ToString() : new UriBuilder(uri) { UserName = string.Empty, Password = string.Empty }.Uri.ToString();
+        }
+
+        private static string ContentType(string fileName)
+        {
+            return fileName.EndsWith(".ts", StringComparison.OrdinalIgnoreCase) ? "video/mp2t" : "application/octet-stream";
+        }
+
+        #endregion
+    }
+}
