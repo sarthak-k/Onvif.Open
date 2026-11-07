@@ -185,7 +185,7 @@ namespace Onvif.Open.Recorder.Configuration
 
             if (!string.IsNullOrWhiteSpace(camera.OnvifUrl))
             {
-                var builder = CameraBuilder.GetBuilder().SetUrl(camera.OnvifUrl);
+                var builder = CameraBuilder.GetBuilder().SetUrl(camera.OnvifUrl).SetMediaVersion(camera.MediaVersion);
 
                 if (!string.IsNullOrWhiteSpace(camera.Username))
                 {

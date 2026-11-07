@@ -24,6 +24,7 @@ namespace Onvif.Open.Camera.Implementation
         private Uri CameraUrl { get; set; }
         private string Username { get; set; }
         private string Password { get; set; }
+        private Core.Operations.MediaServiceVersion MediaVersion { get; set; }
         private static string OnvifDeviceServiceUri => "/onvif/device_service";
         
         #endregion
@@ -81,7 +82,7 @@ namespace Onvif.Open.Camera.Implementation
                 throw new InvalidOperationException("Camera Builder must have Camera URL to Build Camera.");
             }
 
-            return Camera.CreateInstance(CameraUrl, Username, Password);
+            return Camera.CreateInstance(CameraUrl, Username, Password, MediaVersion);
         }
 
         public CameraBuilder SetUrl(string url)
@@ -119,6 +120,16 @@ namespace Onvif.Open.Camera.Implementation
                 CameraUrl = new Uri(_cameraUri.GetLeftPart(UriPartial.Path));
             }
 
+            return this;
+        }
+
+        /// <summary>
+        /// Which media service to use. Default <see cref="Core.Operations.MediaServiceVersion.Auto"/>: Media2 (H.265 aware)
+        /// when the camera offers it, otherwise Media1. Force Media1 for devices with a faulty Media2 implementation.
+        /// </summary>
+        public CameraBuilder SetMediaVersion(Core.Operations.MediaServiceVersion version)
+        {
+            MediaVersion = version;
             return this;
         }
 

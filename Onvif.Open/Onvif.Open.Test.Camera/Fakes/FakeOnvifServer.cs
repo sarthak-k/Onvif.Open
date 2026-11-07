@@ -52,6 +52,16 @@ namespace Onvif.Open.Test.Camera.Fakes
         private int _subscriptionCount;
 
         public Uri PtzServiceUri => new Uri($"http://127.0.0.1:{Port}/onvif/ptz_service");
+        public Uri Media2ServiceUri => new Uri($"http://127.0.0.1:{Port}/onvif/media2_service");
+
+        /// <summary>When true the device lists and implements Media2 (ver20).</summary>
+        public bool HasMedia2 { get; set; }
+
+        /// <summary>When false GetServices returns a fault, like pre-2.0 devices.</summary>
+        public bool SupportsGetServices { get; set; } = true;
+
+        public string LastMedia2Protocol { get; private set; }
+        public int Media2Requests { get; private set; }
 
         /// <summary>When false the device reports no PTZ capability (a fixed camera).</summary>
         public bool HasPtz { get; set; } = true;
@@ -333,8 +343,82 @@ namespace Onvif.Open.Test.Camera.Fakes
             }
         }
 
+        private string ServicesResponse()
+        {
+            string Service(string ns, Uri address) =>
+                $"<tds:Service><tds:Namespace>{ns}</tds:Namespace><tds:XAddr>{address}</tds:XAddr><tds:Version><tt:Major>2</tt:Major><tt:Minor>60</tt:Minor></tds:Version></tds:Service>";
+
+            return "<tds:GetServicesResponse>" +
+                   Service("http://www.onvif.org/ver10/device/wsdl", DeviceServiceUri) +
+                   Service("http://www.onvif.org/ver10/media/wsdl", MediaServiceUri) +
+                   (HasMedia2 ? Service("http://www.onvif.org/ver20/media/wsdl", Media2ServiceUri) : string.Empty) +
+                   Service("http://www.onvif.org/ver10/events/wsdl", EventServiceUri) +
+                   (HasPtz ? Service("http://www.onvif.org/ver20/ptz/wsdl", PtzServiceUri) : string.Empty) +
+                   "</tds:GetServicesResponse>";
+        }
+
+        private string Media2Response(string request)
+        {
+            if (!request.Contains("http://www.onvif.org/ver20/media/wsdl", StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            Media2Requests++;
+
+            if (!HasMedia2)
+            {
+                return "<s:Fault><s:Code><s:Value>s:Sender</s:Value></s:Code><s:Reason><s:Text xml:lang=\"en\">Action not supported</s:Text></s:Reason></s:Fault>";
+            }
+
+            const string Ns = "xmlns:tr2=\"http://www.onvif.org/ver20/media/wsdl\"";
+
+            if (request.Contains("GetProfiles", StringComparison.Ordinal))
+            {
+                string Profile(string token, string name, string encoding, int width, int height, string fps, bool ptz) =>
+                    $"<tr2:Profiles token=\"{token}\" fixed=\"true\"><tr2:Name>{name}</tr2:Name><tr2:Configurations>" +
+                    "<tr2:VideoSource token=\"VSC_1\"><tt:Name>VSC</tt:Name><tt:UseCount>2</tt:UseCount><tt:SourceToken>VS_1</tt:SourceToken><tt:Bounds x=\"0\" y=\"0\" width=\"3840\" height=\"2160\"/></tr2:VideoSource>" +
+                    $"<tr2:VideoEncoder token=\"VE_{token}\" GovLength=\"50\" Profile=\"Main\"><tt:Name>VE</tt:Name><tt:UseCount>1</tt:UseCount><tt:Encoding>{encoding}</tt:Encoding>" +
+                    $"<tt:Resolution><tt:Width>{width}</tt:Width><tt:Height>{height}</tt:Height></tt:Resolution>" +
+                    $"<tt:RateControl ConstantBitRate=\"false\"><tt:FrameRateLimit>{fps}</tt:FrameRateLimit><tt:BitrateLimit>8192</tt:BitrateLimit></tt:RateControl><tt:Quality>5</tt:Quality></tr2:VideoEncoder>" +
+                    (ptz ? "<tr2:PTZ token=\"PTZ_2\"><tt:Name>PTZ</tt:Name><tt:UseCount>1</tt:UseCount><tt:NodeToken>Node_1</tt:NodeToken></tr2:PTZ>" : string.Empty) +
+                    "</tr2:Configurations></tr2:Profiles>";
+
+                return $"<tr2:GetProfilesResponse {Ns}>" +
+                       Profile("M2_Main", "main-h265", "H265", 3840, 2160, "29.97", ptz: false) +
+                       Profile("M2_Sub", "sub-h264", "H264", 640, 360, "12.5", ptz: true) +
+                       "</tr2:GetProfilesResponse>";
+            }
+
+            if (request.Contains("GetStreamUri", StringComparison.Ordinal))
+            {
+                LastMedia2Protocol = System.Text.RegularExpressions.Regex.Match(request, "<(?:\\w+:)?Protocol[^>]*>([^<]*)<").Groups[1].Value;
+                return $"<tr2:GetStreamUriResponse {Ns}><tr2:Uri>{RtspUri}</tr2:Uri></tr2:GetStreamUriResponse>";
+            }
+
+            if (request.Contains("GetSnapshotUri", StringComparison.Ordinal))
+            {
+                return $"<tr2:GetSnapshotUriResponse {Ns}><tr2:Uri>{SnapshotUri}</tr2:Uri></tr2:GetSnapshotUriResponse>";
+            }
+
+            return null;
+        }
+
         private string CreateBody(string request)
         {
+            if (request.Contains("GetServices", StringComparison.Ordinal))
+            {
+                return SupportsGetServices
+                    ? ServicesResponse()
+                    : "<s:Fault><s:Code><s:Value>s:Sender</s:Value></s:Code><s:Reason><s:Text xml:lang=\"en\">Action not supported</s:Text></s:Reason></s:Fault>";
+            }
+
+            var media2Response = Media2Response(request);
+            if (media2Response != null)
+            {
+                return media2Response;
+            }
+
             var ptzResponse = PtzResponse(request);
             if (ptzResponse != null)
             {

@@ -167,6 +167,9 @@ namespace Onvif.Open.Recorder.Configuration
 
         public StreamTransport Transport { get; set; } = StreamTransport.Rtsp;
 
+        /// <summary>"Auto" (default: Media2 when available), "Media1" or "Media2".</summary>
+        public MediaServiceVersion MediaVersion { get; set; } = MediaServiceVersion.Auto;
+
         /// <summary>Overrides the global rotation for this camera.</summary>
         public RotationOptions Rotation { get; set; }
 

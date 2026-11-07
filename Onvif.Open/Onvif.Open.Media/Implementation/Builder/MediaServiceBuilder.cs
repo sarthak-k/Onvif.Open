@@ -4,6 +4,7 @@
 using System;
 using Onvif.Open.Core.Abstract.Interface.Camera;
 using Onvif.Open.Core.Abstract.Interface.Media;
+using Onvif.Open.Core.Operations;
 using Onvif.Open.Media.Implementation.Client;
 using Onvif.Open.Media.Interface;
 
@@ -24,6 +25,7 @@ namespace Onvif.Open.Media.Implementation.Builder
 
         private ICameraInformation _camera;
         private Uri _serviceUri;
+        private MediaServiceVersion _version = MediaServiceVersion.Media1;
 
         #endregion
 
@@ -36,7 +38,10 @@ namespace Onvif.Open.Media.Implementation.Builder
                 throw new InvalidOperationException("Camera must be set before building the media service.");
             }
 
-            return MediaService.CreateInstance(_serviceUri ?? _camera.CameraUri, _camera);
+            var serviceUri = _serviceUri ?? _camera.CameraUri;
+            return _version == MediaServiceVersion.Media2
+                ? Media2Service.CreateInstance(serviceUri, _camera)
+                : MediaService.CreateInstance(serviceUri, _camera);
         }
 
         public MediaServiceBuilder SetCamera(ICameraInformation camera)
@@ -61,6 +66,18 @@ namespace Onvif.Open.Media.Implementation.Builder
             }
 
             _serviceUri = serviceUri;
+            return this;
+        }
+
+        /// <summary>Media1 (default) or Media2; the service address must belong to that service.</summary>
+        public MediaServiceBuilder SetVersion(MediaServiceVersion version)
+        {
+            if (version == MediaServiceVersion.Auto)
+            {
+                throw new ArgumentException("Choose Media1 or Media2: the builder does not query the device.", nameof(version));
+            }
+
+            _version = version;
             return this;
         }
 
