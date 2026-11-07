@@ -61,6 +61,18 @@ namespace Onvif.Open.Test.Storage
             }
         }
 
+        [Theory]
+        [InlineData("2026-11-07T22:01:36.123456789Z")]
+        [InlineData("2026-11-07T22:01:36.1Z")]
+        [InlineData("2026-11-07T22:01:36Z")]
+        [InlineData("2026-11-07T23:01:36.5+01:00")]
+        public void GcsTimestampsShouldBeParsedLeniently(string value)
+        {
+            var time = Onvif.Open.Storage.Gcs.GcsSegmentStore.ParseTime(value);
+            Assert.Equal(new DateTime(2026, 11, 7, 22, 1, 36), new DateTime(time.UtcDateTime.Ticks - time.UtcDateTime.Ticks % TimeSpan.TicksPerSecond));
+            Assert.Equal(DateTimeOffset.MinValue, Onvif.Open.Storage.Gcs.GcsSegmentStore.ParseTime("not a time"));
+        }
+
         [Fact]
         public void MissingSettingsShouldBeReported()
         {

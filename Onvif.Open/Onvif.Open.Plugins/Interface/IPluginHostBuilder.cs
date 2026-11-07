@@ -26,6 +26,7 @@ namespace Onvif.Open.Plugins.Interface
         PluginHostBuilder SetPtzProvider(Func<string, ICameraPtz> ptzProvider);
         PluginHostBuilder SetImagingProvider(Func<string, ICameraImaging> imagingProvider);
         PluginHostBuilder SetIoProvider(Func<string, ICameraIo> ioProvider);
+        PluginHostBuilder SetDeviceRecordingsProvider(Func<string, Core.Abstract.Interface.Replay.ICameraRecordings> deviceRecordingsProvider);
         PluginHostBuilder SetFrameQueueCapacity(int capacity);
         PluginHostBuilder SetNotificationQueueCapacity(int capacity);
         PluginHostBuilder SetEventHistoryCapacity(int capacity);

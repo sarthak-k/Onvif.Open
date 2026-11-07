@@ -10,8 +10,9 @@ namespace Onvif.Open.Core.Streaming
     /// </summary>
     public sealed class VideoFrame
     {
-        public VideoFrame(VideoCodec codec, ReadOnlyMemory<byte> data, bool isKeyFrame, uint rtpTimestamp, TimeSpan timestamp)
+        public VideoFrame(VideoCodec codec, ReadOnlyMemory<byte> data, bool isKeyFrame, uint rtpTimestamp, TimeSpan timestamp, DateTimeOffset? captureTime = null)
         {
+            CaptureTime = captureTime;
             Codec = codec;
             Data = data;
             IsKeyFrame = isKeyFrame;
@@ -28,5 +29,10 @@ namespace Onvif.Open.Core.Streaming
 
         /// <summary>Presentation time relative to the first frame of the stream.</summary>
         public TimeSpan Timestamp { get; }
+
+        /// <summary>
+        /// Wall-clock time the frame was recorded, when the device reports it (ONVIF replay); otherwise null.
+        /// </summary>
+        public DateTimeOffset? CaptureTime { get; }
     }
 }

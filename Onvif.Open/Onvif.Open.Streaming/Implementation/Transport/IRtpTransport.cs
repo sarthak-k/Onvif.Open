@@ -26,7 +26,7 @@ namespace Onvif.Open.Streaming.Implementation.Transport
         /// Receives RTP packets until cancelled or the connection fails. Also drains the RTSP
         /// connection (keep-alive responses), which every transport has to do.
         /// </summary>
-        Task ReceiveAsync(RtspConnection connection, Action<byte[]> onRtpPacket, CancellationToken cancellationToken);
+        Task ReceiveAsync(RtspConnection connection, Func<byte[], ValueTask> onRtpPacket, CancellationToken cancellationToken);
 
         #endregion
     }

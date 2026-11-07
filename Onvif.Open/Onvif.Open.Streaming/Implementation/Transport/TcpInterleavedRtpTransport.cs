@@ -38,7 +38,7 @@ namespace Onvif.Open.Streaming.Implementation.Transport
             _rtpChannel = TransportHeader.TryGetRange(responseTransport, "interleaved", out var rtp, out _) ? rtp : 0;
         }
 
-        public async Task ReceiveAsync(RtspConnection connection, Action<byte[]> onRtpPacket, CancellationToken cancellationToken)
+        public async Task ReceiveAsync(RtspConnection connection, Func<byte[], ValueTask> onRtpPacket, CancellationToken cancellationToken)
         {
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -48,7 +48,7 @@ namespace Onvif.Open.Streaming.Implementation.Transport
                 // RTCP, keep-alive responses and server requests need no handling.
                 if (incoming.IsPacket && incoming.Channel == _rtpChannel)
                 {
-                    onRtpPacket(incoming.Data);
+                    await onRtpPacket(incoming.Data).ConfigureAwait(false);
                 }
             }
         }

@@ -14,6 +14,7 @@ Targets **.NET 10 (LTS)** and runs on Windows, Linux and macOS.
 | `Onvif.Open.Events` | ONVIF Events service: PullPoint subscriptions (motion, tampering, inputs, ...) |
 | `Onvif.Open.Ptz` | ONVIF PTZ service: pan/tilt/zoom moves, presets, home position |
 | `Onvif.Open.Imaging` | ONVIF Imaging service: brightness, contrast, day/night (IR cut filter), WDR, focus |
+| `Onvif.Open.Replay` | ONVIF Recording Search and Replay services (Profile G): recordings stored on the camera |
 | `Onvif.Open.DeviceIo` | ONVIF DeviceIO service: digital inputs (relays use the Device service) |
 | `Onvif.Open.Streaming` | Dependency-free RTSP/RTP client: Basic/Digest auth, RTP over TCP (interleaved) or UDP, H.264 and H.265 depacketizing |
 | `Onvif.Open.Camera` | The `Camera` façade tying everything together |
@@ -133,6 +134,30 @@ var inputs = await io.GetDigitalInputsAsync();                      // needs the
 await foreach (var change in io.WatchDigitalInputsAsync())          // from the camera's events
 {
     Console.WriteLine($"{change.Token}: {(change.IsActive ? "active" : "inactive")}");
+}
+```
+
+Recordings stored on the camera itself (SD card or NVR disk, ONVIF Profile G): find them, play them back, or export a clip.
+Replay frames carry their recording time (`CaptureTime`), and the stream ends at `To` or at the end of the recording:
+
+```csharp
+var recordings = camera.InitializeRecordings();
+var list = await recordings.GetRecordingsAsync();                   // Token, SourceName, Earliest, Latest, Tracks
+var from = new DateTimeOffset(2026, 11, 5, 8, 15, 0, TimeSpan.Zero);
+
+await using (var replay = await recordings.StartReplayAsync(list[0].Token, from, new ReplayOptions { Speed = 2 }))
+{
+    await foreach (var frame in replay.ReadFramesAsync())
+    {
+        Console.WriteLine($"{frame.CaptureTime:O} {frame.Data.Length} bytes");
+    }
+}
+
+// Export a clip as fast as the camera can send it.
+await using (var replay = await recordings.StartReplayAsync(list[0].Token, from, new ReplayOptions { To = from.AddMinutes(5), RealTime = false }))
+await using (var file = File.Create("clip.ts"))
+{
+    await VideoExport.WriteAsync(replay, file);
 }
 ```
 
@@ -277,6 +302,8 @@ Passwords can be supplied through environment variables instead of the file, e.g
 | `GET /api/cameras/{id}/imaging`, `PATCH .../imaging` `{irCutFilter, brightness, ...}` | Image settings (PATCH changes only what is given) |
 | `GET /api/cameras/{id}/imaging/options` | Supported ranges and modes |
 | `GET/POST /api/cameras/{id}/imaging/focus` `{speed, durationMs}` or `{position}`, `POST .../focus/stop` | Focus |
+| `GET /api/cameras/{id}/device-recordings` | Recordings stored on the camera (Profile G) and their time span |
+| `GET /api/cameras/{id}/device-recordings/{token}/export?from=...&to=...` | Download a clip from the camera's own storage as MPEG-TS (up to 6 hours) |
 | `GET /api/cameras/{id}/io` | Relay outputs and digital inputs |
 | `POST /api/cameras/{id}/io/relays/{token}` `{active}` or `{durationMs}`, `PUT .../relays/{token}/settings` `{mode, delayMs, idleState}` | Switch / pulse / configure a relay |
 | `GET /api/cameras/{id}/ptz` | PTZ status (position, moving) |
@@ -299,7 +326,7 @@ against a small SDK in `Onvif.Open.Core`. A plugin implements `IPlugin` plus any
 `ICameraStateObserver` (online/offline), `ISegmentObserver` (completed files), `ICameraEventObserver` (the cameras'
 own ONVIF events) and `IPluginEventObserver` (events from other plugins). Plugins can also trigger recording and
 control PTZ (e.g. turn to a preset on an alarm), imaging (e.g. day/night on a schedule) and relays (e.g. sound a
-siren on a detection). The host gives it settings, a logger, snapshots and recording control for its assigned cameras only,
+siren on a detection), and read the camera's own recordings (e.g. footage from before an incident). The host gives it settings, a logger, snapshots and recording control for its assigned cameras only,
 and publishes its `PluginEvent`s through the API. Each plugin has its own queues, threads and load context, so a slow or
 crashing plugin never affects recording or other plugins.
 

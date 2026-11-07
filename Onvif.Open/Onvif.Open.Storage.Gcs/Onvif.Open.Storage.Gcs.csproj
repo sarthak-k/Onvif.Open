@@ -15,6 +15,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Onvif.Open.Test.Storage" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- The SDK contracts are provided by the host. -->
     <ProjectReference Include="..\Onvif.Open.Models\Onvif.Open.Core.csproj">
       <Private>false</Private>

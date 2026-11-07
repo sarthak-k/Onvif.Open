@@ -11,6 +11,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Onvif.Open.Core.Abstract.Interface.Plugin;
 using Onvif.Open.Core.Abstract.Interface.DeviceIo;
 using Onvif.Open.Core.Abstract.Interface.Imaging;
+using Onvif.Open.Core.Abstract.Interface.Replay;
 using Onvif.Open.Core.Abstract.Interface.Ptz;
 using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Plugins.Implementation.Runtime;
@@ -48,6 +49,7 @@ namespace Onvif.Open.Plugins.Implementation.Builder
         private Func<string, ICameraPtz> _ptzProvider;
         private Func<string, ICameraImaging> _imagingProvider;
         private Func<string, ICameraIo> _ioProvider;
+        private Func<string, ICameraRecordings> _deviceRecordingsProvider;
         private int _frameQueueCapacity = 32;
         private int _notificationQueueCapacity = 1024;
         private int _eventHistoryCapacity = 1000;
@@ -66,7 +68,7 @@ namespace Onvif.Open.Plugins.Implementation.Builder
                 throw new InvalidOperationException("Plugin Host Builder must have a recording manager.");
             }
 
-            return PluginHost.CreateInstance(_manager, _registrations.ToList(), _snapshotProvider, _frameQueueCapacity, _notificationQueueCapacity, _eventHistoryCapacity, _stopTimeout, _timeProvider, _loggerFactory, _ptzProvider, _imagingProvider, _ioProvider);
+            return PluginHost.CreateInstance(_manager, _registrations.ToList(), _snapshotProvider, _frameQueueCapacity, _notificationQueueCapacity, _eventHistoryCapacity, _stopTimeout, _timeProvider, _loggerFactory, _ptzProvider, _imagingProvider, _ioProvider, _deviceRecordingsProvider);
         }
 
         public PluginHostBuilder SetRecordingManager(IRecordingManager manager)
@@ -134,6 +136,13 @@ namespace Onvif.Open.Plugins.Implementation.Builder
         public PluginHostBuilder SetIoProvider(Func<string, ICameraIo> ioProvider)
         {
             _ioProvider = ioProvider ?? throw new ArgumentNullException(nameof(ioProvider));
+            return this;
+        }
+
+        /// <summary>Source of on-camera recordings for <see cref="IPluginCameras.GetDeviceRecordings"/>.</summary>
+        public PluginHostBuilder SetDeviceRecordingsProvider(Func<string, ICameraRecordings> deviceRecordingsProvider)
+        {
+            _deviceRecordingsProvider = deviceRecordingsProvider ?? throw new ArgumentNullException(nameof(deviceRecordingsProvider));
             return this;
         }
 

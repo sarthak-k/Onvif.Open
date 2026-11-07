@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Runtime.CompilerServices;
@@ -60,7 +61,7 @@ namespace Onvif.Open.Storage.Gcs
         {
             await foreach (var item in _client.ListObjectsAsync(_bucket, string.IsNullOrEmpty(prefix) ? null : prefix).WithCancellation(cancellationToken).ConfigureAwait(false))
             {
-                yield return new StoredObject(item.Name, (long)(item.Size ?? 0), item.UpdatedDateTimeOffset ?? DateTimeOffset.MinValue);
+                yield return new StoredObject(item.Name, (long)(item.Size ?? 0), ParseTime(item.UpdatedRaw));
             }
         }
 
@@ -104,6 +105,17 @@ namespace Onvif.Open.Storage.Gcs
         public override string ToString()
         {
             return $"gs://{_bucket}";
+        }
+
+        /// <summary>
+        /// RFC 3339 time of the object; parsed leniently, because the client library's strict parser rejects valid
+        /// variants (e.g. fewer fraction digits) and a listing must not fail over one timestamp.
+        /// </summary>
+        internal static DateTimeOffset ParseTime(string value)
+        {
+            return DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var time)
+                ? time
+                : DateTimeOffset.MinValue;
         }
 
         public void Dispose()

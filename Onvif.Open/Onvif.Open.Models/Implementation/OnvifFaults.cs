@@ -15,6 +15,7 @@ namespace Onvif.Open.Core.Implementation
         #region Private Variables
 
         private static readonly string[] AuthenticationSubcodes = { "NotAuthorized", "FailedAuthentication", "InvalidSecurity", "InvalidSecurityToken", "MessageExpired" };
+        private static readonly string[] InvalidArgumentSubcodes = { "InvalidArgVal", "InvalidArgs", "InvalidArgValue", "NoRecording", "NoProfile", "NoToken" };
 
         #endregion
 
@@ -43,15 +44,28 @@ namespace Onvif.Open.Core.Implementation
             return false;
         }
 
+        /// <summary>
+        /// True when the device rejected an argument, e.g. an unknown token (ter:InvalidArgVal, ter:NoRecording, ...).
+        /// </summary>
+        public static bool IsInvalidArgument(Exception exception)
+        {
+            return exception is FaultException fault && !IsAuthenticationFailure(exception) && HasCode(fault.Code, InvalidArgumentSubcodes);
+        }
+
         #endregion
 
         #region Private Methods
 
         private static bool HasAuthenticationCode(FaultCode code)
         {
+            return HasCode(code, AuthenticationSubcodes);
+        }
+
+        private static bool HasCode(FaultCode code, string[] names)
+        {
             for (var current = code; current != null; current = current.SubCode)
             {
-                foreach (var name in AuthenticationSubcodes)
+                foreach (var name in names)
                 {
                     if (string.Equals(current.Name, name, StringComparison.OrdinalIgnoreCase))
                     {
