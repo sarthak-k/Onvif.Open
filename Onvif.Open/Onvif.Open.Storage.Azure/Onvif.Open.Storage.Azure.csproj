@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Storage plugin. Deploy the publish output as plugins/Onvif.Open.Storage.Azure/ and set
+    "Recording:Archive:Provider" to "Onvif.Open.Storage.Azure" (see docs/STORAGE.md).
+  -->
+  <PropertyGroup>
+    <RootNamespace>Onvif.Open.Storage.Azure</RootNamespace>
+    <AssemblyName>Onvif.Open.Storage.Azure</AssemblyName>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Azure.Storage.Blobs" Version="12.30.1" />
+    <PackageReference Include="Azure.Identity" Version="1.21.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The SDK contracts are provided by the host. -->
+    <ProjectReference Include="..\Onvif.Open.Models\Onvif.Open.Core.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+</Project>

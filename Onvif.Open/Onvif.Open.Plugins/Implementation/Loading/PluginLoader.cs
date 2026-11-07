@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using Onvif.Open.Core.Abstract.Interface.Plugin;
+using Onvif.Open.Core.Abstract.Interface.Storage;
 
 namespace Onvif.Open.Plugins.Implementation.Loading
 {
@@ -24,22 +25,8 @@ namespace Onvif.Open.Plugins.Implementation.Loading
         /// </summary>
         public static IReadOnlyList<IPlugin> LoadFromFolder(string folder)
         {
-            if (string.IsNullOrWhiteSpace(folder))
-            {
-                throw new ArgumentNullException(nameof(folder));
-            }
-
-            var fullPath = Path.GetFullPath(folder);
-            var mainAssembly = Path.Combine(fullPath, Path.GetFileName(fullPath.TrimEnd(Path.DirectorySeparatorChar)) + ".dll");
-
-            if (!File.Exists(mainAssembly))
-            {
-                throw new FileNotFoundException($"Plugin assembly '{mainAssembly}' was not found. A plugin folder must contain an assembly named after the folder.", mainAssembly);
-            }
-
-            var context = new PluginLoadContext(mainAssembly);
-            var assembly = context.LoadFromAssemblyPath(mainAssembly);
-            var plugins = CreatePlugins(assembly);
+            var assembly = LoadAssembly(folder, out var mainAssembly);
+            var plugins = CreateInstances<IPlugin>(assembly);
 
             if (plugins.Count == 0)
             {
@@ -49,11 +36,47 @@ namespace Onvif.Open.Plugins.Implementation.Loading
             return plugins;
         }
 
+        /// <summary>
+        /// Loads a storage plugin: <c>{folder}/{FolderName}.dll</c> with exactly one public
+        /// <see cref="ISegmentStoreProvider"/> that has a parameterless constructor.
+        /// </summary>
+        public static ISegmentStoreProvider LoadStorageProvider(string folder)
+        {
+            var assembly = LoadAssembly(folder, out var mainAssembly);
+            var providers = CreateInstances<ISegmentStoreProvider>(assembly);
+
+            if (providers.Count != 1)
+            {
+                throw new InvalidOperationException($"'{mainAssembly}' must contain exactly one public {nameof(ISegmentStoreProvider)} implementation with a parameterless constructor (found {providers.Count}).");
+            }
+
+            return providers[0];
+        }
+
         #endregion
 
         #region Private Methods
 
-        private static IReadOnlyList<IPlugin> CreatePlugins(Assembly assembly)
+        private static Assembly LoadAssembly(string folder, out string mainAssembly)
+        {
+            if (string.IsNullOrWhiteSpace(folder))
+            {
+                throw new ArgumentNullException(nameof(folder));
+            }
+
+            var fullPath = Path.GetFullPath(folder);
+            mainAssembly = Path.Combine(fullPath, Path.GetFileName(fullPath.TrimEnd(Path.DirectorySeparatorChar)) + ".dll");
+
+            if (!File.Exists(mainAssembly))
+            {
+                throw new FileNotFoundException($"Plugin assembly '{mainAssembly}' was not found. A plugin folder must contain an assembly named after the folder.", mainAssembly);
+            }
+
+            var context = new PluginLoadContext(mainAssembly);
+            return context.LoadFromAssemblyPath(mainAssembly);
+        }
+
+        private static IReadOnlyList<T> CreateInstances<T>(Assembly assembly)
         {
             Type[] types;
             try
@@ -66,9 +89,9 @@ namespace Onvif.Open.Plugins.Implementation.Loading
             }
 
             return types
-                .Where(t => t.IsClass && !t.IsAbstract && typeof(IPlugin).IsAssignableFrom(t) && t.GetConstructor(Type.EmptyTypes) != null)
+                .Where(t => t.IsClass && !t.IsAbstract && typeof(T).IsAssignableFrom(t) && t.GetConstructor(Type.EmptyTypes) != null)
                 .OrderBy(t => t.FullName, StringComparer.Ordinal)
-                .Select(t => (IPlugin)Activator.CreateInstance(t))
+                .Select(t => (T)Activator.CreateInstance(t))
                 .ToList();
         }
 

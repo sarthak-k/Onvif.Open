@@ -11,6 +11,7 @@ using Onvif.Open.Core.Abstract.Interface.Camera;
 using Onvif.Open.Camera.Implementation;
 using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Core.Recording;
+using Onvif.Open.Recording.Implementation.Archive;
 using Onvif.Open.Recording.Implementation.Builder;
 using Onvif.Open.Recording.Implementation.Format;
 using Onvif.Open.Recording.Implementation.Policy;
@@ -32,11 +33,26 @@ namespace Onvif.Open.Recorder.Configuration
         }
 
         /// <summary>Creates the manager and keeps the ONVIF cameras, which also provide snapshots.</summary>
-        public static ConfiguredRecording Create(RecorderOptions options, ILoggerFactory loggerFactory)
+        public static ConfiguredRecording Create(RecorderOptions options, ILoggerFactory loggerFactory, ArchiveStore archive = null)
         {
             Validate(options);
 
-            var manager = RecordingManagerBuilder.GetBuilder()
+            var builder = RecordingManagerBuilder.GetBuilder();
+
+            if (archive != null)
+            {
+                builder.SetArchive(archive.Store, new SegmentArchiveOptions
+                {
+                    Name = archive.Name,
+                    Prefix = options.Archive?.Prefix,
+                    KeepLocalCopyFor = options.Archive?.KeepLocalCopyFor ?? TimeSpan.Zero,
+                    MaxConcurrentUploads = options.Archive?.MaxConcurrentUploads ?? 2,
+                    RefreshInterval = options.Archive?.RefreshInterval ?? TimeSpan.FromMinutes(15),
+                    MinLocalFreeBytes = options.Retention?.MinFreeSpaceGB is double free && free > 0 ? ToBytes(free, RotationPolicies.GiB) : 0
+                });
+            }
+
+            var manager = builder
                 .SetStorageDirectory(options.StorageDirectory)
                 .SetFormat(ToFormat(options.Format))
                 .SetRotationPolicy(ToRotationPolicy(options.Rotation) ?? RotationPolicies.Default)
@@ -86,6 +102,12 @@ namespace Onvif.Open.Recorder.Configuration
                 {
                     errors.Add($"Camera '{camera.Id}' needs exactly one of OnvifUrl or RtspUrl.");
                 }
+            }
+
+            if (options.Archive != null && options.Archive.IsEnabled
+                && (options.Archive.KeepLocalCopyFor < TimeSpan.Zero || options.Archive.MaxConcurrentUploads < 1 || options.Archive.RefreshInterval <= TimeSpan.Zero))
+            {
+                errors.Add("Recording:Archive: KeepLocalCopyFor must not be negative, MaxConcurrentUploads must be at least 1 and RefreshInterval positive.");
             }
 
             foreach (var duplicate in (options.Cameras ?? new List<CameraOptions>()).GroupBy(c => c.Id, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1))

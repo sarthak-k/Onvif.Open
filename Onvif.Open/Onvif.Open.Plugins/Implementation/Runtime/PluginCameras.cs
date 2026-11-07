@@ -62,6 +62,17 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
             return _manager.GetSegments(Require(cameraId));
         }
 
+        public Task<System.IO.Stream> OpenSegmentAsync(RecordingSegment segment, CancellationToken cancellationToken = default)
+        {
+            if (segment == null)
+            {
+                throw new ArgumentNullException(nameof(segment));
+            }
+
+            Require(segment.CameraId);
+            return _manager.OpenSegmentAsync(segment, cancellationToken);
+        }
+
         public Task StartRecordingAsync(string cameraId, CancellationToken cancellationToken = default)
         {
             return _manager.StartCameraAsync(Require(cameraId), cancellationToken);

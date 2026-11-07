@@ -21,6 +21,9 @@ namespace Onvif.Open.Core.Abstract.Interface.Plugin
 
         IReadOnlyList<RecordingSegment> GetSegments(string cameraId);
 
+        /// <summary>Opens a segment for reading, wherever it is stored (local disk or archive); null when it no longer exists.</summary>
+        Task<System.IO.Stream> OpenSegmentAsync(RecordingSegment segment, CancellationToken cancellationToken = default);
+
         Task StartRecordingAsync(string cameraId, CancellationToken cancellationToken = default);
 
         Task StopRecordingAsync(string cameraId, CancellationToken cancellationToken = default);

@@ -5,6 +5,8 @@ using System;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Onvif.Open.Core.Abstract.Interface.Recording;
+using Onvif.Open.Core.Abstract.Interface.Storage;
+using Onvif.Open.Recording.Implementation.Archive;
 using Onvif.Open.Recording.Implementation.Format;
 using Onvif.Open.Recording.Implementation.Policy;
 using Onvif.Open.Recording.Implementation.Recorder;
@@ -47,6 +49,8 @@ namespace Onvif.Open.Recording.Implementation.Builder
         private readonly RecorderOptions _recorderOptions = new RecorderOptions();
         private ILoggerFactory _loggerFactory = NullLoggerFactory.Instance;
         private TimeProvider _timeProvider = TimeProvider.System;
+        private ISegmentStore _archiveStore;
+        private SegmentArchiveOptions _archiveOptions;
 
         #endregion
 
@@ -59,7 +63,7 @@ namespace Onvif.Open.Recording.Implementation.Builder
                 throw new InvalidOperationException("Recording Manager Builder must have a storage (SetStorageDirectory or SetStorage).");
             }
 
-            return RecordingManager.CreateInstance(_storage, _format, _rotationPolicy, _retentionPolicy, _retentionInterval, _recorderOptions, _timeProvider, _loggerFactory);
+            return RecordingManager.CreateInstance(_storage, _format, _rotationPolicy, _retentionPolicy, _retentionInterval, _recorderOptions, _timeProvider, _loggerFactory, _archiveStore, _archiveOptions);
         }
 
         public RecordingManagerBuilder SetStorageDirectory(string directory)
@@ -71,6 +75,17 @@ namespace Onvif.Open.Recording.Implementation.Builder
         public RecordingManagerBuilder SetStorage(IRecordingStorage storage)
         {
             _storage = storage ?? throw new ArgumentNullException(nameof(storage));
+            return this;
+        }
+
+        /// <summary>
+        /// Uploads completed segments to <paramref name="store"/> (S3, Azure Blob, Google Cloud Storage, a NAS, ...).
+        /// The local storage then acts as a buffer; the retention policy applies to the archive.
+        /// </summary>
+        public RecordingManagerBuilder SetArchive(ISegmentStore store, SegmentArchiveOptions options = null)
+        {
+            _archiveStore = store ?? throw new ArgumentNullException(nameof(store));
+            _archiveOptions = (options ?? new SegmentArchiveOptions()).Normalize();
             return this;
         }
 

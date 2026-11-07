@@ -17,6 +17,7 @@ namespace Onvif.Open.Recording.Interface
         IRecordingManager Build();
         RecordingManagerBuilder SetStorageDirectory(string directory);
         RecordingManagerBuilder SetStorage(IRecordingStorage storage);
+        RecordingManagerBuilder SetArchive(Core.Abstract.Interface.Storage.ISegmentStore store, Implementation.Archive.SegmentArchiveOptions options = null);
         RecordingManagerBuilder SetFormat(ISegmentFormat format);
         RecordingManagerBuilder SetRotationPolicy(IRotationPolicy rotationPolicy);
         RecordingManagerBuilder SetRetentionPolicy(IRetentionPolicy retentionPolicy);

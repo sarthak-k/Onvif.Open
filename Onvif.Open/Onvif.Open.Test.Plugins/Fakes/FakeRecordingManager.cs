@@ -101,7 +101,8 @@ namespace Onvif.Open.Test.Plugins.Fakes
             return new[] { new RecordingSegment(cameraId ?? "cam", "/r/x.ts", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, 1, false) };
         }
 
-        public bool DeleteSegment(RecordingSegment segment) => false;
+        public Task<System.IO.Stream> OpenSegmentAsync(RecordingSegment segment, CancellationToken cancellationToken = default) => Task.FromResult<System.IO.Stream>(new System.IO.MemoryStream(new byte[] { 1, 2, 3 }));
+        public Task<bool> DeleteSegmentAsync(RecordingSegment segment, CancellationToken cancellationToken = default) => Task.FromResult(false);
         public StorageInformation GetStorageInformation() => new StorageInformation("memory", null);
         public Task<IReadOnlyList<RecordingSegment>> ApplyRetentionAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<RecordingSegment>>(Array.Empty<RecordingSegment>());
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;

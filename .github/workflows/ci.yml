@@ -33,6 +33,24 @@ jobs:
       - name: Build
         run: dotnet build Onvif.Open.sln --configuration Release --no-restore
 
+      # Emulators for the cloud storage provider tests (Onvif.Open.Test.Storage); the tests skip when they are absent.
+      - name: Start storage emulators
+        run: |
+          python3 -m venv "$RUNNER_TEMP/moto"
+          "$RUNNER_TEMP/moto/bin/pip" install --quiet "moto[server]==5.2.4"
+          nohup "$RUNNER_TEMP/moto/bin/moto_server" -H 127.0.0.1 -p 5000 > "$RUNNER_TEMP/moto.log" 2>&1 &
+          nohup npx --yes --package=azurite@3.37.0 azurite-blob --silent --inMemoryPersistence --skipApiVersionCheck --loose --blobHost 127.0.0.1 --blobPort 10000 > "$RUNNER_TEMP/azurite.log" 2>&1 &
+          curl -sSL https://github.com/fsouza/fake-gcs-server/releases/download/v1.52.2/fake-gcs-server_1.52.2_Linux_amd64.tar.gz | tar -xz -C "$RUNNER_TEMP" fake-gcs-server
+          nohup "$RUNNER_TEMP/fake-gcs-server" -scheme http -host 127.0.0.1 -port 4443 -backend memory -public-host 127.0.0.1:4443 -external-url http://127.0.0.1:4443 > "$RUNNER_TEMP/gcs.log" 2>&1 &
+          for url in http://127.0.0.1:5000/ "http://127.0.0.1:10000/devstoreaccount1?comp=list" http://127.0.0.1:4443/storage/v1/b; do
+            for attempt in $(seq 1 60); do curl -s -o /dev/null "$url" && break; sleep 1; done
+          done
+          {
+            echo "ONVIF_OPEN_TEST_S3_URL=http://127.0.0.1:5000"
+            echo "ONVIF_OPEN_TEST_AZURE_CONNECTION=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;"
+            echo "ONVIF_OPEN_TEST_GCS_URL=http://127.0.0.1:4443/storage/v1/"
+          } >> "$GITHUB_ENV"
+
       - name: Test
         run: >
           dotnet test Onvif.Open.sln --configuration Release --no-build
@@ -48,6 +66,7 @@ jobs:
         with:
           name: test-results
           path: |
+            ${{ runner.temp }}/*.log
             TestResults/**/*.trx
             TestResults/**/Sequence_*.xml
           if-no-files-found: ignore

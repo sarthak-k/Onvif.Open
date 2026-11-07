@@ -73,13 +73,20 @@ namespace Onvif.Open.Core.Abstract.Interface.Recording
 
         IReadOnlyList<CameraRecordingStatus> GetStatus();
 
-        /// <summary>Segments on storage, oldest first; all cameras when <paramref name="cameraId"/> is null.</summary>
+        /// <summary>
+        /// Segments on local storage and in the archive, oldest first; all cameras when <paramref name="cameraId"/> is null.
+        /// </summary>
         IReadOnlyList<RecordingSegment> GetSegments(string cameraId = null);
 
-        /// <summary>Deletes a completed segment. Returns false when it does not exist or is still being recorded.</summary>
-        bool DeleteSegment(RecordingSegment segment);
+        /// <summary>Opens a segment for reading, from the local storage or the archive. Returns null when it no longer exists.</summary>
+        Task<System.IO.Stream> OpenSegmentAsync(RecordingSegment segment, CancellationToken cancellationToken = default);
 
-        /// <summary>Location and free space of the storage.</summary>
+        /// <summary>
+        /// Deletes a completed segment locally and from the archive. Returns false when it does not exist or is still being recorded.
+        /// </summary>
+        Task<bool> DeleteSegmentAsync(RecordingSegment segment, CancellationToken cancellationToken = default);
+
+        /// <summary>Location and free space of the storage, and the state of the archive.</summary>
         StorageInformation GetStorageInformation();
 
         /// <summary>Applies the retention policy now (it also runs periodically and after each segment).</summary>

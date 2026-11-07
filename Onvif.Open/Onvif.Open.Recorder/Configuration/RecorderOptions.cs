@@ -25,6 +25,9 @@ namespace Onvif.Open.Recorder.Configuration
 
         public RetentionOptions Retention { get; set; } = new RetentionOptions();
 
+        /// <summary>Optional long-term storage (cloud, NAS) that completed segments are uploaded to.</summary>
+        public ArchiveOptions Archive { get; set; } = new ArchiveOptions();
+
         public TimeSpan RetentionInterval { get; set; } = TimeSpan.FromMinutes(1);
 
         public TimeSpan StallTimeout { get; set; } = TimeSpan.FromSeconds(15);
@@ -126,7 +129,39 @@ namespace Onvif.Open.Recorder.Configuration
     }
 
     /// <summary>
+    /// "Recording:Archive": where completed segments are stored long term. Without a provider, recordings stay
+    /// in StorageDirectory. With one, StorageDirectory is a local buffer and Retention applies to the archive.
+    /// </summary>
+    public sealed class ArchiveOptions
+    {
+        #region Public Variables
+
+        /// <summary>
+        /// "FileSystem" (built in: a NAS share or another disk, Settings:Path) or the folder name of a storage
+        /// plugin in Plugins:Directory, e.g. "Onvif.Open.Storage.S3". Empty: no archive.
+        /// </summary>
+        public string Provider { get; set; }
+
+        /// <summary>Prepended to every key, e.g. "site-a".</summary>
+        public string Prefix { get; set; }
+
+        /// <summary>How long the local copy is kept after upload. Default: removed right away.</summary>
+        public TimeSpan KeepLocalCopyFor { get; set; } = TimeSpan.Zero;
+
+        public int MaxConcurrentUploads { get; set; } = 2;
+
+        public TimeSpan RefreshInterval { get; set; } = TimeSpan.FromMinutes(15);
+
+        // Settings ("Recording:Archive:Settings") are read as a flat dictionary by StorageConfiguration.
+
+        public bool IsEnabled => !string.IsNullOrWhiteSpace(Provider);
+
+        #endregion
+    }
+
+    /// <summary>
     /// A segment is deleted as soon as any configured rule selects it (oldest first).
+    /// With an archive, the rules apply to the archive and MinFreeSpaceGB protects the local buffer.
     /// </summary>
     public sealed class RetentionOptions
     {

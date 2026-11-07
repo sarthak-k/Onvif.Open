@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Storage plugin. Deploy the publish output as plugins/Onvif.Open.Storage.S3/ and set
+    "Recording:Archive:Provider" to "Onvif.Open.Storage.S3" (see docs/STORAGE.md).
+  -->
+  <PropertyGroup>
+    <RootNamespace>Onvif.Open.Storage.S3</RootNamespace>
+    <AssemblyName>Onvif.Open.Storage.S3</AssemblyName>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AWSSDK.S3" Version="4.0.104.11" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The SDK contracts are provided by the host. -->
+    <ProjectReference Include="..\Onvif.Open.Models\Onvif.Open.Core.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+</Project>
