@@ -63,6 +63,11 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
             return _manager.StopCameraAsync(Require(cameraId), cancellationToken);
         }
 
+        public void TriggerRecording(string cameraId, TimeSpan duration)
+        {
+            _manager.TriggerRecording(Require(cameraId), duration);
+        }
+
         public Task<byte[]> GetSnapshotAsync(string cameraId, CancellationToken cancellationToken = default)
         {
             Require(cameraId);

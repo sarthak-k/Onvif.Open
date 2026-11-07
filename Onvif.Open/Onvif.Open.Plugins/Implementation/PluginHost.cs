@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Onvif.Open.Core.Abstract.Interface.Plugin;
 using Onvif.Open.Core.Abstract.Interface.Recording;
+using Onvif.Open.Core.Events;
 using Onvif.Open.Core.Plugin;
 using Onvif.Open.Core.Recording;
 using Onvif.Open.Plugins.Implementation.Runtime;
@@ -87,6 +88,7 @@ namespace Onvif.Open.Plugins.Implementation
             _manager.FrameReceived += OnFrameReceived;
             _manager.CameraStateChanged += OnCameraStateChanged;
             _manager.SegmentCompleted += OnSegmentCompleted;
+            _manager.CameraEventReceived += OnCameraEventReceived;
 
             _logger.LogInformation("{Running} of {Count} plugin(s) running", _runners.Count(r => r.State == PluginState.Running), _runners.Count);
         }
@@ -106,6 +108,7 @@ namespace Onvif.Open.Plugins.Implementation
             _manager.FrameReceived -= OnFrameReceived;
             _manager.CameraStateChanged -= OnCameraStateChanged;
             _manager.SegmentCompleted -= OnSegmentCompleted;
+            _manager.CameraEventReceived -= OnCameraEventReceived;
 
             await Task.WhenAll(_runners.Select(r => r.StopAsync(_stopTimeout, cancellationToken))).ConfigureAwait(false);
         }
@@ -191,6 +194,14 @@ namespace Onvif.Open.Plugins.Implementation
             foreach (var runner in _runners)
             {
                 runner.OnStateChanged(change);
+            }
+        }
+
+        private void OnCameraEventReceived(object sender, CameraEvent cameraEvent)
+        {
+            foreach (var runner in _runners)
+            {
+                runner.OnCameraEvent(cameraEvent);
             }
         }
 

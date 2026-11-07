@@ -7,6 +7,7 @@ using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Onvif.Open.Test.Camera.Fakes
@@ -32,6 +33,22 @@ namespace Onvif.Open.Test.Camera.Fakes
         public Uri RtspUri { get; }
         public Uri DeviceServiceUri => new Uri($"http://127.0.0.1:{Port}/onvif/device_service");
         public Uri MediaServiceUri => new Uri($"http://127.0.0.1:{Port}/onvif/media_service");
+        public Uri EventServiceUri => new Uri($"http://127.0.0.1:{Port}/onvif/event_service");
+
+        /// <summary>Notification messages (wsnt:NotificationMessage XML) returned by the next PullMessages calls.</summary>
+        public ConcurrentQueue<string> PendingNotifications { get; } = new ConcurrentQueue<string>();
+
+        public int SubscriptionsCreated => _subscriptionCount;
+        public int Unsubscribes { get; private set; }
+        public int Renewals { get; private set; }
+
+        /// <summary>Makes the next PullMessages fail as if the subscription had expired.</summary>
+        public bool ExpireSubscription { get; set; }
+
+        /// <summary>Bodies (with headers) of the requests sent to subscription addresses.</summary>
+        public ConcurrentQueue<string> SubscriptionRequests { get; } = new ConcurrentQueue<string>();
+
+        private int _subscriptionCount;
         public Uri SnapshotUri => new Uri($"http://127.0.0.1:{Port}/onvif/snapshot.jpg");
         public static readonly byte[] SnapshotJpeg = { 0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0xFF, 0xD9 };
         public ConcurrentQueue<string> RequestBodies { get; } = new ConcurrentQueue<string>();
@@ -76,15 +93,36 @@ namespace Onvif.Open.Test.Camera.Fakes
 
                 RequestBodies.Enqueue(body);
 
+                if (context.Request.Url.AbsolutePath.StartsWith("/onvif/subscription/", StringComparison.Ordinal))
+                {
+                    SubscriptionRequests.Enqueue(body);
+                }
+
+                if (body.Contains("PullMessages", StringComparison.Ordinal) && !ExpireSubscription && PendingNotifications.IsEmpty)
+                {
+                    // Long poll: hold the request briefly when nothing is pending, like a device does.
+                    await Task.Delay(100).ConfigureAwait(false);
+                }
+
                 var secured = !body.Contains("GetSystemDateAndTime", StringComparison.Ordinal);
                 var rejected = secured && (RejectAllTokens || (RequireFreshTokens && !IsTokenFresh(body)));
-                var response = Envelope(rejected ? NotAuthorizedFault() : CreateBody(body));
+                var expired = !rejected && ExpireSubscription && body.Contains("PullMessages", StringComparison.Ordinal);
+                if (expired)
+                {
+                    ExpireSubscription = false;
+                }
+
+                var response = Envelope(rejected ? NotAuthorizedFault() : expired ? SubscriptionExpiredFault() : CreateBody(body));
                 var bytes = Encoding.UTF8.GetBytes(response);
 
                 if (rejected)
                 {
                     RejectedRequests++;
                     context.Response.StatusCode = 400;
+                }
+                else if (expired)
+                {
+                    context.Response.StatusCode = 500;
                 }
 
                 context.Response.ContentType = "application/soap+xml; charset=utf-8";
@@ -144,8 +182,68 @@ namespace Onvif.Open.Test.Camera.Fakes
                    "</tds:SystemDateAndTime></tds:GetSystemDateAndTimeResponse>";
         }
 
+        private static string SubscriptionExpiredFault()
+        {
+            return "<s:Fault><s:Code><s:Value>s:Receiver</s:Value></s:Code><s:Reason><s:Text xml:lang=\"en\">Subscription expired</s:Text></s:Reason></s:Fault>";
+        }
+
+        public static string MotionNotification(bool isMotion, string operation = "Changed")
+        {
+            return "<wsnt:NotificationMessage xmlns:wsnt=\"http://docs.oasis-open.org/wsn/b-2\" xmlns:tns1=\"http://www.onvif.org/ver10/topics\">" +
+                   "<wsnt:Topic Dialect=\"http://www.onvif.org/ver10/tev/topicExpression/ConcreteSet\">tns1:RuleEngine/CellMotionDetector/Motion</wsnt:Topic>" +
+                   $"<wsnt:Message><tt:Message UtcTime=\"2026-11-07T10:00:00Z\" PropertyOperation=\"{operation}\">" +
+                   "<tt:Source><tt:SimpleItem Name=\"VideoSourceConfigurationToken\" Value=\"VSC_1\"/><tt:SimpleItem Name=\"Rule\" Value=\"MyMotionDetectorRule\"/></tt:Source>" +
+                   $"<tt:Data><tt:SimpleItem Name=\"IsMotion\" Value=\"{(isMotion ? "true" : "false")}\"/></tt:Data>" +
+                   "</tt:Message></wsnt:Message></wsnt:NotificationMessage>";
+        }
+
+        private string EventResponse(string request)
+        {
+            if (request.Contains("CreatePullPointSubscription", StringComparison.Ordinal))
+            {
+                var id = Interlocked.Increment(ref _subscriptionCount);
+                return "<tev:CreatePullPointSubscriptionResponse xmlns:tev=\"http://www.onvif.org/ver10/events/wsdl\" xmlns:wsa5=\"http://www.w3.org/2005/08/addressing\" xmlns:wsnt=\"http://docs.oasis-open.org/wsn/b-2\">" +
+                       $"<tev:SubscriptionReference><wsa5:Address>http://127.0.0.1:{Port}/onvif/subscription/{id}</wsa5:Address>" +
+                       $"<wsa5:ReferenceParameters><dom0:SubscriptionId xmlns:dom0=\"http://www.axis.com/2009/event\">sub-{id}</dom0:SubscriptionId></wsa5:ReferenceParameters></tev:SubscriptionReference>" +
+                       "<wsnt:CurrentTime>2026-11-07T10:00:00Z</wsnt:CurrentTime><wsnt:TerminationTime>2026-11-07T10:01:00Z</wsnt:TerminationTime>" +
+                       "</tev:CreatePullPointSubscriptionResponse>";
+            }
+
+            if (request.Contains("PullMessages", StringComparison.Ordinal))
+            {
+                var builder = new StringBuilder("<tev:PullMessagesResponse xmlns:tev=\"http://www.onvif.org/ver10/events/wsdl\" xmlns:wsnt=\"http://docs.oasis-open.org/wsn/b-2\">" +
+                                                "<tev:CurrentTime>2026-11-07T10:00:00Z</tev:CurrentTime><tev:TerminationTime>2026-11-07T10:01:00Z</tev:TerminationTime>");
+                while (PendingNotifications.TryDequeue(out var notification))
+                {
+                    builder.Append(notification);
+                }
+
+                return builder.Append("</tev:PullMessagesResponse>").ToString();
+            }
+
+            if (request.Contains("Renew", StringComparison.Ordinal))
+            {
+                Renewals++;
+                return "<wsnt:RenewResponse xmlns:wsnt=\"http://docs.oasis-open.org/wsn/b-2\"><wsnt:TerminationTime>2026-11-07T10:02:00Z</wsnt:TerminationTime></wsnt:RenewResponse>";
+            }
+
+            if (request.Contains("Unsubscribe", StringComparison.Ordinal))
+            {
+                Unsubscribes++;
+                return "<wsnt:UnsubscribeResponse xmlns:wsnt=\"http://docs.oasis-open.org/wsn/b-2\"/>";
+            }
+
+            return null;
+        }
+
         private string CreateBody(string request)
         {
+            var eventResponse = EventResponse(request);
+            if (eventResponse != null)
+            {
+                return eventResponse;
+            }
+
             if (request.Contains("GetSystemDateAndTime", StringComparison.Ordinal))
             {
                 return SystemDateAndTime();
@@ -153,7 +251,8 @@ namespace Onvif.Open.Test.Camera.Fakes
 
             if (request.Contains("GetCapabilities", StringComparison.Ordinal))
             {
-                return $"<tds:GetCapabilitiesResponse><tds:Capabilities><tt:Media><tt:XAddr>{MediaServiceUri}</tt:XAddr>" +
+                return $"<tds:GetCapabilitiesResponse><tds:Capabilities><tt:Events><tt:XAddr>{EventServiceUri}</tt:XAddr><tt:WSSubscriptionPolicySupport>false</tt:WSSubscriptionPolicySupport><tt:WSPullPointSupport>true</tt:WSPullPointSupport><tt:WSPausableSubscriptionManagerInterfaceSupport>false</tt:WSPausableSubscriptionManagerInterfaceSupport></tt:Events>" +
+                       $"<tt:Media><tt:XAddr>{MediaServiceUri}</tt:XAddr>" +
                        "<tt:StreamingCapabilities><tt:RTPMulticast>false</tt:RTPMulticast><tt:RTP_TCP>true</tt:RTP_TCP><tt:RTP_RTSP_TCP>true</tt:RTP_RTSP_TCP></tt:StreamingCapabilities>" +
                        "</tt:Media></tds:Capabilities></tds:GetCapabilitiesResponse>";
             }

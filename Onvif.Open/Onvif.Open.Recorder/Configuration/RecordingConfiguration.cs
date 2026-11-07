@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using Onvif.Open.Core.Abstract.Interface.Camera;
 using Onvif.Open.Camera.Implementation;
 using Onvif.Open.Core.Abstract.Interface.Recording;
+using Onvif.Open.Core.Recording;
 using Onvif.Open.Recording.Implementation.Builder;
 using Onvif.Open.Recording.Implementation.Format;
 using Onvif.Open.Recording.Implementation.Policy;
@@ -156,9 +157,31 @@ namespace Onvif.Open.Recorder.Configuration
 
         #region Private Methods
 
+        public static CameraRecordingOptions ToRecordingOptions(CameraOptions camera)
+        {
+            var options = new CameraRecordingOptions
+            {
+                ProfileToken = string.IsNullOrWhiteSpace(camera.ProfileToken) ? null : camera.ProfileToken,
+                Transport = camera.Transport,
+                RotationPolicy = ToRotationPolicy(camera.Rotation),
+                Mode = camera.Mode,
+                PreRoll = camera.PreRoll,
+                PostRoll = camera.PostRoll,
+                SubscribeToEvents = camera.Events?.Enabled != false
+            };
+
+            var topics = camera.Events?.TriggerTopics?.Where(t => !string.IsNullOrWhiteSpace(t)).ToList() ?? new List<string>();
+            foreach (var topic in topics.Count > 0 || camera.Mode != RecordingMode.Triggered ? topics : CameraRecordingOptions.CommonMotionTopics.ToList())
+            {
+                options.EventTriggers.Add(topic);
+            }
+
+            return options;
+        }
+
         private static ICamera AddCamera(IRecordingManager manager, CameraOptions camera)
         {
-            var rotation = ToRotationPolicy(camera.Rotation);
+            var options = ToRecordingOptions(camera);
 
             if (!string.IsNullOrWhiteSpace(camera.OnvifUrl))
             {
@@ -175,7 +198,7 @@ namespace Onvif.Open.Recorder.Configuration
                 }
 
                 var onvifCamera = builder.Build();
-                manager.AddCamera(camera.Id, onvifCamera, string.IsNullOrWhiteSpace(camera.ProfileToken) ? null : camera.ProfileToken, camera.Transport, rotation);
+                manager.AddCamera(camera.Id, onvifCamera, options);
                 return onvifCamera;
             }
 
@@ -190,7 +213,7 @@ namespace Onvif.Open.Recorder.Configuration
                 }
 
                 return builder.BuildAsync(ct);
-            }, rotation);
+            }, options);
 
             return null;
         }

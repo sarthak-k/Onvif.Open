@@ -77,6 +77,16 @@ namespace Onvif.Open.Device.Management.Implementation.Client
     
         public Uri GetMediaServiceUri()
         {
+            return GetServiceUri(CapabilityCategory.Media, c => c?.Media?.XAddr);
+        }
+
+        public Uri GetEventServiceUri()
+        {
+            return GetServiceUri(CapabilityCategory.Events, c => c?.Events?.XAddr);
+        }
+
+        private Uri GetServiceUri(CapabilityCategory category, Func<Capabilities, string> selectAddress)
+        {
             var authenticator = PasswordDigestBuilder.GetBuilder().SetCamera(_camera).Build();
 
             var client = DeviceClientBuilder.GetBuilder()
@@ -90,12 +100,11 @@ namespace Onvif.Open.Device.Management.Implementation.Client
 
             try
             {
-                var capabilities = client.GetCapabilities(new[] { CapabilityCategory.Media });
-                var xaddr = capabilities?.Media?.XAddr;
+                var xaddr = selectAddress(client.GetCapabilities(new[] { category }));
 
-                if (!string.IsNullOrWhiteSpace(xaddr) && Uri.TryCreate(xaddr.Trim(), UriKind.Absolute, out var mediaUri))
+                if (!string.IsNullOrWhiteSpace(xaddr) && Uri.TryCreate(xaddr.Trim(), UriKind.Absolute, out var serviceUri))
                 {
-                    return mediaUri;
+                    return serviceUri;
                 }
             }
             catch (FaultException)

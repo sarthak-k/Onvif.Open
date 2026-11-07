@@ -13,11 +13,16 @@ namespace Onvif.Open.Core.Implementation
     {
         public const long MaxMessageSize = 16 * 1024 * 1024;
 
-        public static Binding CreateBinding(Uri serviceUri = null)
+        /// <param name="serviceUri">Selects HTTPS when the address is https.</param>
+        /// <param name="useAddressing">
+        /// WS-Addressing 1.0 headers (To, Action, MessageID and reference parameters): required by the
+        /// Events service, whose subscriptions are WS-Addressing endpoint references.
+        /// </param>
+        public static Binding CreateBinding(Uri serviceUri = null, bool useAddressing = false)
         {
             var encoding = new TextMessageEncodingBindingElement
             {
-                MessageVersion = MessageVersion.CreateVersion(EnvelopeVersion.Soap12, AddressingVersion.None)
+                MessageVersion = MessageVersion.CreateVersion(EnvelopeVersion.Soap12, useAddressing ? AddressingVersion.WSAddressing10 : AddressingVersion.None)
             };
 
             var useTls = serviceUri != null && string.Equals(serviceUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);

@@ -342,6 +342,43 @@ namespace Onvif.Open.Test.Plugins.Unit
         }
 
         [Fact]
+        public async Task CameraEventsShouldReachAssignedPlugins()
+        {
+            var manager = new FakeRecordingManager("room-1", "room-2");
+            var roomOne = new TestPlugin("room-one");
+            var all = new TestPlugin("all");
+
+            await using (var host = Builder(manager).AddPlugin(roomOne, new[] { "room-1" }).AddPlugin(all).Build())
+            {
+                await host.StartAsync();
+
+                manager.RaiseCameraEvent("room-1", "tns1:RuleEngine/CellMotionDetector/Motion", "true");
+                manager.RaiseCameraEvent("room-2", "tns1:RuleEngine/CellMotionDetector/Motion", "false");
+
+                await Eventually.True(() => all.CameraEvents.Count == 2 && roomOne.CameraEvents.Count == 1, "camera events are delivered");
+                Assert.Equal("room-1", roomOne.CameraEvents.Single().CameraId);
+                Assert.Contains(nameof(ICameraEventObserver), Status(host, "all").Capabilities);
+            }
+        }
+
+        [Fact]
+        public async Task PluginsShouldTriggerRecordingOnAssignedCamerasOnly()
+        {
+            var manager = new FakeRecordingManager("room-1", "room-2");
+            var plugin = new TestPlugin("proctor");
+
+            await using (var host = Builder(manager).AddPlugin(plugin, new[] { "room-1" }).Build())
+            {
+                await host.StartAsync();
+
+                plugin.Context.Cameras.TriggerRecording("room-1", TimeSpan.FromSeconds(20));
+
+                Assert.Contains("trigger:room-1:20", manager.Calls);
+                Assert.Throws<UnauthorizedAccessException>(() => plugin.Context.Cameras.TriggerRecording("room-2", TimeSpan.FromSeconds(20)));
+            }
+        }
+
+        [Fact]
         public void BuilderShouldValidate()
         {
             var manager = new FakeRecordingManager("cam");
