@@ -130,6 +130,19 @@ namespace Onvif.Open.Test.Recording.Unit
         }
 
         [Fact]
+        public void AudioShouldMapAndRequireRtspTransport()
+        {
+            var camera = new CameraOptions { Id = "cam", OnvifUrl = "http://192.168.1.10", Audio = new CameraAudioOptions { Enabled = true } };
+            Assert.True(RecordingConfiguration.ToRecordingOptions(camera).Audio);
+
+            var options = new RecorderOptions();
+            options.Cameras.Add(new CameraOptions { Id = "udp", OnvifUrl = "http://192.168.1.10", Transport = Onvif.Open.Core.Operations.StreamTransport.Udp, Audio = new CameraAudioOptions { Enabled = true } });
+
+            var error = Assert.Throws<InvalidOperationException>(() => RecordingConfiguration.Validate(options));
+            Assert.Contains("'udp': Audio needs Transport Rtsp", error.Message);
+        }
+
+        [Fact]
         public void AnalyticsShouldRequireAnOnvifCameraAndAValidLikelihood()
         {
             var options = new RecorderOptions();

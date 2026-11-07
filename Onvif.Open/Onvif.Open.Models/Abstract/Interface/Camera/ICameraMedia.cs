@@ -20,6 +20,12 @@ namespace Onvif.Open.Core.Abstract.Interface.Camera
         Task<ILiveVideoStream> StartLiveStreamAsync(string profileToken = null, StreamTransport transport = StreamTransport.Rtsp, CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// Starts the live stream with its audio track when <paramref name="includeAudio"/> is true (see
+        /// <see cref="ILiveVideoStream.Audio"/>; needs <see cref="StreamTransport.Rtsp"/>).
+        /// </summary>
+        Task<ILiveVideoStream> StartLiveStreamAsync(string profileToken, StreamTransport transport, bool includeAudio, CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Starts the camera's analytics metadata stream (ONVIF Profile M): the objects it detects (people,
         /// vehicles, ...) with their class, confidence and position. Uses the first profile with a metadata
         /// configuration when <paramref name="profileToken"/> is null; throws <see cref="System.NotSupportedException"/>

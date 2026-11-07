@@ -22,7 +22,7 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
     {
         #region Constructor
 
-        private RtspLiveVideoStream(RtspSession<VideoFrame> session, VideoTrackReader reader)
+        private RtspLiveVideoStream(RtspSession<MediaFrame> session, MediaTrackReader reader)
         {
             _session = session;
             _reader = reader;
@@ -32,8 +32,8 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
 
         #region Private Variables
 
-        private readonly RtspSession<VideoFrame> _session;
-        private readonly VideoTrackReader _reader;
+        private readonly RtspSession<MediaFrame> _session;
+        private readonly MediaTrackReader _reader;
 
         #endregion
 
@@ -43,19 +43,36 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
         public StreamTransport Transport => _session.Transport;
         public VideoCodec Codec => _reader.Codec;
         public string SessionDescription => _session.SessionDescription;
+        public AudioFormat Audio => _reader.Audio;
 
         #endregion
 
         #region Public Methods
 
-        internal static async Task<ILiveVideoStream> StartAsync(Uri streamUri, NetworkCredential credential, StreamTransport transport, TimeSpan timeout, int frameBufferCapacity, CancellationToken cancellationToken, DateTimeOffset? replayFrom = null, ReplayOptions replay = null)
+        internal static async Task<ILiveVideoStream> StartAsync(Uri streamUri, NetworkCredential credential, StreamTransport transport, TimeSpan timeout, int frameBufferCapacity, CancellationToken cancellationToken, DateTimeOffset? replayFrom = null, ReplayOptions replay = null, bool includeAudio = false)
         {
-            var reader = new VideoTrackReader();
-            var session = await RtspSession<VideoFrame>.StartAsync(reader, streamUri, credential, transport, timeout, frameBufferCapacity, cancellationToken, replayFrom, replay).ConfigureAwait(false);
+            if (includeAudio && transport != StreamTransport.Rtsp)
+            {
+                throw new NotSupportedException("Audio needs StreamTransport.Rtsp: RTP over UDP carries one track.");
+            }
+
+            var reader = new MediaTrackReader(includeAudio);
+            var session = await RtspSession<MediaFrame>.StartAsync(reader, streamUri, credential, transport, timeout, frameBufferCapacity, cancellationToken, replayFrom, replay).ConfigureAwait(false);
             return new RtspLiveVideoStream(session, reader);
         }
 
-        public IAsyncEnumerable<VideoFrame> ReadFramesAsync(CancellationToken cancellationToken = default)
+        public async IAsyncEnumerable<VideoFrame> ReadFramesAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await foreach (var frame in _session.ReadFramesAsync(cancellationToken).ConfigureAwait(false))
+            {
+                if (frame is VideoFrame video)
+                {
+                    yield return video;
+                }
+            }
+        }
+
+        public IAsyncEnumerable<MediaFrame> ReadMediaFramesAsync(CancellationToken cancellationToken = default)
         {
             return _session.ReadFramesAsync(cancellationToken);
         }

@@ -503,6 +503,44 @@ namespace Onvif.Open.Test.Plugins.Unit
             }
         }
 
+        [Fact]
+        public async Task AudioProcessorsShouldReceiveAudioOfAssignedCamerasOnly()
+        {
+            var manager = new FakeRecordingManager("room-1", "room-2");
+            var plugin = new AudioPlugin();
+
+            await using (var host = Builder(manager).AddPlugin(plugin, new[] { "room-1" }).Build())
+            {
+                await host.StartAsync();
+
+                CameraAudio Audio(string camera) => new CameraAudio(camera, new Onvif.Open.Core.Streaming.AudioFrame(new Onvif.Open.Core.Streaming.AudioFormat(Onvif.Open.Core.Streaming.AudioCodec.Pcmu, 8000, 1), new byte[] { 0xFF }, 0, TimeSpan.Zero), DateTimeOffset.UtcNow);
+                manager.RaiseAudio(Audio("room-2"));
+                manager.RaiseAudio(Audio("room-1"));
+                manager.RaiseAudio(Audio("room-1"));
+
+                await Eventually.True(() => Status(host, "audio").AudioDelivered == 2, "the audio of room-1 is delivered");
+                Assert.All(plugin.Received, a => Assert.Equal("room-1", a.CameraId));
+                Assert.Contains(nameof(Onvif.Open.Core.Abstract.Interface.Plugin.IAudioProcessor), Status(host, "audio").Capabilities);
+            }
+        }
+
+        private sealed class AudioPlugin : Onvif.Open.Core.Abstract.Interface.Plugin.IAudioProcessor
+        {
+            public System.Collections.Concurrent.ConcurrentQueue<CameraAudio> Received { get; } = new System.Collections.Concurrent.ConcurrentQueue<CameraAudio>();
+
+            public string Name => "audio";
+
+            public Task StartAsync(Onvif.Open.Core.Abstract.Interface.Plugin.IPluginContext context, System.Threading.CancellationToken cancellationToken) => Task.CompletedTask;
+
+            public Task StopAsync(System.Threading.CancellationToken cancellationToken) => Task.CompletedTask;
+
+            public ValueTask ProcessAudioAsync(CameraAudio audio, System.Threading.CancellationToken cancellationToken)
+            {
+                Received.Enqueue(audio);
+                return default;
+            }
+        }
+
         private sealed class AnalyticsPlugin : Onvif.Open.Core.Abstract.Interface.Plugin.IAnalyticsObserver
         {
             public System.Collections.Concurrent.ConcurrentQueue<Onvif.Open.Core.Analytics.AnalyticsFrame> Received { get; } = new System.Collections.Concurrent.ConcurrentQueue<Onvif.Open.Core.Analytics.AnalyticsFrame>();

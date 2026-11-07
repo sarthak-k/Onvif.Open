@@ -99,6 +99,7 @@ namespace Onvif.Open.Plugins.Implementation
             _manager.SegmentCompleted += OnSegmentCompleted;
             _manager.CameraEventReceived += OnCameraEventReceived;
             _manager.AnalyticsReceived += OnAnalyticsReceived;
+            _manager.AudioReceived += OnAudioReceived;
 
             _logger.LogInformation("{Running} of {Count} plugin(s) running", _runners.Count(r => r.State == PluginState.Running), _runners.Count);
         }
@@ -120,6 +121,7 @@ namespace Onvif.Open.Plugins.Implementation
             _manager.SegmentCompleted -= OnSegmentCompleted;
             _manager.CameraEventReceived -= OnCameraEventReceived;
             _manager.AnalyticsReceived -= OnAnalyticsReceived;
+            _manager.AudioReceived -= OnAudioReceived;
 
             await Task.WhenAll(_runners.Select(r => r.StopAsync(_stopTimeout, cancellationToken))).ConfigureAwait(false);
         }
@@ -217,6 +219,14 @@ namespace Onvif.Open.Plugins.Implementation
             foreach (var runner in _runners)
             {
                 runner.OnCameraEvent(cameraEvent);
+            }
+        }
+
+        private void OnAudioReceived(object sender, CameraAudio audio)
+        {
+            foreach (var runner in _runners)
+            {
+                runner.OnAudio(audio);
             }
         }
 

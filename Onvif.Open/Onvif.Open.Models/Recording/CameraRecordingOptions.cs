@@ -35,6 +35,12 @@ namespace Onvif.Open.Core.Recording
         public bool SubscribeToEvents { get; set; } = true;
 
         /// <summary>
+        /// Receive the camera's audio: AAC is recorded with the video (MPEG-TS), every supported codec (also G.711) is
+        /// raised as IRecordingManager.AudioReceived and passed to plugins. Needs <see cref="StreamTransport.Rtsp"/>. Default: off.
+        /// </summary>
+        public bool Audio { get; set; }
+
+        /// <summary>
         /// Event topics (prefixes ignored, sub-topics included) that trigger recording, e.g.
         /// "RuleEngine/CellMotionDetector/Motion". Stateful events trigger while their state is true.
         /// </summary>

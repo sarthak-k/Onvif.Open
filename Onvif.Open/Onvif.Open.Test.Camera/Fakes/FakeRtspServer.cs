@@ -49,6 +49,12 @@ namespace Onvif.Open.Test.Camera.Fakes
         public int Port { get; }
         public Uri StreamUri => new Uri($"rtsp://127.0.0.1:{Port}/stream");
         public List<byte[]> Packets { get; } = new List<byte[]>();
+
+        /// <summary>Sent on interleaved channel 2 (the audio track when it is set up second).</summary>
+        public List<byte[]> AudioPackets { get; } = new List<byte[]>();
+
+        /// <summary>Replaces the default audio section (G.711 µ-law, payload type 0) of the session description.</summary>
+        public string AudioSdp { get; set; } = "m=audio 0 RTP/AVP 0\r\na=control:trackID=2\r\n";
         public ConcurrentQueue<string> Requests { get; } = new ConcurrentQueue<string>();
 
         /// <summary>Headers of every request, as "METHOD Header: value" lines.</summary>
@@ -79,8 +85,7 @@ namespace Onvif.Open.Test.Camera.Fakes
             "a=rtpmap:96 H264/90000\r\n" +
             $"a=fmtp:96 packetization-mode=1;profile-level-id=42001F;sprop-parameter-sets={Convert.ToBase64String(Sps)},{Convert.ToBase64String(Pps)}\r\n" +
             "a=control:trackID=1\r\n" +
-            "m=audio 0 RTP/AVP 0\r\n" +
-            "a=control:trackID=2\r\n" +
+            AudioSdp +
             (IncludeMetadataTrack ? "m=application 0 RTP/AVP 107\r\na=rtpmap:107 vnd.onvif.metadata/90000\r\na=control:trackID=3\r\n" : string.Empty);
 
         private async Task ServeAsync()
@@ -150,9 +155,18 @@ namespace Onvif.Open.Test.Camera.Fakes
                             }
 
                             await WriteInterleavedAsync(stream, 1, new byte[] { 0x80, 0xC8, 0x00, 0x06, 0, 0, 0, 0 }).ConfigureAwait(false);
-                            foreach (var packet in Packets)
+                            // Video and audio interleaved, as a camera sends them.
+                            for (var i = 0; i < Math.Max(Packets.Count, AudioPackets.Count); i++)
                             {
-                                await WriteInterleavedAsync(stream, 0, packet).ConfigureAwait(false);
+                                if (i < Packets.Count)
+                                {
+                                    await WriteInterleavedAsync(stream, 0, Packets[i]).ConfigureAwait(false);
+                                }
+
+                                if (i < AudioPackets.Count)
+                                {
+                                    await WriteInterleavedAsync(stream, 2, AudioPackets[i]).ConfigureAwait(false);
+                                }
                             }
 
                             if (CloseAfterPackets)
@@ -179,7 +193,8 @@ namespace Onvif.Open.Test.Camera.Fakes
 
             if (!match.Success || RefuseUdp)
             {
-                return "RTP/AVP/TCP;unicast;interleaved=0-1";
+                var interleaved = System.Text.RegularExpressions.Regex.Match(transport ?? string.Empty, @"interleaved=(\d+-\d+)");
+                return "RTP/AVP/TCP;unicast;interleaved=" + (interleaved.Success ? interleaved.Groups[1].Value : "0-1");
             }
 
             _clientRtpPort = int.Parse(match.Groups[1].Value);

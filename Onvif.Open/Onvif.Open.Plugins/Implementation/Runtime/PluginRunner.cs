@@ -37,6 +37,12 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
             _eventObserver = Plugin as IPluginEventObserver;
             _cameraEventObserver = Plugin as ICameraEventObserver;
             _analyticsObserver = Plugin as IAnalyticsObserver;
+            _audioProcessor = Plugin as IAudioProcessor;
+
+            // Audio comes in many small frames (G.711: 50 per second): it gets its own, larger queue.
+            _audio = Channel.CreateBounded<CameraAudio>(
+                new BoundedChannelOptions(frameQueueCapacity * AudioQueueFactor) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true },
+                _ => Interlocked.Increment(ref _audioDropped));
 
             _frames = Channel.CreateBounded<CameraFrame>(
                 new BoundedChannelOptions(frameQueueCapacity) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true },
@@ -60,6 +66,12 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
         private readonly IPluginEventObserver _eventObserver;
         private readonly ICameraEventObserver _cameraEventObserver;
         private readonly IAnalyticsObserver _analyticsObserver;
+        private readonly IAudioProcessor _audioProcessor;
+        private readonly Channel<CameraAudio> _audio;
+        private const int AudioQueueFactor = 8;
+        private Task _audioLoop = Task.CompletedTask;
+        private long _audioDelivered;
+        private long _audioDropped;
         private readonly Channel<CameraFrame> _frames;
         private readonly Channel<Func<CancellationToken, Task>> _notifications;
         private readonly CancellationTokenSource _abort = new CancellationTokenSource();
@@ -107,6 +119,7 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
 
             _state = PluginState.Running;
             _frameLoop = Task.Run(() => FrameLoopAsync(_abort.Token));
+            _audioLoop = Task.Run(() => AudioLoopAsync(_abort.Token));
             _notificationLoop = Task.Run(() => NotificationLoopAsync(_abort.Token));
             _logger.LogInformation("Plugin {Plugin} started", Name);
         }
@@ -120,6 +133,7 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
             }
 
             _frames.Writer.TryComplete();
+            _audio.Writer.TryComplete();
             _notifications.Writer.TryComplete();
 
             if (!wasRunning)
@@ -128,7 +142,7 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
             }
 
             // Let the plugin finish what is queued, but never wait for it longer than the timeout.
-            var drained = Task.WhenAll(_frameLoop, _notificationLoop);
+            var drained = Task.WhenAll(_frameLoop, _audioLoop, _notificationLoop);
             if (await Task.WhenAny(drained, Task.Delay(timeout, _timeProvider, cancellationToken)).ConfigureAwait(false) != drained)
             {
                 _logger.LogWarning("Plugin {Plugin} did not finish its queued work within {Timeout}", Name, timeout);
@@ -207,6 +221,14 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
             }
         }
 
+        public void OnAudio(CameraAudio audio)
+        {
+            if (_audioProcessor != null && _state == PluginState.Running && IsAssigned(audio.CameraId))
+            {
+                _audio.Writer.TryWrite(audio);
+            }
+        }
+
         public void OnAnalytics(AnalyticsFrame frame)
         {
             if (_analyticsObserver != null && IsAssigned(frame.CameraId))
@@ -242,6 +264,7 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
             if (_eventObserver != null) capabilities.Add(nameof(IPluginEventObserver));
             if (_cameraEventObserver != null) capabilities.Add(nameof(ICameraEventObserver));
             if (_analyticsObserver != null) capabilities.Add(nameof(IAnalyticsObserver));
+            if (_audioProcessor != null) capabilities.Add(nameof(IAudioProcessor));
 
             lock (_sync)
             {
@@ -253,6 +276,8 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
                     Capabilities = capabilities,
                     FramesDelivered = Interlocked.Read(ref _framesDelivered),
                     FramesDropped = Interlocked.Read(ref _framesDropped),
+                    AudioDelivered = Interlocked.Read(ref _audioDelivered),
+                    AudioDropped = Interlocked.Read(ref _audioDropped),
                     NotificationsDelivered = Interlocked.Read(ref _notificationsDelivered),
                     NotificationsDropped = Interlocked.Read(ref _notificationsDropped),
                     EventsPublished = Interlocked.Read(ref _eventsPublished),
@@ -284,6 +309,28 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
                     if (await Invoke(ct => _frameProcessor.ProcessFrameAsync(frame, ct).AsTask(), cancellationToken, "frame").ConfigureAwait(false))
                     {
                         Interlocked.Increment(ref _framesDelivered);
+                    }
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+            }
+        }
+
+        private async Task AudioLoopAsync(CancellationToken cancellationToken)
+        {
+            if (_audioProcessor == null)
+            {
+                return;
+            }
+
+            try
+            {
+                await foreach (var audio in _audio.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    if (await Invoke(ct => _audioProcessor.ProcessAudioAsync(audio, ct).AsTask(), cancellationToken, "audio").ConfigureAwait(false))
+                    {
+                        Interlocked.Increment(ref _audioDelivered);
                     }
                 }
             }

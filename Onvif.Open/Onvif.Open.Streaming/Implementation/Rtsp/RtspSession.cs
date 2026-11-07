@@ -25,7 +25,7 @@ using Onvif.Open.Streaming.Implementation.Transport;
 namespace Onvif.Open.Streaming.Implementation.Rtsp
 {
     /// <summary>
-    /// Plays one track of an RTSP URI, chosen by an <see cref="IRtpTrackReader{TFrame}"/> (OPTIONS → DESCRIBE → SETUP → PLAY, keep-alive, TEARDOWN),
+    /// Plays the tracks of an RTSP URI chosen by an <see cref="IRtpTrackReader{TFrame}"/> (OPTIONS → DESCRIBE → SETUP → PLAY, keep-alive, TEARDOWN),
     /// receiving RTP through the selected <see cref="IRtpTransport"/> (TCP interleaved or UDP).
     /// </summary>
     internal sealed class RtspSession<TFrame> : IAsyncDisposable
@@ -68,11 +68,6 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
         private readonly CancellationTokenSource _lifetime = new CancellationTokenSource();
         private readonly DateTimeOffset? _replayFrom;
         private readonly ReplayOptions _replay;
-
-        // RTP timestamp -> capture time (ONVIF replay extension) of recent packets, to stamp the frames.
-        private readonly Dictionary<uint, DateTimeOffset> _captureTimes = new Dictionary<uint, DateTimeOffset>();
-        private readonly Queue<uint> _captureTimeOrder = new Queue<uint>();
-        private const int MaxCaptureTimes = 64;
 
         private RtspConnection _connection;
         private IRtspAuthenticator _authenticator;
@@ -197,15 +192,24 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
             SessionDescription = describe.Body;
 
             var sdp = Sdp.SessionDescription.Parse(describe.Body);
-            var track = _trackReader.SelectTrack(sdp);
+            var tracks = _trackReader.SelectTracks(sdp);
 
             var contentBase = describe.GetHeader("Content-Base") ?? describe.GetHeader("Content-Location") ?? _requestUri;
             _playUri = RtspUris.ResolveControl(contentBase, sdp.Control);
-            var setupUri = RtspUris.ResolveControl(contentBase, track.Control);
 
-            var setup = await RequestAsync("SETUP", setupUri, new[] { Header("Transport", _transport.GetRequestTransport()) }, cancellationToken).ConfigureAwait(false);
-            ParseSession(setup.GetHeader("Session"));
-            _transport.Configure(setup.GetHeader("Transport"));
+            // One SETUP per track; the first one creates the session, the others join it.
+            for (var index = 0; index < tracks.Count; index++)
+            {
+                var setupUri = RtspUris.ResolveControl(contentBase, tracks[index].Control);
+                var setup = await RequestAsync("SETUP", setupUri, new[] { Header("Transport", _transport.GetRequestTransport(index)) }, cancellationToken).ConfigureAwait(false);
+
+                if (_session == null)
+                {
+                    ParseSession(setup.GetHeader("Session"));
+                }
+
+                _transport.Configure(index, setup.GetHeader("Transport"));
+            }
 
             await RequestAsync("PLAY", _playUri, PlayHeaders(), cancellationToken).ConfigureAwait(false);
 
@@ -326,29 +330,6 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
             return time.UtcDateTime.ToString("yyyyMMdd'T'HHmmss.fff'Z'", CultureInfo.InvariantCulture);
         }
 
-        private TFrame Stamp(TFrame frame)
-        {
-            return _captureTimes.TryGetValue(_trackReader.GetRtpTimestamp(frame), out var captureTime)
-                ? _trackReader.WithCaptureTime(frame, captureTime)
-                : frame;
-        }
-
-        private void RememberCaptureTime(in RtpPacket packet)
-        {
-            if (!packet.CaptureTime.HasValue || _captureTimes.ContainsKey(packet.Timestamp))
-            {
-                return;
-            }
-
-            _captureTimes[packet.Timestamp] = packet.CaptureTime.Value;
-            _captureTimeOrder.Enqueue(packet.Timestamp);
-
-            while (_captureTimeOrder.Count > MaxCaptureTimes)
-            {
-                _captureTimes.Remove(_captureTimeOrder.Dequeue());
-            }
-        }
-
         private async Task ReadLoopAsync(CancellationToken cancellationToken)
         {
             var completed = new List<TFrame>();
@@ -358,19 +339,17 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
             {
                 try
                 {
-                    await _transport.ReceiveAsync(_connection, async data =>
+                    await _transport.ReceiveAsync(_connection, async (track, data) =>
                     {
                         if (!RtpPacket.TryParse(data, out var packet))
                         {
                             return;
                         }
 
-                        RememberCaptureTime(packet);
-                        _trackReader.Process(packet, completed);
+                        _trackReader.Process(track, packet, completed);
 
-                        foreach (var frame in completed)
+                        foreach (var stamped in completed)
                         {
-                            var stamped = Stamp(frame);
 
                             if (_replay == null)
                             {

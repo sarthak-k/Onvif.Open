@@ -106,14 +106,14 @@ namespace Onvif.Open.Test.Camera.Unit.Streaming
             var bytes = Encoding.UTF8.GetBytes(ProfileMDocument);
             var half = bytes.Length / 2;
 
-            reader.Process(Packet(1, 9000, false, bytes.Take(half).ToArray()), frames);
+            reader.Process(0, Packet(1, 9000, false, bytes.Take(half).ToArray()), frames);
             Assert.Empty(frames);
-            reader.Process(Packet(2, 9000, true, bytes.Skip(half).ToArray()), frames);
+            reader.Process(0, Packet(2, 9000, true, bytes.Skip(half).ToArray()), frames);
             Assert.Single(frames);
 
             // A document whose end was lost is dropped when the next one starts.
-            reader.Process(Packet(3, 18000, false, bytes.Take(half).ToArray()), frames);
-            reader.Process(Packet(4, 27000, true, bytes), frames);
+            reader.Process(0, Packet(3, 18000, false, bytes.Take(half).ToArray()), frames);
+            reader.Process(0, Packet(4, 27000, true, bytes), frames);
             Assert.Equal(2, frames.Count);
         }
 
@@ -126,13 +126,13 @@ namespace Onvif.Open.Test.Camera.Unit.Streaming
 
             for (ushort i = 0; i < 1100; i++)
             {
-                reader.Process(Packet(i, 9000, false, chunk), frames);
+                reader.Process(0, Packet(i, 9000, false, chunk), frames);
             }
 
-            reader.Process(Packet(1100, 9000, true, Encoding.UTF8.GetBytes(ProfileMDocument)), frames);
+            reader.Process(0, Packet(1100, 9000, true, Encoding.UTF8.GetBytes(ProfileMDocument)), frames);
             Assert.Empty(frames);
 
-            reader.Process(Packet(1101, 18000, true, Encoding.UTF8.GetBytes(ProfileMDocument)), frames);
+            reader.Process(0, Packet(1101, 18000, true, Encoding.UTF8.GetBytes(ProfileMDocument)), frames);
             Assert.Single(frames);
         }
 

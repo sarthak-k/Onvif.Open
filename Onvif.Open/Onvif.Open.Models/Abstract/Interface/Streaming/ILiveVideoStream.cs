@@ -37,6 +37,15 @@ namespace Onvif.Open.Core.Abstract.Interface.Streaming
         /// </summary>
         Task CopyToAsync(Stream destination, CancellationToken cancellationToken = default);
 
+        /// <summary>The audio track, when audio was requested and the stream has a supported one; otherwise null.</summary>
+        AudioFormat Audio { get; }
+
+        /// <summary>
+        /// Video and audio frames in arrival order, on one timeline. Use either this or <see cref="ReadFramesAsync"/>
+        /// (video only), not both: they read the same frames.
+        /// </summary>
+        IAsyncEnumerable<MediaFrame> ReadMediaFramesAsync(CancellationToken cancellationToken = default);
+
         /// <summary>Sends RTSP TEARDOWN and closes the connection.</summary>
         Task StopAsync(CancellationToken cancellationToken = default);
     }

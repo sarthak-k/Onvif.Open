@@ -197,6 +197,8 @@ namespace Onvif.Open.Recorder.Api
                 status.IsTriggered,
                 status.LastTriggeredAt,
                 codec = status.Codec.ToString(),
+                audioCodec = status.AudioCodec == Core.Streaming.AudioCodec.Unknown ? null : status.AudioCodec.ToString(),
+                status.RecordsAudio,
                 transport = status.Transport?.ToString(),
                 streamUri = Redact(status.StreamUri),
                 currentSegment = status.CurrentSegment == null ? null : System.IO.Path.GetFileName(status.CurrentSegment),

@@ -109,6 +109,8 @@ namespace Onvif.Open.Recording.Implementation
 
         public event EventHandler<AnalyticsFrame> AnalyticsReceived;
 
+        public event EventHandler<CameraAudio> AudioReceived;
+
         #endregion
 
         #region Public Methods
@@ -131,7 +133,7 @@ namespace Onvif.Open.Recording.Implementation
 
             AddCamera(
                 cameraId,
-                ct => media.StartLiveStreamAsync(options.ProfileToken, options.Transport, ct),
+                ct => media.StartLiveStreamAsync(options.ProfileToken, options.Transport, options.Audio, ct),
                 options,
                 events == null ? (Func<CancellationToken, IAsyncEnumerable<CameraEvent>>)null : ct => events.ReadEventsAsync(ct),
                 options.UsesAnalytics ? ct => ReadAnalyticsAsync(media, options.AnalyticsProfileToken, options.Transport, ct) : (Func<CancellationToken, IAsyncEnumerable<AnalyticsFrame>>)null);
@@ -153,6 +155,11 @@ namespace Onvif.Open.Recording.Implementation
 
             options = options ?? new CameraRecordingOptions();
 
+            if (options.Audio && options.Transport != StreamTransport.Rtsp)
+            {
+                throw new ArgumentException("Audio needs StreamTransport.Rtsp: RTP over UDP carries one track.", nameof(options));
+            }
+
             var recorder = new CameraRecorder(
                 cameraId,
                 streamFactory,
@@ -169,7 +176,8 @@ namespace Onvif.Open.Recording.Implementation
                 eventSource,
                 cameraEvent => CameraEventReceived?.Invoke(this, cameraEvent),
                 analyticsSource,
-                frame => AnalyticsReceived?.Invoke(this, frame));
+                frame => AnalyticsReceived?.Invoke(this, frame),
+                audio => AudioReceived?.Invoke(this, audio));
 
             if (!_recorders.TryAdd(cameraId, recorder))
             {

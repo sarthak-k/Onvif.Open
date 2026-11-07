@@ -37,6 +37,9 @@ namespace Onvif.Open.Test.Plugins.Fakes
         public event EventHandler<CameraStateChange> CameraStateChanged;
         public event EventHandler<CameraEvent> CameraEventReceived;
         public event EventHandler<Onvif.Open.Core.Analytics.AnalyticsFrame> AnalyticsReceived;
+        public event EventHandler<CameraAudio> AudioReceived;
+
+        public void RaiseAudio(CameraAudio audio) => AudioReceived?.Invoke(this, audio);
 
         public void RaiseAnalytics(Onvif.Open.Core.Analytics.AnalyticsFrame frame) => AnalyticsReceived?.Invoke(this, frame);
 

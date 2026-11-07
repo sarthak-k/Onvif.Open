@@ -16,29 +16,46 @@ namespace Onvif.Open.Streaming.Implementation.Transport
     {
         #region Private Variables
 
-        private int _rtpChannel;
+        // Interleaved RTP channel -> track index.
+        private readonly System.Collections.Generic.Dictionary<int, int> _tracks = new System.Collections.Generic.Dictionary<int, int>();
 
         #endregion
 
         #region Public Variables
 
-        public int RtpChannel => _rtpChannel;
+        /// <summary>RTP channel of the first track.</summary>
+        public int RtpChannel
+        {
+            get
+            {
+                foreach (var entry in _tracks)
+                {
+                    if (entry.Value == 0)
+                    {
+                        return entry.Key;
+                    }
+                }
+
+                return 0;
+            }
+        }
 
         #endregion
 
         #region Public Methods
 
-        public string GetRequestTransport()
+        public string GetRequestTransport(int track)
         {
-            return "RTP/AVP/TCP;unicast;interleaved=0-1";
+            return $"RTP/AVP/TCP;unicast;interleaved={track * 2}-{(track * 2) + 1}";
         }
 
-        public void Configure(string responseTransport)
+        public void Configure(int track, string responseTransport)
         {
-            _rtpChannel = TransportHeader.TryGetRange(responseTransport, "interleaved", out var rtp, out _) ? rtp : 0;
+            // The device may assign other channels than requested.
+            _tracks[TransportHeader.TryGetRange(responseTransport, "interleaved", out var rtp, out _) ? rtp : track * 2] = track;
         }
 
-        public async Task ReceiveAsync(RtspConnection connection, Func<byte[], ValueTask> onRtpPacket, CancellationToken cancellationToken)
+        public async Task ReceiveAsync(RtspConnection connection, Func<int, byte[], ValueTask> onRtpPacket, CancellationToken cancellationToken)
         {
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -46,9 +63,9 @@ namespace Onvif.Open.Streaming.Implementation.Transport
                                ?? throw new IOException("RTSP server closed the connection.");
 
                 // RTCP, keep-alive responses and server requests need no handling.
-                if (incoming.IsPacket && incoming.Channel == _rtpChannel)
+                if (incoming.IsPacket && _tracks.TryGetValue(incoming.Channel, out var track))
                 {
-                    await onRtpPacket(incoming.Data).ConfigureAwait(false);
+                    await onRtpPacket(track, incoming.Data).ConfigureAwait(false);
                 }
             }
         }

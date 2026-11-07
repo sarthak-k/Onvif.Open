@@ -27,6 +27,9 @@ namespace Onvif.Open.Streaming.Implementation.Sdp
         public int PayloadType { get; }
         public string EncodingName { get; internal set; }
         public int ClockRate { get; internal set; } = 90000;
+
+        /// <summary>Audio channels from "a=rtpmap" (1 when not given).</summary>
+        public int Channels { get; internal set; } = 1;
         public string Control { get; internal set; }
 
         /// <summary>Format parameters from "a=fmtp:" (keys are case-insensitive).</summary>

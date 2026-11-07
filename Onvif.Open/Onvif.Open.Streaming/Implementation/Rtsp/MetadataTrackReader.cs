@@ -34,13 +34,16 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
 
         #region Public Methods
 
-        public SdpMediaDescription SelectTrack(SessionDescription sessionDescription)
+        public IReadOnlyList<SdpMediaDescription> SelectTracks(SessionDescription sessionDescription)
         {
-            return sessionDescription.Media.FirstOrDefault(m => string.Equals(m.EncodingName, EncodingName, StringComparison.OrdinalIgnoreCase))
-                   ?? throw new NotSupportedException("The RTSP stream does not contain an ONVIF metadata track: add a metadata configuration to the media profile on the camera.");
+            return new[]
+            {
+                sessionDescription.Media.FirstOrDefault(m => string.Equals(m.EncodingName, EncodingName, StringComparison.OrdinalIgnoreCase))
+                ?? throw new NotSupportedException("The RTSP stream does not contain an ONVIF metadata track: add a metadata configuration to the media profile on the camera.")
+            };
         }
 
-        public void Process(RtpPacket packet, ICollection<AnalyticsFrame> frames)
+        public void Process(int track, RtpPacket packet, ICollection<AnalyticsFrame> frames)
         {
             if (_timestamp.HasValue && _timestamp.Value != packet.Timestamp)
             {
@@ -81,20 +84,9 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
             Reset();
         }
 
-        public uint GetRtpTimestamp(AnalyticsFrame frame)
-        {
-            // Analytics frames carry their own time; no replay stamping applies.
-            return 0;
-        }
-
         public DateTimeOffset? GetCaptureTime(AnalyticsFrame frame)
         {
             return frame.UtcTime;
-        }
-
-        public AnalyticsFrame WithCaptureTime(AnalyticsFrame frame, DateTimeOffset captureTime)
-        {
-            return frame;
         }
 
         #endregion

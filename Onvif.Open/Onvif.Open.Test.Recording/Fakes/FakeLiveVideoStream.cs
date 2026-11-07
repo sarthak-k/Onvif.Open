@@ -20,12 +20,30 @@ namespace Onvif.Open.Test.Recording.Fakes
     /// </summary>
     internal sealed class FakeLiveVideoStream : ILiveVideoStream
     {
-        private readonly Channel<VideoFrame> _frames = Channel.CreateUnbounded<VideoFrame>();
+        private readonly Channel<MediaFrame> _frames = Channel.CreateUnbounded<MediaFrame>();
         private int _index;
 
-        public FakeLiveVideoStream(VideoCodec codec = VideoCodec.H264)
+        public FakeLiveVideoStream(VideoCodec codec = VideoCodec.H264, AudioFormat audio = null)
         {
             Codec = codec;
+            Audio = audio;
+        }
+
+        public AudioFormat Audio { get; }
+
+        /// <summary>AAC (16 kHz mono) as announced by many cameras.</summary>
+        public static AudioFormat Aac16k { get; } = new AudioFormat(AudioCodec.Aac, 16000, 1, new byte[] { 0x14, 0x08 });
+
+        /// <summary>An audio frame at <paramref name="timestamp"/> (milliseconds on the video timeline).</summary>
+        public static AudioFrame AudioAt(AudioFormat format, int milliseconds, int size = 50)
+        {
+            return new AudioFrame(format, Enumerable.Repeat((byte)0x21, size).ToArray(), (uint)milliseconds, TimeSpan.FromMilliseconds(milliseconds));
+        }
+
+        public FakeLiveVideoStream PushAudio(AudioFrame frame)
+        {
+            _frames.Writer.TryWrite(frame);
+            return this;
         }
 
         public Uri StreamUri { get; } = new Uri("rtsp://192.168.1.3/stream");
@@ -67,8 +85,16 @@ namespace Onvif.Open.Test.Recording.Fakes
         {
             await foreach (var frame in _frames.Reader.ReadAllAsync(cancellationToken))
             {
-                yield return frame;
+                if (frame is VideoFrame video)
+                {
+                    yield return video;
+                }
             }
+        }
+
+        public IAsyncEnumerable<MediaFrame> ReadMediaFramesAsync(CancellationToken cancellationToken = default)
+        {
+            return _frames.Reader.ReadAllAsync(cancellationToken);
         }
 
         public async Task CopyToAsync(Stream destination, CancellationToken cancellationToken = default)

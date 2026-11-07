@@ -59,7 +59,12 @@ namespace Onvif.Open.Camera.Implementation
 
         public Task<ILiveVideoStream> StartLiveStreamAsync(string profileToken = null, StreamTransport transport = StreamTransport.Rtsp, CancellationToken cancellationToken = default)
         {
-            return _clock.RunAsync(ct => StartLiveStreamCoreAsync(profileToken, transport, ct), cancellationToken);
+            return StartLiveStreamAsync(profileToken, transport, false, cancellationToken);
+        }
+
+        public Task<ILiveVideoStream> StartLiveStreamAsync(string profileToken, StreamTransport transport, bool includeAudio, CancellationToken cancellationToken = default)
+        {
+            return _clock.RunAsync(ct => StartLiveStreamCoreAsync(profileToken, transport, includeAudio, ct), cancellationToken);
         }
 
         public Task<IAnalyticsStream> StartAnalyticsStreamAsync(string profileToken = null, StreamTransport transport = StreamTransport.Rtsp, CancellationToken cancellationToken = default)
@@ -107,7 +112,7 @@ namespace Onvif.Open.Camera.Implementation
             }
         }
 
-        private async Task<ILiveVideoStream> StartLiveStreamCoreAsync(string profileToken, StreamTransport transport, CancellationToken cancellationToken)
+        private async Task<ILiveVideoStream> StartLiveStreamCoreAsync(string profileToken, StreamTransport transport, bool includeAudio, CancellationToken cancellationToken)
         {
             var mediaService = await GetMediaServiceAsync(cancellationToken).ConfigureAwait(false);
             profileToken = await ResolveProfileAsync(mediaService, profileToken, cancellationToken).ConfigureAwait(false);
@@ -118,6 +123,7 @@ namespace Onvif.Open.Camera.Implementation
                 .SetStreamUri(streamUri)
                 .SetCamera(_camera)
                 .SetTransport(transport)
+                .SetAudio(includeAudio)
                 .BuildAsync(cancellationToken)
                 .ConfigureAwait(false);
         }
