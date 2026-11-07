@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Onvif.Open.Core.Abstract.Interface.Plugin;
+using Onvif.Open.Core.Abstract.Interface.Ptz;
 using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Plugins.Implementation.Runtime;
 using Onvif.Open.Plugins.Interface;
@@ -42,6 +43,7 @@ namespace Onvif.Open.Plugins.Implementation.Builder
         private readonly List<PluginRegistration> _registrations = new List<PluginRegistration>();
         private IRecordingManager _manager;
         private Func<string, CancellationToken, Task<byte[]>> _snapshotProvider;
+        private Func<string, ICameraPtz> _ptzProvider;
         private int _frameQueueCapacity = 32;
         private int _notificationQueueCapacity = 1024;
         private int _eventHistoryCapacity = 1000;
@@ -60,7 +62,7 @@ namespace Onvif.Open.Plugins.Implementation.Builder
                 throw new InvalidOperationException("Plugin Host Builder must have a recording manager.");
             }
 
-            return PluginHost.CreateInstance(_manager, _registrations.ToList(), _snapshotProvider, _frameQueueCapacity, _notificationQueueCapacity, _eventHistoryCapacity, _stopTimeout, _timeProvider, _loggerFactory);
+            return PluginHost.CreateInstance(_manager, _registrations.ToList(), _snapshotProvider, _frameQueueCapacity, _notificationQueueCapacity, _eventHistoryCapacity, _stopTimeout, _timeProvider, _loggerFactory, _ptzProvider);
         }
 
         public PluginHostBuilder SetRecordingManager(IRecordingManager manager)
@@ -107,6 +109,13 @@ namespace Onvif.Open.Plugins.Implementation.Builder
         public PluginHostBuilder SetSnapshotProvider(Func<string, CancellationToken, Task<byte[]>> snapshotProvider)
         {
             _snapshotProvider = snapshotProvider ?? throw new ArgumentNullException(nameof(snapshotProvider));
+            return this;
+        }
+
+        /// <summary>Source of PTZ control for <see cref="IPluginCameras.GetPtz"/>.</summary>
+        public PluginHostBuilder SetPtzProvider(Func<string, ICameraPtz> ptzProvider)
+        {
+            _ptzProvider = ptzProvider ?? throw new ArgumentNullException(nameof(ptzProvider));
             return this;
         }
 

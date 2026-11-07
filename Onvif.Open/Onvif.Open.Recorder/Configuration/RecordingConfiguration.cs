@@ -276,6 +276,16 @@ namespace Onvif.Open.Recorder.Configuration
 
         #region Public Methods
 
+        public Core.Abstract.Interface.Ptz.ICameraPtz GetPtz(string cameraId)
+        {
+            if (cameraId == null || !_onvifCameras.TryGetValue(cameraId, out var camera))
+            {
+                throw new NotSupportedException($"Camera '{cameraId}' is not an ONVIF camera: PTZ is not available.");
+            }
+
+            return camera.Camera.InitializePtz();
+        }
+
         public Task<byte[]> GetSnapshotAsync(string cameraId, CancellationToken cancellationToken)
         {
             if (cameraId == null || !_onvifCameras.TryGetValue(cameraId, out var camera))

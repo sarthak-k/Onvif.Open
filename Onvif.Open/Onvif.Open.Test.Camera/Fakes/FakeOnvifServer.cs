@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -49,6 +50,21 @@ namespace Onvif.Open.Test.Camera.Fakes
         public ConcurrentQueue<string> SubscriptionRequests { get; } = new ConcurrentQueue<string>();
 
         private int _subscriptionCount;
+
+        public Uri PtzServiceUri => new Uri($"http://127.0.0.1:{Port}/onvif/ptz_service");
+
+        /// <summary>When false the device reports no PTZ capability (a fixed camera).</summary>
+        public bool HasPtz { get; set; } = true;
+
+        public double PtzPan { get; set; }
+        public double PtzTilt { get; set; }
+        public double PtzZoom { get; set; }
+        public bool PtzMoving { get; private set; }
+        public string LastPtzRequest { get; private set; }
+        public ConcurrentQueue<string> PtzOperations { get; } = new ConcurrentQueue<string>();
+        public ConcurrentDictionary<string, (string Name, double Pan, double Tilt, double Zoom)> PtzPresets { get; } = new ConcurrentDictionary<string, (string, double, double, double)>();
+        private (double Pan, double Tilt, double Zoom) _ptzHome;
+        private int _presetCount;
         public Uri SnapshotUri => new Uri($"http://127.0.0.1:{Port}/onvif/snapshot.jpg");
         public static readonly byte[] SnapshotJpeg = { 0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0xFF, 0xD9 };
         public ConcurrentQueue<string> RequestBodies { get; } = new ConcurrentQueue<string>();
@@ -236,8 +252,95 @@ namespace Onvif.Open.Test.Camera.Fakes
             return null;
         }
 
+        private string PtzResponse(string request)
+        {
+            if (!request.Contains("http://www.onvif.org/ver20/ptz/wsdl", StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            var operation = System.Text.RegularExpressions.Regex.Match(request, "<(?:\\w+:)?(ContinuousMove|RelativeMove|AbsoluteMove|Stop|GetStatus|GetPresets|GotoPreset|SetPreset|RemovePreset|GotoHomePosition|SetHomePosition)[ >/]").Groups[1].Value;
+            LastPtzRequest = request;
+            PtzOperations.Enqueue(operation);
+
+            double Attribute(string element, string name, double fallback)
+            {
+                var match = System.Text.RegularExpressions.Regex.Match(request, $"<(?:\\w+:)?{element}[^>]*\\s{name}=\"([^\"]+)\"");
+                return match.Success ? double.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) : fallback;
+            }
+
+            string Element(string name)
+            {
+                var match = System.Text.RegularExpressions.Regex.Match(request, $"<(?:\\w+:)?{name}[^>]*>([^<]*)<");
+                return match.Success ? match.Groups[1].Value : null;
+            }
+
+            string Response(string name, string body = "") =>
+                $"<tptz:{name}Response xmlns:tptz=\"http://www.onvif.org/ver20/ptz/wsdl\">{body}</tptz:{name}Response>";
+
+            string Vector(string name, double pan, double tilt, double zoom) =>
+                string.Format(System.Globalization.CultureInfo.InvariantCulture, "<tt:{0}><tt:PanTilt x=\"{1}\" y=\"{2}\"/><tt:Zoom x=\"{3}\"/></tt:{0}>", name, pan, tilt, zoom);
+
+            switch (operation)
+            {
+                case "ContinuousMove":
+                    PtzMoving = true;
+                    return Response(operation);
+                case "Stop":
+                    PtzMoving = false;
+                    return Response(operation);
+                case "AbsoluteMove":
+                    PtzPan = Attribute("PanTilt", "x", PtzPan);
+                    PtzTilt = Attribute("PanTilt", "y", PtzTilt);
+                    PtzZoom = Attribute("Zoom", "x", PtzZoom);
+                    return Response(operation);
+                case "RelativeMove":
+                    PtzPan += Attribute("PanTilt", "x", 0);
+                    PtzTilt += Attribute("PanTilt", "y", 0);
+                    PtzZoom += Attribute("Zoom", "x", 0);
+                    return Response(operation);
+                case "GetStatus":
+                    var state = PtzMoving ? "MOVING" : "IDLE";
+                    return Response(operation, $"<tptz:PTZStatus>{Vector("Position", PtzPan, PtzTilt, PtzZoom)}" +
+                                               $"<tt:MoveStatus><tt:PanTilt>{state}</tt:PanTilt><tt:Zoom>IDLE</tt:Zoom></tt:MoveStatus><tt:UtcTime>2026-11-07T10:00:00Z</tt:UtcTime></tptz:PTZStatus>");
+                case "GetPresets":
+                    var presets = new StringBuilder();
+                    foreach (var preset in PtzPresets.OrderBy(p => p.Key))
+                    {
+                        presets.Append($"<tptz:Preset token=\"{preset.Key}\"><tt:Name>{preset.Value.Name}</tt:Name>{Vector("PTZPosition", preset.Value.Pan, preset.Value.Tilt, preset.Value.Zoom)}</tptz:Preset>");
+                    }
+
+                    return Response(operation, presets.ToString());
+                case "SetPreset":
+                    var token = Element("PresetToken") ?? $"preset-{Interlocked.Increment(ref _presetCount)}";
+                    PtzPresets[token] = (Element("PresetName") ?? token, PtzPan, PtzTilt, PtzZoom);
+                    return Response(operation, $"<tptz:PresetToken>{token}</tptz:PresetToken>");
+                case "GotoPreset":
+                    var target = PtzPresets[Element("PresetToken")];
+                    (PtzPan, PtzTilt, PtzZoom) = (target.Pan, target.Tilt, target.Zoom);
+                    return Response(operation);
+                case "RemovePreset":
+                    PtzPresets.TryRemove(Element("PresetToken"), out _);
+                    return Response(operation);
+                case "SetHomePosition":
+                    _ptzHome = (PtzPan, PtzTilt, PtzZoom);
+                    return Response(operation);
+                case "GotoHomePosition":
+                    (PtzPan, PtzTilt, PtzZoom) = _ptzHome;
+                    return Response(operation);
+                default:
+                    return null;
+            }
+        }
+
         private string CreateBody(string request)
         {
+            var ptzResponse = PtzResponse(request);
+            if (ptzResponse != null)
+            {
+                return ptzResponse;
+            }
+
             var eventResponse = EventResponse(request);
             if (eventResponse != null)
             {
@@ -254,14 +357,15 @@ namespace Onvif.Open.Test.Camera.Fakes
                 return $"<tds:GetCapabilitiesResponse><tds:Capabilities><tt:Events><tt:XAddr>{EventServiceUri}</tt:XAddr><tt:WSSubscriptionPolicySupport>false</tt:WSSubscriptionPolicySupport><tt:WSPullPointSupport>true</tt:WSPullPointSupport><tt:WSPausableSubscriptionManagerInterfaceSupport>false</tt:WSPausableSubscriptionManagerInterfaceSupport></tt:Events>" +
                        $"<tt:Media><tt:XAddr>{MediaServiceUri}</tt:XAddr>" +
                        "<tt:StreamingCapabilities><tt:RTPMulticast>false</tt:RTPMulticast><tt:RTP_TCP>true</tt:RTP_TCP><tt:RTP_RTSP_TCP>true</tt:RTP_RTSP_TCP></tt:StreamingCapabilities>" +
-                       "</tt:Media></tds:Capabilities></tds:GetCapabilitiesResponse>";
+                       "</tt:Media>" + (HasPtz ? $"<tt:PTZ><tt:XAddr>{PtzServiceUri}</tt:XAddr></tt:PTZ>" : string.Empty) +
+                       "</tds:Capabilities></tds:GetCapabilitiesResponse>";
             }
 
             if (request.Contains("GetProfiles", StringComparison.Ordinal))
             {
                 return "<trt:GetProfilesResponse>" +
                        Profile("Profile_1", "mainStream", 1920, 1080, 25, 4096) +
-                       Profile("Profile_2", "subStream", 640, 360, 15, 512) +
+                       Profile("Profile_2", "subStream", 640, 360, 15, 512, ptz: true) +
                        "</trt:GetProfilesResponse>";
             }
 
@@ -278,15 +382,16 @@ namespace Onvif.Open.Test.Camera.Fakes
             return "<s:Fault><s:Code><s:Value>s:Receiver</s:Value></s:Code><s:Reason><s:Text xml:lang=\"en\">Not implemented</s:Text></s:Reason></s:Fault>";
         }
 
-        private static string Profile(string token, string name, int width, int height, int fps, int bitrate)
+        private static string Profile(string token, string name, int width, int height, int fps, int bitrate, bool ptz = false)
         {
+            var ptzConfiguration = ptz ? "<tt:PTZConfiguration token=\"PTZ_1\"><tt:Name>PTZ</tt:Name><tt:UseCount>1</tt:UseCount><tt:NodeToken>Node_1</tt:NodeToken></tt:PTZConfiguration>" : string.Empty;
             return $"<trt:Profiles token=\"{token}\" fixed=\"true\"><tt:Name>{name}</tt:Name>" +
                    "<tt:VideoSourceConfiguration token=\"VSC_1\"><tt:Name>VSC</tt:Name><tt:UseCount>2</tt:UseCount><tt:SourceToken>VS_1</tt:SourceToken><tt:Bounds x=\"0\" y=\"0\" width=\"1920\" height=\"1080\"/></tt:VideoSourceConfiguration>" +
                    $"<tt:VideoEncoderConfiguration token=\"VEC_{token}\"><tt:Name>VEC</tt:Name><tt:UseCount>1</tt:UseCount><tt:Encoding>H264</tt:Encoding>" +
                    $"<tt:Resolution><tt:Width>{width}</tt:Width><tt:Height>{height}</tt:Height></tt:Resolution><tt:Quality>4</tt:Quality>" +
                    $"<tt:RateControl><tt:FrameRateLimit>{fps}</tt:FrameRateLimit><tt:EncodingInterval>1</tt:EncodingInterval><tt:BitrateLimit>{bitrate}</tt:BitrateLimit></tt:RateControl>" +
                    "<tt:H264><tt:GovLength>50</tt:GovLength><tt:H264Profile>Main</tt:H264Profile></tt:H264><tt:SessionTimeout>PT60S</tt:SessionTimeout></tt:VideoEncoderConfiguration>" +
-                   "</trt:Profiles>";
+                   ptzConfiguration + "</trt:Profiles>";
         }
 
         private static string MediaUri(string uri)

@@ -23,6 +23,7 @@
     <ProjectReference Include="..\Onvif.Open.Events\Onvif.Open.Events.csproj" />
     <ProjectReference Include="..\Onvif.Open.Media\Onvif.Open.Media.csproj" />
     <ProjectReference Include="..\Onvif.Open.Models\Onvif.Open.Core.csproj" />
+    <ProjectReference Include="..\Onvif.Open.Ptz\Onvif.Open.Ptz.csproj" />
     <ProjectReference Include="..\Onvif.Open.Streaming\Onvif.Open.Streaming.csproj" />
   </ItemGroup>
 

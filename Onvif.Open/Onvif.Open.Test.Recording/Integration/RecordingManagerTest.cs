@@ -339,15 +339,16 @@ namespace Onvif.Open.Test.Recording.Integration
         {
             using (var temp = new TempDirectory())
             {
+                var clock = new ManualTimeProvider();
                 var stream = new FakeLiveVideoStream();
                 var options = new CameraRecordingOptions
                 {
                     Mode = RecordingMode.Triggered,
                     PreRoll = TimeSpan.FromMilliseconds(100),
-                    PostRoll = TimeSpan.FromSeconds(1)
+                    PostRoll = TimeSpan.FromSeconds(10)
                 };
 
-                await using (var manager = Builder(temp).Build())
+                await using (var manager = Builder(temp).SetTimeProvider(clock).Build())
                 {
                     manager.AddCamera("cam1", new FakeStreamSource().Add(stream).ConnectAsync, options);
                     await manager.StartAsync();
@@ -368,7 +369,8 @@ namespace Onvif.Open.Test.Recording.Integration
                     Assert.True(Assert.Single(manager.GetSegments()).IsActive);
 
                     // After the post-roll the segment is closed and buffering resumes.
-                    await Task.Delay(1500);
+                    clock.Advance(TimeSpan.FromSeconds(11));
+                    Assert.False(manager.GetStatus()[0].IsTriggered);
                     stream.Push(5, gop: 5);
                     await Eventually.True(() => manager.GetStatus()[0].SegmentsCompleted == 1, "the triggered segment is closed");
 
@@ -481,6 +483,7 @@ namespace Onvif.Open.Test.Recording.Integration
             public ICameraMedia InitializeMedia() => Media;
             public TimeSpan SynchronizeClock() => TimeSpan.Zero;
             public Onvif.Open.Core.Abstract.Interface.Events.ICameraEvents InitializeEvents() => new NoEvents();
+            public Onvif.Open.Core.Abstract.Interface.Ptz.ICameraPtz InitializePtz() => throw new NotSupportedException();
 
             private sealed class NoEvents : Onvif.Open.Core.Abstract.Interface.Events.ICameraEvents
             {

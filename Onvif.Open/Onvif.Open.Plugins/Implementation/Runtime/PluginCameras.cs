@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Onvif.Open.Core.Abstract.Interface.Plugin;
+using Onvif.Open.Core.Abstract.Interface.Ptz;
 using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Core.Recording;
 
@@ -19,8 +20,9 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
     {
         #region Constructor
 
-        public PluginCameras(IRecordingManager manager, IReadOnlyList<string> assigned, Func<string, CancellationToken, Task<byte[]>> snapshotProvider)
+        public PluginCameras(IRecordingManager manager, IReadOnlyList<string> assigned, Func<string, CancellationToken, Task<byte[]>> snapshotProvider, Func<string, ICameraPtz> ptzProvider = null)
         {
+            _ptzProvider = ptzProvider;
             _manager = manager;
             _assigned = assigned == null ? null : new HashSet<string>(assigned, StringComparer.OrdinalIgnoreCase);
             _snapshotProvider = snapshotProvider;
@@ -33,6 +35,7 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
         private readonly IRecordingManager _manager;
         private readonly HashSet<string> _assigned;
         private readonly Func<string, CancellationToken, Task<byte[]>> _snapshotProvider;
+        private readonly Func<string, ICameraPtz> _ptzProvider;
 
         #endregion
 
@@ -61,6 +64,18 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
         public Task StopRecordingAsync(string cameraId, CancellationToken cancellationToken = default)
         {
             return _manager.StopCameraAsync(Require(cameraId), cancellationToken);
+        }
+
+        public ICameraPtz GetPtz(string cameraId)
+        {
+            Require(cameraId);
+
+            if (_ptzProvider == null)
+            {
+                throw new NotSupportedException("PTZ control is not available in this host.");
+            }
+
+            return _ptzProvider(cameraId);
         }
 
         public void TriggerRecording(string cameraId, TimeSpan duration)

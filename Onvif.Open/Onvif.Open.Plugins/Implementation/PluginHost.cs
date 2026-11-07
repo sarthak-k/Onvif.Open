@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Onvif.Open.Core.Abstract.Interface.Plugin;
+using Onvif.Open.Core.Abstract.Interface.Ptz;
 using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Core.Events;
 using Onvif.Open.Core.Plugin;
@@ -32,7 +33,8 @@ namespace Onvif.Open.Plugins.Implementation
             int eventHistoryCapacity,
             TimeSpan stopTimeout,
             TimeProvider timeProvider,
-            ILoggerFactory loggerFactory)
+            ILoggerFactory loggerFactory,
+            Func<string, ICameraPtz> ptzProvider)
         {
             _manager = manager;
             _timeProvider = timeProvider;
@@ -42,7 +44,7 @@ namespace Onvif.Open.Plugins.Implementation
 
             _runners = registrations.Select(r =>
             {
-                var cameras = new PluginCameras(manager, r.Cameras, snapshotProvider);
+                var cameras = new PluginCameras(manager, r.Cameras, snapshotProvider, ptzProvider);
                 var context = new PluginContext(r.Plugin.Name, r.Settings, loggerFactory.CreateLogger($"Plugin.{r.Plugin.Name}"), timeProvider, cameras, PublishAsync);
                 return new PluginRunner(r, context, frameQueueCapacity, notificationQueueCapacity, timeProvider, loggerFactory.CreateLogger<PluginRunner>());
             }).ToList();
@@ -137,9 +139,10 @@ namespace Onvif.Open.Plugins.Implementation
             int eventHistoryCapacity,
             TimeSpan stopTimeout,
             TimeProvider timeProvider,
-            ILoggerFactory loggerFactory)
+            ILoggerFactory loggerFactory,
+            Func<string, ICameraPtz> ptzProvider = null)
         {
-            return new PluginHost(manager, registrations, snapshotProvider, frameQueueCapacity, notificationQueueCapacity, eventHistoryCapacity, stopTimeout, timeProvider, loggerFactory);
+            return new PluginHost(manager, registrations, snapshotProvider, frameQueueCapacity, notificationQueueCapacity, eventHistoryCapacity, stopTimeout, timeProvider, loggerFactory, ptzProvider);
         }
 
         #endregion

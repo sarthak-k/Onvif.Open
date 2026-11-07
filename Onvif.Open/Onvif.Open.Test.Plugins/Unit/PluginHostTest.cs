@@ -379,6 +379,53 @@ namespace Onvif.Open.Test.Plugins.Unit
         }
 
         [Fact]
+        public async Task PluginsShouldGetPtzForAssignedCamerasOnly()
+        {
+            var manager = new FakeRecordingManager("room-1", "room-2");
+            var plugin = new TestPlugin("ptz-user");
+            var requested = new List<string>();
+            var ptz = new NoOpPtz();
+
+            await using (var host = Builder(manager)
+                .AddPlugin(plugin, new[] { "room-1" })
+                .SetPtzProvider(id =>
+                {
+                    requested.Add(id);
+                    return ptz;
+                })
+                .Build())
+            {
+                await host.StartAsync();
+
+                Assert.Same(ptz, plugin.Context.Cameras.GetPtz("room-1"));
+                Assert.Throws<UnauthorizedAccessException>(() => plugin.Context.Cameras.GetPtz("room-2"));
+                Assert.Equal(new[] { "room-1" }, requested);
+            }
+
+            var withoutProvider = new TestPlugin("no-ptz");
+            await using (var host = Builder(manager).AddPlugin(withoutProvider).Build())
+            {
+                await host.StartAsync();
+                Assert.Throws<NotSupportedException>(() => withoutProvider.Context.Cameras.GetPtz("room-1"));
+            }
+        }
+
+        private sealed class NoOpPtz : Onvif.Open.Core.Abstract.Interface.Ptz.ICameraPtz
+        {
+            public Task MoveAsync(double pan, double tilt, double zoom, TimeSpan? duration = null, CancellationToken cancellationToken = default) => Task.CompletedTask;
+            public Task StopAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+            public Task MoveByAsync(Onvif.Open.Core.Ptz.PtzVector translation, CancellationToken cancellationToken = default) => Task.CompletedTask;
+            public Task MoveToAsync(Onvif.Open.Core.Ptz.PtzVector position, CancellationToken cancellationToken = default) => Task.CompletedTask;
+            public Task<Onvif.Open.Core.Ptz.PtzStatus> GetStatusAsync(CancellationToken cancellationToken = default) => Task.FromResult<Onvif.Open.Core.Ptz.PtzStatus>(null);
+            public Task<IReadOnlyList<Onvif.Open.Core.Ptz.PtzPreset>> GetPresetsAsync(CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Onvif.Open.Core.Ptz.PtzPreset>>(Array.Empty<Onvif.Open.Core.Ptz.PtzPreset>());
+            public Task GoToPresetAsync(string nameOrToken, CancellationToken cancellationToken = default) => Task.CompletedTask;
+            public Task<string> SavePresetAsync(string name, CancellationToken cancellationToken = default) => Task.FromResult(name);
+            public Task<bool> RemovePresetAsync(string nameOrToken, CancellationToken cancellationToken = default) => Task.FromResult(false);
+            public Task GoHomeAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+            public Task SetHomeAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        }
+
+        [Fact]
         public void BuilderShouldValidate()
         {
             var manager = new FakeRecordingManager("cam");

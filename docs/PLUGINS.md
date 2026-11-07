@@ -42,7 +42,7 @@ Every plugin implements `IPlugin` (`Name`, `StartAsync`, `StopAsync`) and any of
 * `Settings`: your configuration (`Plugins:Items:<folder>:Settings`), keys like `Schedule:Start`.
 * `Logger`, `TimeProvider`.
 * `Cameras`: status, segments, `StartRecordingAsync` / `StopRecordingAsync`, `TriggerRecording` (for cameras in
-  triggered mode: record around what you detected), and `GetSnapshotAsync` (JPEG through ONVIF,
+  triggered mode: record around what you detected), `GetPtz` (pan/tilt/zoom, presets), and `GetSnapshotAsync` (JPEG through ONVIF,
   handy when you don't want to decode H.264). Only the cameras assigned to your plugin are accessible.
 * `PublishAsync(PluginEvent)`: report what you found. Events appear in `GET /api/events`, each linked to the recording
   segment (and offset) covering its timestamp, and are forwarded to `IPluginEventObserver` plugins.

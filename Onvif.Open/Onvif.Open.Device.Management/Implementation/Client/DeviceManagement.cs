@@ -85,7 +85,13 @@ namespace Onvif.Open.Device.Management.Implementation.Client
             return GetServiceUri(CapabilityCategory.Events, c => c?.Events?.XAddr);
         }
 
-        private Uri GetServiceUri(CapabilityCategory category, Func<Capabilities, string> selectAddress)
+        public Uri GetPtzServiceUri()
+        {
+            // Unlike media and events, PTZ is optional: a device reporting capabilities without PTZ has none.
+            return GetServiceUri(CapabilityCategory.PTZ, c => c?.PTZ?.XAddr, noServiceWhenMissing: true);
+        }
+
+        private Uri GetServiceUri(CapabilityCategory category, Func<Capabilities, string> selectAddress, bool noServiceWhenMissing = false)
         {
             var authenticator = PasswordDigestBuilder.GetBuilder().SetCamera(_camera).Build();
 
@@ -105,6 +111,11 @@ namespace Onvif.Open.Device.Management.Implementation.Client
                 if (!string.IsNullOrWhiteSpace(xaddr) && Uri.TryCreate(xaddr.Trim(), UriKind.Absolute, out var serviceUri))
                 {
                     return serviceUri;
+                }
+
+                if (noServiceWhenMissing)
+                {
+                    return null;
                 }
             }
             catch (FaultException)

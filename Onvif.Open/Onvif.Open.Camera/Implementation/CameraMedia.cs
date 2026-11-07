@@ -56,12 +56,12 @@ namespace Onvif.Open.Camera.Implementation
 
         public Task<byte[]> GetSnapshotAsync(string profileToken = null, CancellationToken cancellationToken = default)
         {
-            return WithSynchronizedClockAsync(ct => GetSnapshotCoreAsync(profileToken, ct), cancellationToken);
+            return _clock.RunAsync(ct => GetSnapshotCoreAsync(profileToken, ct), cancellationToken);
         }
 
         public Task<ILiveVideoStream> StartLiveStreamAsync(string profileToken = null, StreamTransport transport = StreamTransport.Rtsp, CancellationToken cancellationToken = default)
         {
-            return WithSynchronizedClockAsync(ct => StartLiveStreamCoreAsync(profileToken, transport, ct), cancellationToken);
+            return _clock.RunAsync(ct => StartLiveStreamCoreAsync(profileToken, transport, ct), cancellationToken);
         }
 
         private async Task<byte[]> GetSnapshotCoreAsync(string profileToken, CancellationToken cancellationToken)
@@ -106,30 +106,7 @@ namespace Onvif.Open.Camera.Implementation
 
         #region Private Methods
 
-        /// <summary>
-        /// Runs a secured operation with the device clock synchronized; when the device rejects the token
-        /// because its clock moved, re-synchronizes and retries once.
-        /// </summary>
-        private async Task<T> WithSynchronizedClockAsync<T>(Func<CancellationToken, Task<T>> operation, CancellationToken cancellationToken)
-        {
-            await Task.Run(_clock.EnsureSynchronized, cancellationToken).ConfigureAwait(false);
-
-            try
-            {
-                return await operation(cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (OnvifFaults.IsAuthenticationFailure(ex))
-            {
-                if (!await Task.Run(_clock.ResynchronizeAfterAuthenticationFailure, cancellationToken).ConfigureAwait(false))
-                {
-                    throw;
-                }
-
-                return await operation(cancellationToken).ConfigureAwait(false);
-            }
-        }
-
-        private async Task<IMediaService> GetMediaServiceAsync(CancellationToken cancellationToken)
+        internal async Task<IMediaService> GetMediaServiceAsync(CancellationToken cancellationToken)
         {
             // Resolving the media service address is a synchronous device call; keep it off the caller's thread.
             return _mediaService.IsValueCreated

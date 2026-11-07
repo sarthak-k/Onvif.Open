@@ -33,6 +33,22 @@ namespace Onvif.Open.Media.Ver10
 
         [XmlElement("VideoEncoderConfiguration")]
         public VideoEncoderConfiguration VideoEncoderConfiguration { get; set; }
+
+        [XmlElement("PTZConfiguration")]
+        public PtzConfiguration PTZConfiguration { get; set; }
+    }
+
+    [XmlType(Namespace = OnvifNamespaces.Schema)]
+    public class PtzConfiguration
+    {
+        [XmlAttribute("token")]
+        public string Token { get; set; }
+
+        [XmlElement("Name")]
+        public string Name { get; set; }
+
+        [XmlElement("NodeToken")]
+        public string NodeToken { get; set; }
     }
 
     [XmlType(Namespace = OnvifNamespaces.Schema)]

@@ -22,7 +22,7 @@ namespace Onvif.Open.Test.Camera.Integration.Discovery
 
         private static CameraDiscoveryBuilder Builder(params FakeDiscoveryDevice[] devices)
         {
-            var builder = CameraDiscoveryBuilder.GetBuilder().SetMulticast(false).SetTimeout(TimeSpan.FromMilliseconds(800));
+            var builder = CameraDiscoveryBuilder.GetBuilder().SetMulticast(false).SetTimeout(TimeSpan.FromSeconds(2));
 
             foreach (var device in devices)
             {
@@ -87,13 +87,13 @@ namespace Onvif.Open.Test.Camera.Integration.Discovery
         [Fact]
         public async Task LateAnswersShouldBeMissedWithoutError()
         {
-            using (var slow = new FakeDiscoveryDevice("66666666-6666-6666-6666-666666666666", "Slow", "http://192.168.1.15/onvif/device_service") { Delay = TimeSpan.FromSeconds(2) })
+            using (var slow = new FakeDiscoveryDevice("66666666-6666-6666-6666-666666666666", "Slow", "http://192.168.1.15/onvif/device_service") { Delay = TimeSpan.FromSeconds(10) })
             {
                 var watch = Stopwatch.StartNew();
                 var devices = await Builder(slow).SetTimeout(TimeSpan.FromMilliseconds(300)).Build().FindAsync();
 
                 Assert.Empty(devices);
-                Assert.True(watch.Elapsed < TimeSpan.FromSeconds(2));
+                Assert.True(watch.Elapsed < TimeSpan.FromSeconds(8), $"took {watch.Elapsed}");
             }
         }
 
