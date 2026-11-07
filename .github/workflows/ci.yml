@@ -37,12 +37,17 @@ jobs:
         run: >
           dotnet test Onvif.Open.sln --configuration Release --no-build
           --logger "trx;LogFilePrefix=results"
+          --logger "console;verbosity=normal"
           --results-directory TestResults
+          --blame-hang-timeout 3m
+          --blame-hang-dump-type none
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-results
-          path: TestResults/**/*.trx
+          path: |
+            TestResults/**/*.trx
+            TestResults/**/Sequence_*.xml
           if-no-files-found: ignore
