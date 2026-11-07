@@ -34,13 +34,15 @@ Every plugin implements `IPlugin` (`Name`, `StartAsync`, `StopAsync`) and any of
 | `IFrameProcessor` | Every frame (or only key frames, `FrameFilter.KeyFramesOnly`) of your cameras, H.264/H.265 Annex-B | Video analytics |
 | `ICameraStateObserver` | `CameraStateChange`: `Connecting`, `Recording`, `Reconnecting`, `Stopped`, with the error; `IsConnectionLost` / `IsConnectionEstablished` | Offline/tampering alerts |
 | `ISegmentObserver` | Each completed recording file | Upload, indexing, transcoding |
+| `ICameraEventObserver` | The cameras' own ONVIF events (`CameraEvent`: topic, state, source, data) | React to camera motion/tamper/input detections |
 | `IPluginEventObserver` | Events published by *other* plugins | E-mail/SMS/webhook notifications |
 
 `StartAsync` receives an `IPluginContext`:
 
 * `Settings`: your configuration (`Plugins:Items:<folder>:Settings`), keys like `Schedule:Start`.
 * `Logger`, `TimeProvider`.
-* `Cameras`: status, segments, `StartRecordingAsync` / `StopRecordingAsync`, and `GetSnapshotAsync` (JPEG through ONVIF,
+* `Cameras`: status, segments, `StartRecordingAsync` / `StopRecordingAsync`, `TriggerRecording` (for cameras in
+  triggered mode: record around what you detected), and `GetSnapshotAsync` (JPEG through ONVIF,
   handy when you don't want to decode H.264). Only the cameras assigned to your plugin are accessible.
 * `PublishAsync(PluginEvent)`: report what you found. Events appear in `GET /api/events`, each linked to the recording
   segment (and offset) covering its timestamp, and are forwarded to `IPluginEventObserver` plugins.
@@ -113,9 +115,12 @@ public sealed class ExamProctoringPlugin : IFrameProcessor
         var image = Decode(frame.Frame.Data);                          // your decoder, or _context.Cameras.GetSnapshotAsync(...)
         var score = RunModel(image);
         if (score > Threshold)
+        {
+            _context.Cameras.TriggerRecording(frame.CameraId, TimeSpan.FromSeconds(30));   // keep the evidence
             await _context.PublishAsync(new PluginEvent("exam.suspicious-behaviour", frame.CameraId,
                 "Possible cheating", PluginEventSeverity.Warning,
                 new Dictionary<string, string> { ["score"] = score.ToString("0.00") }, frame.ReceivedAt), ct);
+        }
     }
 
     public Task StopAsync(CancellationToken ct) => Task.CompletedTask;

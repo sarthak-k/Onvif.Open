@@ -26,6 +26,12 @@ namespace Onvif.Open.Core.Abstract.Interface.Plugin
         Task StopRecordingAsync(string cameraId, CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// For cameras in triggered mode: record for at least <paramref name="duration"/> from now (plus the
+        /// camera's post-roll), e.g. when the plugin detected something. Ignored for continuous recording.
+        /// </summary>
+        void TriggerRecording(string cameraId, System.TimeSpan duration);
+
+        /// <summary>
         /// A JPEG picture from the camera (ONVIF GetSnapshotUri).
         /// Throws <see cref="System.NotSupportedException"/> for cameras without ONVIF snapshots.
         /// </summary>

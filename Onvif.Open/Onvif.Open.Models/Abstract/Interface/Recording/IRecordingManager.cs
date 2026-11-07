@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Onvif.Open.Core.Abstract.Interface.Camera;
 using Onvif.Open.Core.Abstract.Interface.Streaming;
+using Onvif.Open.Core.Events;
 using Onvif.Open.Core.Operations;
 using Onvif.Open.Core.Plugin;
 using Onvif.Open.Core.Recording;
@@ -32,6 +33,9 @@ namespace Onvif.Open.Core.Abstract.Interface.Recording
         /// <summary>Raised when a camera's recorder changes state.</summary>
         event EventHandler<CameraStateChange> CameraStateChanged;
 
+        /// <summary>Raised for every ONVIF event received from a camera (cameras with event subscriptions only).</summary>
+        event EventHandler<CameraEvent> CameraEventReceived;
+
         #endregion
 
         #region Public Methods
@@ -39,8 +43,23 @@ namespace Onvif.Open.Core.Abstract.Interface.Recording
         /// <summary>Records an ONVIF camera (stream URI resolved through the media service).</summary>
         void AddCamera(string cameraId, ICamera camera, string profileToken = null, StreamTransport transport = StreamTransport.Rtsp, IRotationPolicy rotationPolicy = null);
 
+        /// <summary>Records an ONVIF camera with full control over mode, triggers and stream.</summary>
+        void AddCamera(string cameraId, ICamera camera, CameraRecordingOptions options);
+
         /// <summary>Records any stream source, e.g. a plain RTSP URI opened with LiveVideoStreamBuilder.</summary>
         void AddCamera(string cameraId, Func<CancellationToken, Task<ILiveVideoStream>> streamFactory, IRotationPolicy rotationPolicy = null);
+
+        /// <summary>
+        /// Records any stream source; <paramref name="eventSource"/> optionally supplies camera events
+        /// (used for <see cref="CameraRecordingOptions.EventTriggers"/> and <see cref="CameraEventReceived"/>).
+        /// </summary>
+        void AddCamera(string cameraId, Func<CancellationToken, Task<ILiveVideoStream>> streamFactory, CameraRecordingOptions options, Func<CancellationToken, IAsyncEnumerable<CameraEvent>> eventSource = null);
+
+        /// <summary>
+        /// Triggered mode: records for at least <paramref name="duration"/> from now (plus the post-roll).
+        /// Has no effect on continuously recorded cameras.
+        /// </summary>
+        void TriggerRecording(string cameraId, TimeSpan duration);
 
         Task<bool> RemoveCameraAsync(string cameraId, CancellationToken cancellationToken = default);
 

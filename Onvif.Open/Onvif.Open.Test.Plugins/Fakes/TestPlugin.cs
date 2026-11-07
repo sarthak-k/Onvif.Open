@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
 using Onvif.Open.Core.Abstract.Interface.Plugin;
+using Onvif.Open.Core.Events;
 using Onvif.Open.Core.Plugin;
 using Onvif.Open.Core.Recording;
 
@@ -14,7 +15,7 @@ namespace Onvif.Open.Test.Plugins.Fakes
     /// <summary>
     /// Configurable plugin implementing every capability and recording what it received.
     /// </summary>
-    internal class TestPlugin : IFrameProcessor, ICameraStateObserver, ISegmentObserver, IPluginEventObserver, IAsyncDisposable
+    internal class TestPlugin : IFrameProcessor, ICameraStateObserver, ISegmentObserver, IPluginEventObserver, ICameraEventObserver, IAsyncDisposable
     {
         public TestPlugin(string name, FrameFilter frameFilter = FrameFilter.AllFrames)
         {
@@ -30,6 +31,13 @@ namespace Onvif.Open.Test.Plugins.Fakes
         public ConcurrentQueue<CameraStateChange> States { get; } = new ConcurrentQueue<CameraStateChange>();
         public ConcurrentQueue<RecordingSegment> Segments { get; } = new ConcurrentQueue<RecordingSegment>();
         public ConcurrentQueue<PluginEvent> Events { get; } = new ConcurrentQueue<PluginEvent>();
+        public ConcurrentQueue<CameraEvent> CameraEvents { get; } = new ConcurrentQueue<CameraEvent>();
+
+        public Task OnCameraEventAsync(CameraEvent cameraEvent, CancellationToken cancellationToken)
+        {
+            CameraEvents.Enqueue(cameraEvent);
+            return Task.CompletedTask;
+        }
 
         public bool Stopped { get; private set; }
         public bool Disposed { get; private set; }

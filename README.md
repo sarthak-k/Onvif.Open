@@ -11,6 +11,7 @@ Targets **.NET 10 (LTS)** and runs on Windows, Linux and macOS.
 | `Onvif.Open.Device.Management` | ONVIF Device service (device information, date & time, media service discovery) |
 | `Onvif.Open.Media` | ONVIF Media service (profiles, stream URI, snapshot URI) |
 | `Onvif.Open.Discovery` | WS-Discovery: find ONVIF devices on the network |
+| `Onvif.Open.Events` | ONVIF Events service: PullPoint subscriptions (motion, tampering, inputs, ...) |
 | `Onvif.Open.Streaming` | Dependency-free RTSP/RTP client: Basic/Digest auth, RTP over TCP (interleaved) or UDP, H.264 and H.265 depacketizing |
 | `Onvif.Open.Camera` | The `Camera` façade tying everything together |
 | `Onvif.Open.Recording` | Multi-camera recording to files: segment rotation, retention, reconnects, MPEG-TS muxer |
@@ -74,6 +75,17 @@ the camera can reach you over UDP:
 await using var stream = await camera.InitializeMedia().StartLiveStreamAsync(transport: StreamTransport.Udp);
 ```
 
+The camera's own events (motion, tampering, digital inputs, analytics rules), with the subscription kept alive
+(renewed, re-created after errors, removed when you stop reading):
+
+```csharp
+await foreach (var e in camera.InitializeEvents().ReadEventsAsync(cancellationToken))
+{
+    if (e.MatchesTopic("RuleEngine/CellMotionDetector/Motion"))
+        Console.WriteLine($"Motion: {e.GetState()}");      // TopicPath, Source, Data, UtcTime, ...
+}
+```
+
 A JPEG snapshot (ONVIF `GetSnapshotUri`, authenticated with the camera credentials):
 
 ```csharp
@@ -125,6 +137,15 @@ recorder.AddCamera("garage", camera2, transport: StreamTransport.Udp,
 recorder.AddCamera("legacy", ct => LiveVideoStreamBuilder.GetBuilder()           // any RTSP source
     .SetStreamUri(new Uri("rtsp://192.168.1.12/live")).SetCredentials("admin", "12345").BuildAsync(ct));
 
+recorder.AddCamera("parking", camera3, new CameraRecordingOptions                  // record only around motion
+{
+    Mode = RecordingMode.Triggered,
+    EventTriggers = { "RuleEngine/CellMotionDetector/Motion" },
+    PreRoll = TimeSpan.FromSeconds(5),
+    PostRoll = TimeSpan.FromSeconds(10)
+});
+recorder.TriggerRecording("parking", TimeSpan.FromSeconds(30));                  // or trigger it yourself
+
 recorder.SegmentCompleted += (_, segment) => Console.WriteLine($"{segment.Path} ({segment.Size} bytes)");
 await recorder.StartAsync();
 ```
@@ -139,6 +160,11 @@ await recorder.StartAsync();
   written is never deleted. Built-in: `KeepFor(age)`, `MaxTotalSize(bytes)`, `MaxSizePerCamera(bytes)`, `MinFreeSpace(bytes)`,
   `When(selector)`, `KeepAll`, combined with `And`/`All`. Default: keep at least 1 GiB free.
 * **Storage**: `FileSystemRecordingStorage`, or implement `IRecordingStorage`.
+* **Triggered recording**: the stream stays connected and whole GOPs covering the pre-roll are buffered; while a trigger is
+  active (stateful events such as motion hold it, `TriggerRecording`/plugins/stateless events pulse it) and for the
+  post-roll afterwards, video is written. Rotation still applies within a triggered recording.
+* **Events**: ONVIF cameras are subscribed to their events (`SubscribeToEvents`, on by default); every event is raised
+  as `CameraEventReceived` and delivered to plugins implementing `ICameraEventObserver`.
 
 ### Recorder service
 
@@ -153,7 +179,10 @@ await recorder.StartAsync();
   "Cameras": [
     { "Id": "front-door", "OnvifUrl": "http://192.168.1.10", "Username": "admin", "Password": "..." },
     { "Id": "garage", "RtspUrl": "rtsp://192.168.1.11/stream1", "Username": "admin", "Password": "...",
-      "Transport": "Udp", "Rotation": { "AlignToClock": "01:00:00" } }
+      "Transport": "Udp", "Rotation": { "AlignToClock": "01:00:00" } },
+    { "Id": "parking", "OnvifUrl": "http://192.168.1.12", "Username": "admin", "Password": "...",
+      "Mode": "Triggered", "PreRoll": "00:00:05", "PostRoll": "00:00:10",
+      "Events": { "TriggerTopics": [ "RuleEngine/CellMotionDetector/Motion" ] } }
   ]
 }
 ```
@@ -168,6 +197,8 @@ Passwords can be supplied through environment variables instead of the file, e.g
 | --- | --- |
 | `GET /api/cameras`, `GET /api/cameras/{id}` | State, codec, frames/bytes recorded, current file, last error |
 | `POST /api/cameras/{id}/start`, `POST /api/cameras/{id}/stop` | Control one camera |
+| `POST /api/cameras/{id}/trigger?seconds=30` | Triggered mode: record now (plus post-roll) |
+| `GET /api/camera-events?cameraId=&topic=&limit=` | Recent ONVIF events from the cameras |
 | `GET /api/cameras/{id}/segments?from=&to=` | Recorded files with download URLs |
 | `GET /api/cameras/{id}/segments/{file}` | Download (supports HTTP range requests) |
 | `DELETE /api/cameras/{id}/segments/{file}` | Delete a completed file |
@@ -186,8 +217,8 @@ authentication before exposing it on a network.
 
 Domain features such as exam proctoring or "camera went offline during opening hours" alerts are written as plugins
 against a small SDK in `Onvif.Open.Core`. A plugin implements `IPlugin` plus any of `IFrameProcessor` (video frames),
-`ICameraStateObserver` (online/offline), `ISegmentObserver` (completed files) and `IPluginEventObserver` (events from
-other plugins). The host gives it settings, a logger, snapshots and recording control for its assigned cameras only,
+`ICameraStateObserver` (online/offline), `ISegmentObserver` (completed files), `ICameraEventObserver` (the cameras'
+own ONVIF events) and `IPluginEventObserver` (events from other plugins). Plugins can also trigger recording. The host gives it settings, a logger, snapshots and recording control for its assigned cameras only,
 and publishes its `PluginEvent`s through the API. Each plugin has its own queues, threads and load context, so a slow or
 crashing plugin never affects recording or other plugins.
 

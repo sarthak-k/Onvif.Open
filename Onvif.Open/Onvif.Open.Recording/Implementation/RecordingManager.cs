@@ -12,6 +12,7 @@ using Microsoft.Extensions.Logging;
 using Onvif.Open.Core.Abstract.Interface.Camera;
 using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Core.Abstract.Interface.Streaming;
+using Onvif.Open.Core.Events;
 using Onvif.Open.Core.Operations;
 using Onvif.Open.Core.Plugin;
 using Onvif.Open.Core.Recording;
@@ -93,22 +94,41 @@ namespace Onvif.Open.Recording.Implementation
 
         public event EventHandler<CameraStateChange> CameraStateChanged;
 
+        public event EventHandler<CameraEvent> CameraEventReceived;
+
         #endregion
 
         #region Public Methods
 
         public void AddCamera(string cameraId, ICamera camera, string profileToken = null, StreamTransport transport = StreamTransport.Rtsp, IRotationPolicy rotationPolicy = null)
         {
+            AddCamera(cameraId, camera, new CameraRecordingOptions { ProfileToken = profileToken, Transport = transport, RotationPolicy = rotationPolicy });
+        }
+
+        public void AddCamera(string cameraId, ICamera camera, CameraRecordingOptions options)
+        {
             if (camera == null)
             {
                 throw new ArgumentNullException(nameof(camera));
             }
 
+            options = options ?? new CameraRecordingOptions();
             var media = camera.InitializeMedia();
-            AddCamera(cameraId, ct => media.StartLiveStreamAsync(profileToken, transport, ct), rotationPolicy);
+            var events = options.SubscribeToEvents ? camera.InitializeEvents() : null;
+
+            AddCamera(
+                cameraId,
+                ct => media.StartLiveStreamAsync(options.ProfileToken, options.Transport, ct),
+                options,
+                events == null ? (Func<CancellationToken, IAsyncEnumerable<CameraEvent>>)null : ct => events.ReadEventsAsync(ct));
         }
 
         public void AddCamera(string cameraId, Func<CancellationToken, Task<ILiveVideoStream>> streamFactory, IRotationPolicy rotationPolicy = null)
+        {
+            AddCamera(cameraId, streamFactory, new CameraRecordingOptions { RotationPolicy = rotationPolicy });
+        }
+
+        public void AddCamera(string cameraId, Func<CancellationToken, Task<ILiveVideoStream>> streamFactory, CameraRecordingOptions options, Func<CancellationToken, IAsyncEnumerable<CameraEvent>> eventSource = null)
         {
             CameraIdentifier.Require(cameraId);
 
@@ -117,18 +137,23 @@ namespace Onvif.Open.Recording.Implementation
                 throw new ArgumentNullException(nameof(streamFactory));
             }
 
+            options = options ?? new CameraRecordingOptions();
+
             var recorder = new CameraRecorder(
                 cameraId,
                 streamFactory,
                 Storage,
                 _format,
-                rotationPolicy ?? _rotationPolicy,
+                options.RotationPolicy ?? _rotationPolicy,
                 _recorderOptions,
                 _timeProvider,
                 _loggerFactory.CreateLogger($"{typeof(CameraRecorder).FullName}.{cameraId}"),
                 OnSegmentCompleted,
                 frame => FrameReceived?.Invoke(this, frame),
-                change => CameraStateChanged?.Invoke(this, change));
+                change => CameraStateChanged?.Invoke(this, change),
+                options,
+                eventSource,
+                cameraEvent => CameraEventReceived?.Invoke(this, cameraEvent));
 
             if (!_recorders.TryAdd(cameraId, recorder))
             {
@@ -139,6 +164,11 @@ namespace Onvif.Open.Recording.Implementation
             {
                 recorder.Start();
             }
+        }
+
+        public void TriggerRecording(string cameraId, TimeSpan duration)
+        {
+            GetRecorder(cameraId).Trigger(duration);
         }
 
         public async Task<bool> RemoveCameraAsync(string cameraId, CancellationToken cancellationToken = default)

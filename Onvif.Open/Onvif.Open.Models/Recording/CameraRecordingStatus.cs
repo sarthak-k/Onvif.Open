@@ -16,6 +16,12 @@ namespace Onvif.Open.Core.Recording
 
         public string CameraId { get; internal set; }
         public RecordingState State { get; internal set; }
+        public RecordingMode Mode { get; internal set; }
+
+        /// <summary>Triggered mode: whether a trigger (or its post-roll) is active, i.e. video is being written.</summary>
+        public bool IsTriggered { get; internal set; }
+
+        public DateTimeOffset? LastTriggeredAt { get; internal set; }
         public VideoCodec Codec { get; internal set; }
         public StreamTransport? Transport { get; internal set; }
         public Uri StreamUri { get; internal set; }

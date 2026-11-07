@@ -40,6 +40,9 @@ namespace Onvif.Open.Test.Recording.Integration
                 builder.UseSetting("Recording:Cameras:0:RtspUrl", "rtsp://admin:secret@127.0.0.1:1/stream");
                 builder.UseSetting("Recording:Cameras:0:Username", "admin");
                 builder.UseSetting("Recording:Cameras:0:Password", "secret");
+                builder.UseSetting("Recording:Cameras:2:Id", "lobby");
+                builder.UseSetting("Recording:Cameras:2:RtspUrl", "rtsp://127.0.0.1:1/lobby");
+                builder.UseSetting("Recording:Cameras:2:Mode", "Triggered");
                 builder.UseSetting("Recording:Cameras:1:Id", "disabled");
                 builder.UseSetting("Recording:Cameras:1:Enabled", "false");
                 builder.UseSetting("Recording:Cameras:1:RtspUrl", "rtsp://127.0.0.1:1/other");
@@ -69,8 +72,10 @@ namespace Onvif.Open.Test.Recording.Integration
             var body = await _client.GetStringAsync("/api/cameras");
             var cameras = JsonDocument.Parse(body).RootElement;
 
-            Assert.Equal(1, cameras.GetArrayLength());
+            Assert.Equal(2, cameras.GetArrayLength());
             Assert.Equal("cam1", cameras[0].GetProperty("cameraId").GetString());
+            Assert.Equal("Continuous", cameras[0].GetProperty("mode").GetString());
+            Assert.Equal("Triggered", cameras[1].GetProperty("mode").GetString());
             Assert.DoesNotContain("secret", body);
 
             Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/cameras/disabled")).StatusCode);
@@ -132,6 +137,20 @@ namespace Onvif.Open.Test.Recording.Integration
                 var camera = JsonDocument.Parse(_client.GetStringAsync("/api/cameras/cam1").Result).RootElement;
                 return camera.GetProperty("lastError").ValueKind == JsonValueKind.String;
             }, "the connection error is reported");
+        }
+
+        [Fact]
+        public async Task TriggerShouldApplyToTriggeredCamerasOnly()
+        {
+            var triggered = await _client.PostAsync("/api/cameras/lobby/trigger?seconds=60", null);
+            Assert.Equal(HttpStatusCode.Accepted, triggered.StatusCode);
+            Assert.True(JsonDocument.Parse(await triggered.Content.ReadAsStringAsync()).RootElement.GetProperty("isTriggered").GetBoolean());
+
+            Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsync("/api/cameras/cam1/trigger", null)).StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsync("/api/cameras/nope/trigger", null)).StatusCode);
+
+            var events = JsonDocument.Parse(await _client.GetStringAsync("/api/camera-events?cameraId=lobby")).RootElement;
+            Assert.Equal(JsonValueKind.Array, events.ValueKind);
         }
 
         [Fact]

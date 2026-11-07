@@ -93,6 +93,19 @@ namespace Onvif.Open.Recorder.Configuration
         #endregion
     }
 
+    public sealed class CameraEventOptions
+    {
+        #region Public Variables
+
+        /// <summary>Subscribe to the camera's ONVIF events (ONVIF cameras only). Default: on.</summary>
+        public bool Enabled { get; set; } = true;
+
+        /// <summary>Topics that trigger recording in triggered mode; the common motion topics when empty.</summary>
+        public List<string> TriggerTopics { get; set; } = new List<string>();
+
+        #endregion
+    }
+
     /// <summary>
     /// A new file is started (at the next key frame) as soon as any configured limit is reached.
     /// </summary>
@@ -156,6 +169,15 @@ namespace Onvif.Open.Recorder.Configuration
 
         /// <summary>Overrides the global rotation for this camera.</summary>
         public RotationOptions Rotation { get; set; }
+
+        /// <summary>"Continuous" (default) or "Triggered" (record only around events and triggers).</summary>
+        public Onvif.Open.Core.Recording.RecordingMode Mode { get; set; } = Onvif.Open.Core.Recording.RecordingMode.Continuous;
+
+        public TimeSpan PreRoll { get; set; } = TimeSpan.FromSeconds(5);
+
+        public TimeSpan PostRoll { get; set; } = TimeSpan.FromSeconds(10);
+
+        public CameraEventOptions Events { get; set; } = new CameraEventOptions();
 
         #endregion
     }

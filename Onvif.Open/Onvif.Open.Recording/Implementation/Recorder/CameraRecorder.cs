@@ -2,12 +2,15 @@
 // 2026-11-07
 
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Core.Abstract.Interface.Streaming;
+using Onvif.Open.Core.Events;
 using Onvif.Open.Core.Plugin;
 using Onvif.Open.Core.Recording;
 using Onvif.Open.Core.Streaming;
@@ -35,8 +38,28 @@ namespace Onvif.Open.Recording.Implementation.Recorder
             ILogger logger,
             Action<RecordingSegment> onSegmentCompleted,
             Action<CameraFrame> onFrame = null,
-            Action<CameraStateChange> onStateChanged = null)
+            Action<CameraStateChange> onStateChanged = null,
+            CameraRecordingOptions recordingOptions = null,
+            Func<CancellationToken, IAsyncEnumerable<CameraEvent>> eventSource = null,
+            Action<CameraEvent> onEvent = null)
         {
+            recordingOptions = recordingOptions ?? new CameraRecordingOptions();
+            _mode = recordingOptions.Mode;
+            _trigger = new RecordingTrigger(recordingOptions.PostRoll);
+            _preRoll = new PreRollBuffer(recordingOptions.PreRoll);
+
+            if (eventSource != null)
+            {
+                _eventMonitor = new CameraEventMonitor(
+                    cameraId,
+                    eventSource,
+                    recordingOptions.EventTriggers.ToList(),
+                    _mode == RecordingMode.Triggered ? _trigger : null,
+                    timeProvider,
+                    logger,
+                    onEvent);
+            }
+
             _onFrame = onFrame;
             _onStateChanged = onStateChanged;
             CameraId = cameraId;
@@ -48,7 +71,7 @@ namespace Onvif.Open.Recording.Implementation.Recorder
             _timeProvider = timeProvider;
             _logger = logger;
             _onSegmentCompleted = onSegmentCompleted;
-            _status = new CameraRecordingStatus { CameraId = cameraId, State = RecordingState.Stopped };
+            _status = new CameraRecordingStatus { CameraId = cameraId, State = RecordingState.Stopped, Mode = _mode };
         }
 
         #endregion
@@ -69,8 +92,14 @@ namespace Onvif.Open.Recording.Implementation.Recorder
         private readonly CameraRecordingStatus _status;
         private readonly SegmentProgress _progress = new SegmentProgress();
 
+        private readonly RecordingMode _mode;
+        private readonly RecordingTrigger _trigger;
+        private readonly PreRollBuffer _preRoll;
+        private readonly CameraEventMonitor _eventMonitor;
+
         private CancellationTokenSource _stop;
         private Task _run = Task.CompletedTask;
+        private Task _events = Task.CompletedTask;
 
         private Stream _segmentStream;
         private ISegmentMuxer _muxer;
@@ -111,18 +140,31 @@ namespace Onvif.Open.Recording.Implementation.Recorder
                 _stop = new CancellationTokenSource();
                 var token = _stop.Token;
                 _run = Task.Run(() => RunAsync(token));
+
+                if (_eventMonitor != null)
+                {
+                    _events = Task.Run(() => _eventMonitor.RunAsync(token));
+                }
             }
+        }
+
+        /// <summary>Triggered mode: record for at least <paramref name="duration"/> from now, plus the post-roll.</summary>
+        public void Trigger(TimeSpan duration)
+        {
+            _trigger.Pulse(duration, _timeProvider.GetUtcNow());
         }
 
         public async Task StopAsync()
         {
             CancellationTokenSource stop;
             Task run;
+            Task events;
 
             lock (_sync)
             {
                 stop = _stop;
                 run = _run;
+                events = _events;
                 _stop = null;
             }
 
@@ -132,15 +174,20 @@ namespace Onvif.Open.Recording.Implementation.Recorder
             }
 
             stop.Cancel();
-            await run.ConfigureAwait(false);
+            await Task.WhenAll(run, events).ConfigureAwait(false);
             stop.Dispose();
         }
 
         public CameraRecordingStatus GetStatus()
         {
+            var triggered = _mode == RecordingMode.Triggered && _trigger.IsActive(_timeProvider.GetUtcNow());
+
             lock (_sync)
             {
-                return _status.Clone();
+                var status = _status.Clone();
+                status.IsTriggered = triggered;
+                status.LastTriggeredAt = _trigger.LastTriggeredAt;
+                return status;
             }
         }
 
@@ -208,6 +255,7 @@ namespace Onvif.Open.Recording.Implementation.Recorder
                 finally
                 {
                     CloseSegment();
+                    _preRoll.Clear();
                 }
 
                 if (recordedFrames)
@@ -260,8 +308,46 @@ namespace Onvif.Open.Recording.Implementation.Recorder
 
         private bool WriteFrame(VideoFrame frame)
         {
+            if (_mode == RecordingMode.Continuous)
+            {
+                return WriteToSegment(frame, _timeProvider.GetUtcNow());
+            }
+
             var now = _timeProvider.GetUtcNow();
 
+            if (!_trigger.IsActive(now))
+            {
+                // Not triggered (or the post-roll is over): close the recording and keep buffering the pre-roll.
+                CloseSegment();
+                _preRoll.Add(frame);
+                return false;
+            }
+
+            if (_muxer != null)
+            {
+                return WriteToSegment(frame, now);
+            }
+
+            // Trigger started: write the pre-roll first so the recording starts before the event, on a key frame.
+            _preRoll.Add(frame);
+            var buffered = _preRoll.Drain();
+
+            if (buffered.Count == 0)
+            {
+                return false;
+            }
+
+            var start = now - (buffered[buffered.Count - 1].Timestamp - buffered[0].Timestamp);
+            foreach (var bufferedFrame in buffered)
+            {
+                WriteToSegment(bufferedFrame, now, start);
+            }
+
+            return true;
+        }
+
+        private bool WriteToSegment(VideoFrame frame, DateTimeOffset now, DateTimeOffset? segmentStart = null)
+        {
             if (_muxer == null)
             {
                 // A segment has to start with a key frame to be playable on its own.
@@ -270,7 +356,7 @@ namespace Onvif.Open.Recording.Implementation.Recorder
                     return false;
                 }
 
-                OpenSegment(frame, now);
+                OpenSegment(frame, segmentStart ?? now);
             }
             else if (frame.IsKeyFrame)
             {
