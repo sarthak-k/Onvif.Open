@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Onvif.Open.Core.Abstract.Interface.Camera;
 using Onvif.Open.Core.Abstract.Interface.Streaming;
+using Onvif.Open.Core.Operations;
 using Onvif.Open.Streaming.Implementation.Rtsp;
 using Onvif.Open.Streaming.Interface;
 
@@ -39,6 +40,7 @@ namespace Onvif.Open.Streaming.Implementation.Builder
 
         private Uri _streamUri;
         private NetworkCredential _credential;
+        private StreamTransport _transport = StreamTransport.Rtsp;
         private TimeSpan _timeout = DefaultTimeout;
         private int _frameBufferCapacity = DefaultFrameBufferCapacity;
 
@@ -54,7 +56,7 @@ namespace Onvif.Open.Streaming.Implementation.Builder
                 return Task.FromException<ILiveVideoStream>(new InvalidOperationException("Live Video Stream Builder must have a stream URL to start streaming."));
             }
 
-            return RtspLiveVideoStream.StartAsync(_streamUri, _credential, _timeout, _frameBufferCapacity, cancellationToken);
+            return RtspLiveVideoStream.StartAsync(_streamUri, _credential, _transport, _timeout, _frameBufferCapacity, cancellationToken);
         }
 
         public LiveVideoStreamBuilder SetStreamUri(Uri streamUri)
@@ -93,6 +95,21 @@ namespace Onvif.Open.Streaming.Implementation.Builder
             }
 
             _credential = new NetworkCredential(username, password ?? string.Empty);
+            return this;
+        }
+
+        /// <summary>
+        /// How RTP is received: <see cref="StreamTransport.Rtsp"/> (default, interleaved in the RTSP TCP connection,
+        /// firewall/NAT friendly) or <see cref="StreamTransport.Udp"/> (lower latency, needs UDP reachability).
+        /// </summary>
+        public LiveVideoStreamBuilder SetTransport(StreamTransport transport)
+        {
+            if (transport != StreamTransport.Rtsp && transport != StreamTransport.Udp)
+            {
+                throw new NotSupportedException($"Stream transport '{transport}' is not supported. Use StreamTransport.Rtsp or StreamTransport.Udp.");
+            }
+
+            _transport = transport;
             return this;
         }
 

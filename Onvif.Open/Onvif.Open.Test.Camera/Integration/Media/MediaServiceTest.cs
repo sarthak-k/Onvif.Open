@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Onvif.Open.Camera.Implementation;
+using Onvif.Open.Core.Operations;
 using Onvif.Open.Core.Streaming;
 using Onvif.Open.Device.Management.Implementation.Builder;
 using Onvif.Open.Media.Implementation.Builder;
@@ -86,6 +87,30 @@ namespace Onvif.Open.Test.Camera.Integration.Media
                 }
 
                 Assert.Contains(device.RequestBodies, b => b.Contains("Profile_1") && b.Contains("GetStreamUri"));
+            }
+        }
+
+        [Fact]
+        public async Task CameraMediaShouldRequestUdpStreamUriAndStreamOverUdp()
+        {
+            await using (var rtsp = LiveVideoStreamTest.CreateServer())
+            using (var device = new FakeOnvifServer(rtsp.StreamUri))
+            {
+                var camera = new TestCameraInformation(device.DeviceServiceUri);
+                var cameraMedia = CameraMedia.CreateInstance(camera, DeviceManagementBuilder.GetBuilder().SetCamera(camera).Build());
+
+                await using (var stream = await cameraMedia.StartLiveStreamAsync("Profile_2", StreamTransport.Udp))
+                {
+                    Assert.Equal(StreamTransport.Udp, stream.Transport);
+
+                    await foreach (var frame in stream.ReadFramesAsync())
+                    {
+                        Assert.True(frame.IsKeyFrame);
+                        break;
+                    }
+                }
+
+                Assert.Contains(device.RequestBodies, b => b.Contains("GetStreamUri") && b.Contains("Profile_2") && b.Contains(">UDP<"));
             }
         }
 

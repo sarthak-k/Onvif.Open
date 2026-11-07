@@ -13,24 +13,27 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 using Onvif.Open.Core.Abstract.Interface.Streaming;
+using Onvif.Open.Core.Operations;
 using Onvif.Open.Core.Streaming;
 using Onvif.Open.Streaming.Implementation.Authentication;
 using Onvif.Open.Streaming.Implementation.Depacketizer;
 using Onvif.Open.Streaming.Implementation.Rtp;
 using Onvif.Open.Streaming.Implementation.Sdp;
+using Onvif.Open.Streaming.Implementation.Transport;
 
 namespace Onvif.Open.Streaming.Implementation.Rtsp
 {
     /// <summary>
-    /// Plays the video track of an RTSP URI with RTP interleaved over the RTSP TCP connection
-    /// (OPTIONS → DESCRIBE → SETUP → PLAY, keep-alive, TEARDOWN).
+    /// Plays the video track of an RTSP URI (OPTIONS → DESCRIBE → SETUP → PLAY, keep-alive, TEARDOWN),
+    /// receiving RTP through the selected <see cref="IRtpTransport"/> (TCP interleaved or UDP).
     /// </summary>
     internal sealed class RtspLiveVideoStream : ILiveVideoStream
     {
         #region Constructor
 
-        private RtspLiveVideoStream(Uri streamUri, NetworkCredential credential, TimeSpan timeout, int frameBufferCapacity)
+        private RtspLiveVideoStream(Uri streamUri, NetworkCredential credential, StreamTransport transport, TimeSpan timeout, int frameBufferCapacity)
         {
+            Transport = transport;
             StreamUri = streamUri;
             _requestUri = WithoutUserInfo(streamUri);
             _credential = credential;
@@ -60,10 +63,10 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
         private RtspConnection _connection;
         private IRtspAuthenticator _authenticator;
         private IRtpDepacketizer _depacketizer;
+        private IRtpTransport _transport;
         private string _session;
         private string _playUri;
         private TimeSpan _sessionTimeout = DefaultSessionTimeout;
-        private int _rtpChannel;
         private bool _supportsGetParameter;
         private Task _readLoop = Task.CompletedTask;
         private Task _keepAlive = Task.CompletedTask;
@@ -74,6 +77,7 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
         #region Public Variables
 
         public Uri StreamUri { get; }
+        public StreamTransport Transport { get; }
         public VideoCodec Codec => _depacketizer?.Codec ?? VideoCodec.Unknown;
         public string SessionDescription { get; private set; }
 
@@ -81,9 +85,9 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
 
         #region Public Methods
 
-        internal static async Task<ILiveVideoStream> StartAsync(Uri streamUri, NetworkCredential credential, TimeSpan timeout, int frameBufferCapacity, CancellationToken cancellationToken)
+        internal static async Task<ILiveVideoStream> StartAsync(Uri streamUri, NetworkCredential credential, StreamTransport transport, TimeSpan timeout, int frameBufferCapacity, CancellationToken cancellationToken)
         {
-            var stream = new RtspLiveVideoStream(streamUri, credential ?? CredentialFromUri(streamUri), timeout, frameBufferCapacity);
+            var stream = new RtspLiveVideoStream(streamUri, credential ?? CredentialFromUri(streamUri), transport, timeout, frameBufferCapacity);
 
             try
             {
@@ -151,6 +155,7 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
             }
 
             await Task.WhenAll(Swallow(_readLoop), Swallow(_keepAlive)).ConfigureAwait(false);
+            _transport?.Dispose();
             _frames.Writer.TryComplete();
         }
 
@@ -168,6 +173,7 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
         {
             var port = StreamUri.IsDefaultPort || StreamUri.Port <= 0 ? DefaultRtspPort : StreamUri.Port;
             _connection = await RtspConnection.ConnectAsync(StreamUri.Host, port, _timeout, cancellationToken).ConfigureAwait(false);
+            _transport = RtpTransportFactory.Create(Transport, _connection.RemoteAddress);
 
             var options = await RequestAsync("OPTIONS", _requestUri, null, cancellationToken).ConfigureAwait(false);
             _supportsGetParameter = (options.GetHeader("Public") ?? string.Empty).IndexOf("GET_PARAMETER", StringComparison.OrdinalIgnoreCase) >= 0;
@@ -183,9 +189,9 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
             _playUri = ResolveControl(contentBase, sdp.Control);
             var setupUri = ResolveControl(contentBase, video.Control);
 
-            var setup = await RequestAsync("SETUP", setupUri, new[] { Header("Transport", "RTP/AVP/TCP;unicast;interleaved=0-1") }, cancellationToken).ConfigureAwait(false);
+            var setup = await RequestAsync("SETUP", setupUri, new[] { Header("Transport", _transport.GetRequestTransport()) }, cancellationToken).ConfigureAwait(false);
             ParseSession(setup.GetHeader("Session"));
-            _rtpChannel = ParseInterleavedChannel(setup.GetHeader("Transport"));
+            _transport.Configure(setup.GetHeader("Transport"));
 
             await RequestAsync("PLAY", _playUri, new[] { Header("Range", "npt=0.000-") }, cancellationToken).ConfigureAwait(false);
 
@@ -277,19 +283,11 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
 
             try
             {
-                while (!cancellationToken.IsCancellationRequested)
+                await _transport.ReceiveAsync(_connection, data =>
                 {
-                    var incoming = await _connection.ReadAsync(cancellationToken).ConfigureAwait(false);
-
-                    if (incoming == null)
+                    if (!RtpPacket.TryParse(data, out var packet))
                     {
-                        throw new IOException("RTSP server closed the connection.");
-                    }
-
-                    if (!incoming.IsPacket || incoming.Channel != _rtpChannel || !RtpPacket.TryParse(incoming.Data, out var packet))
-                    {
-                        // Keep-alive responses, RTCP and server requests need no handling.
-                        continue;
+                        return;
                     }
 
                     _depacketizer.Process(packet, completed);
@@ -300,7 +298,7 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
                     }
 
                     completed.Clear();
-                }
+                }, cancellationToken).ConfigureAwait(false);
 
                 _frames.Writer.TryComplete();
             }
@@ -358,24 +356,6 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
                     _sessionTimeout = TimeSpan.FromSeconds(seconds);
                 }
             }
-        }
-
-        internal static int ParseInterleavedChannel(string transport)
-        {
-            foreach (var part in (transport ?? string.Empty).Split(';'))
-            {
-                var keyValue = part.Split('=');
-                if (keyValue.Length == 2 && string.Equals(keyValue[0].Trim(), "interleaved", StringComparison.OrdinalIgnoreCase))
-                {
-                    var channels = keyValue[1].Split('-');
-                    if (int.TryParse(channels[0].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var channel))
-                    {
-                        return channel;
-                    }
-                }
-            }
-
-            return 0;
         }
 
         internal static string ResolveControl(string baseUri, string control)

@@ -3,6 +3,7 @@
 
 using Onvif.Open.Streaming.Implementation.Rtsp;
 using Onvif.Open.Streaming.Implementation.Sdp;
+using Onvif.Open.Streaming.Implementation.Transport;
 using Onvif.Open.Test.Camera.Fakes;
 using Xunit;
 
@@ -44,7 +45,9 @@ namespace Onvif.Open.Test.Camera.Unit.Streaming
         [InlineData(null, 0)]
         public void ShouldParseInterleavedChannel(string transport, int expected)
         {
-            Assert.Equal(expected, RtspLiveVideoStream.ParseInterleavedChannel(transport));
+            var tcp = new TcpInterleavedRtpTransport();
+            tcp.Configure(transport);
+            Assert.Equal(expected, tcp.RtpChannel);
         }
 
         #endregion

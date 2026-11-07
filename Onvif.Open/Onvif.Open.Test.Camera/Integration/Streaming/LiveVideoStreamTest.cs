@@ -8,6 +8,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Onvif.Open.Core.Abstract.Interface.Streaming;
+using Onvif.Open.Core.Operations;
 using Onvif.Open.Core.Streaming;
 using Onvif.Open.Streaming.Implementation.Builder;
 using Onvif.Open.Test.Camera.Fakes;
@@ -75,6 +76,7 @@ namespace Onvif.Open.Test.Camera.Integration.Streaming
                 await using (stream)
                 {
                     Assert.Equal(VideoCodec.H264, stream.Codec);
+                    Assert.Equal(StreamTransport.Rtsp, stream.Transport);
                     Assert.Contains("H264/90000", stream.SessionDescription);
 
                     var frames = await ReadAsync(stream, 2);
@@ -95,6 +97,55 @@ namespace Onvif.Open.Test.Camera.Integration.Streaming
                 var requests = server.Requests.ToArray();
                 Assert.Contains($"SETUP {server.StreamUri}/trackID=1", requests);
                 Assert.Contains(requests, r => r.StartsWith("PLAY ", StringComparison.Ordinal));
+            }
+        }
+
+        [Theory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public async Task ShouldReceiveFramesOverUdp(bool reorder)
+        {
+            await using (var server = CreateServer())
+            {
+                server.ReorderUdpPackets = reorder;
+
+                var stream = await LiveVideoStreamBuilder.GetBuilder()
+                    .SetStreamUri(server.StreamUri)
+                    .SetCredentials("admin", "12345")
+                    .SetTransport(StreamTransport.Udp)
+                    .BuildAsync();
+
+                await using (stream)
+                {
+                    Assert.Equal(StreamTransport.Udp, stream.Transport);
+                    Assert.Contains("client_port=", server.SetupTransport);
+
+                    var frames = await ReadAsync(stream, 2);
+
+                    Assert.True(frames[0].IsKeyFrame);
+                    Assert.Equal(Idr, frames[0].Data.ToArray().Skip(frames[0].Data.Length - Idr.Length));
+                    Assert.Equal(new byte[] { 0, 0, 0, 1 }.Concat(Slice), frames[1].Data.ToArray());
+
+                    // NAT/firewall pinhole packet towards the server RTP port.
+                    await server.UdpPunchReceived.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                }
+
+                await server.TeardownReceived.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+        }
+
+        [Fact]
+        public async Task UdpShouldFailClearlyWhenDeviceOnlySupportsTcp()
+        {
+            await using (var server = CreateServer())
+            {
+                server.RefuseUdp = true;
+
+                await Assert.ThrowsAsync<NotSupportedException>(() => LiveVideoStreamBuilder.GetBuilder()
+                    .SetStreamUri(server.StreamUri)
+                    .SetCredentials("admin", "12345")
+                    .SetTransport(StreamTransport.Udp)
+                    .BuildAsync());
             }
         }
 
@@ -158,6 +209,7 @@ namespace Onvif.Open.Test.Camera.Integration.Streaming
             Assert.Throws<UriFormatException>(() => LiveVideoStreamBuilder.GetBuilder().SetStreamUri(new Uri("http://192.168.1.3/stream")));
             Assert.Throws<ArgumentNullException>(() => LiveVideoStreamBuilder.GetBuilder().SetCredentials(string.Empty, "x"));
             Assert.Throws<ArgumentOutOfRangeException>(() => LiveVideoStreamBuilder.GetBuilder().SetTimeout(TimeSpan.Zero));
+            Assert.Throws<NotSupportedException>(() => LiveVideoStreamBuilder.GetBuilder().SetTransport(StreamTransport.Http));
         }
 
         #endregion

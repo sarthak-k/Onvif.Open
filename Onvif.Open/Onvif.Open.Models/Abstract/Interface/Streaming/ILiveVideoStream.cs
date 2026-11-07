@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Onvif.Open.Core.Operations;
 using Onvif.Open.Core.Streaming;
 
 namespace Onvif.Open.Core.Abstract.Interface.Streaming
@@ -15,6 +16,9 @@ namespace Onvif.Open.Core.Abstract.Interface.Streaming
     {
         /// <summary>The RTSP URI being played.</summary>
         Uri StreamUri { get; }
+
+        /// <summary>How RTP packets are received (TCP interleaved or UDP).</summary>
+        StreamTransport Transport { get; }
 
         /// <summary>The codec of the video track.</summary>
         VideoCodec Codec { get; }

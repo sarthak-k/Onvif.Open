@@ -44,7 +44,7 @@ namespace Onvif.Open.Camera.Implementation
             return _mediaService.Value;
         }
 
-        public async Task<ILiveVideoStream> StartLiveStreamAsync(string profileToken = null, CancellationToken cancellationToken = default)
+        public async Task<ILiveVideoStream> StartLiveStreamAsync(string profileToken = null, StreamTransport transport = StreamTransport.Rtsp, CancellationToken cancellationToken = default)
         {
             // Resolving the media service address is a synchronous device call; keep it off the caller's thread.
             var mediaService = _mediaService.IsValueCreated
@@ -58,11 +58,12 @@ namespace Onvif.Open.Camera.Implementation
                                ?? throw new InvalidOperationException("The device does not expose any media profile.");
             }
 
-            var streamUri = await mediaService.GetStreamUriAsync(profileToken, StreamTransport.Rtsp, cancellationToken).ConfigureAwait(false);
+            var streamUri = await mediaService.GetStreamUriAsync(profileToken, transport, cancellationToken).ConfigureAwait(false);
 
             return await LiveVideoStreamBuilder.GetBuilder()
                 .SetStreamUri(streamUri)
                 .SetCamera(_camera)
+                .SetTransport(transport)
                 .BuildAsync(cancellationToken)
                 .ConfigureAwait(false);
         }

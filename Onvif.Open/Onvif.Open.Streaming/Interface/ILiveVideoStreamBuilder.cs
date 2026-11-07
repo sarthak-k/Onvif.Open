@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Onvif.Open.Core.Abstract.Interface.Camera;
 using Onvif.Open.Core.Abstract.Interface.Streaming;
+using Onvif.Open.Core.Operations;
 using Onvif.Open.Streaming.Implementation.Builder;
 
 namespace Onvif.Open.Streaming.Interface
@@ -18,6 +19,7 @@ namespace Onvif.Open.Streaming.Interface
         LiveVideoStreamBuilder SetStreamUri(Uri streamUri);
         LiveVideoStreamBuilder SetCamera(ICameraInformation camera);
         LiveVideoStreamBuilder SetCredentials(string username, string password);
+        LiveVideoStreamBuilder SetTransport(StreamTransport transport);
         LiveVideoStreamBuilder SetTimeout(TimeSpan timeout);
         LiveVideoStreamBuilder SetFrameBufferCapacity(int capacity);
 

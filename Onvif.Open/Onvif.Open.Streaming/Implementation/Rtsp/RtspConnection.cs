@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
@@ -40,6 +41,12 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
         private int _bufferOffset;
         private int _bufferCount;
         private int _cseq;
+
+        #endregion
+
+        #region Public Variables
+
+        public IPAddress RemoteAddress => ((IPEndPoint)_client.Client.RemoteEndPoint).Address;
 
         #endregion
 

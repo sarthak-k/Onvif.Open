@@ -15,8 +15,9 @@ using System.Threading.Tasks;
 namespace Onvif.Open.Test.Camera.Fakes
 {
     /// <summary>
-    /// In-process RTSP server: Digest authentication, one H.264 track, RTP interleaved over TCP.
-    /// After PLAY it sends <see cref="Packets"/> on channel 0 (plus an RTCP packet on channel 1).
+    /// In-process RTSP server: Digest authentication, one H.264 track, RTP interleaved over TCP or UDP.
+    /// After PLAY it sends <see cref="Packets"/> on channel 0 (plus an RTCP packet on channel 1), or as
+    /// UDP datagrams to the client ports when the client asked for UDP in SETUP.
     /// </summary>
     internal sealed class FakeRtspServer : IAsyncDisposable
     {
@@ -31,6 +32,9 @@ namespace Onvif.Open.Test.Camera.Fakes
         private readonly string _username;
         private readonly string _password;
         private Task _serve;
+        private UdpClient _udpRtp;
+        private UdpClient _udpRtcp;
+        private int _clientRtpPort = -1;
 
         public FakeRtspServer(string username = "admin", string password = "12345")
         {
@@ -46,6 +50,14 @@ namespace Onvif.Open.Test.Camera.Fakes
         public Uri StreamUri => new Uri($"rtsp://127.0.0.1:{Port}/stream");
         public List<byte[]> Packets { get; } = new List<byte[]>();
         public ConcurrentQueue<string> Requests { get; } = new ConcurrentQueue<string>();
+        /// <summary>Sends UDP packets in reverse order inside each pair, to exercise re-ordering.</summary>
+        public bool ReorderUdpPackets { get; set; }
+
+        /// <summary>Answers a UDP SETUP with TCP interleaved transport, as devices without UDP support do.</summary>
+        public bool RefuseUdp { get; set; }
+
+        public string SetupTransport { get; private set; }
+        public TaskCompletionSource<bool> UdpPunchReceived { get; } = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         public TaskCompletionSource<bool> TeardownReceived { get; } = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public string Sdp =>
@@ -110,10 +122,18 @@ namespace Onvif.Open.Test.Camera.Fakes
                             await WriteAsync(stream, $"RTSP/1.0 200 OK\r\nCSeq: {cseq}\r\nContent-Base: {StreamUri}/\r\nContent-Type: application/sdp\r\nContent-Length: {body.Length}\r\n\r\n{Sdp}").ConfigureAwait(false);
                             break;
                         case "SETUP":
-                            await WriteAsync(stream, $"RTSP/1.0 200 OK\r\nCSeq: {cseq}\r\nSession: 12345678;timeout=60\r\nTransport: RTP/AVP/TCP;unicast;interleaved=0-1\r\n\r\n").ConfigureAwait(false);
+                            headers.TryGetValue("Transport", out var transport);
+                            SetupTransport = transport;
+                            await WriteAsync(stream, $"RTSP/1.0 200 OK\r\nCSeq: {cseq}\r\nSession: 12345678;timeout=60\r\nTransport: {Setup(transport)}\r\n\r\n").ConfigureAwait(false);
                             break;
                         case "PLAY":
                             await WriteAsync(stream, $"RTSP/1.0 200 OK\r\nCSeq: {cseq}\r\nSession: 12345678\r\n\r\n").ConfigureAwait(false);
+                            if (_udpRtp != null)
+                            {
+                                await SendUdpAsync().ConfigureAwait(false);
+                                break;
+                            }
+
                             await WriteInterleavedAsync(stream, 1, new byte[] { 0x80, 0xC8, 0x00, 0x06, 0, 0, 0, 0 }).ConfigureAwait(false);
                             foreach (var packet in Packets)
                             {
@@ -129,6 +149,54 @@ namespace Onvif.Open.Test.Camera.Fakes
                             break;
                     }
                 }
+            }
+        }
+
+        private string Setup(string transport)
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(transport ?? string.Empty, @"client_port=(\d+)-(\d+)");
+
+            if (!match.Success || RefuseUdp)
+            {
+                return "RTP/AVP/TCP;unicast;interleaved=0-1";
+            }
+
+            _clientRtpPort = int.Parse(match.Groups[1].Value);
+            _udpRtp = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
+            _udpRtcp = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _udpRtp.ReceiveAsync(_stop.Token).ConfigureAwait(false);
+                    UdpPunchReceived.TrySetResult(true);
+                }
+                catch
+                {
+                }
+            });
+
+            var serverRtp = ((IPEndPoint)_udpRtp.Client.LocalEndPoint).Port;
+            var serverRtcp = ((IPEndPoint)_udpRtcp.Client.LocalEndPoint).Port;
+            return $"RTP/AVP;unicast;client_port={match.Groups[1].Value}-{match.Groups[2].Value};server_port={serverRtp}-{serverRtcp};source=127.0.0.1";
+        }
+
+        private async Task SendUdpAsync()
+        {
+            var order = new List<byte[]>(Packets);
+
+            if (ReorderUdpPackets)
+            {
+                for (var i = 0; i + 1 < order.Count; i += 2)
+                {
+                    (order[i], order[i + 1]) = (order[i + 1], order[i]);
+                }
+            }
+
+            var target = new IPEndPoint(IPAddress.Loopback, _clientRtpPort);
+            foreach (var packet in order)
+            {
+                await _udpRtp.SendAsync(packet, target).ConfigureAwait(false);
             }
         }
 
@@ -168,6 +236,8 @@ namespace Onvif.Open.Test.Camera.Fakes
         {
             _stop.Cancel();
             _listener.Stop();
+            _udpRtp?.Dispose();
+            _udpRtcp?.Dispose();
             try
             {
                 await _serve.ConfigureAwait(false);
