@@ -1,0 +1,160 @@
+// Sarthak Killedar
+// 2026-11-07
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.Text.Json;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Onvif.Open.Test.Recording.Fakes;
+using Xunit;
+
+namespace Onvif.Open.Test.Recording.Integration
+{
+    public class RecorderApiTest : IDisposable
+    {
+        #region Constructor
+
+        public RecorderApiTest()
+        {
+            _storage = new TempDirectory();
+
+            var day = Path.Combine(_storage.Path, "cam1", "2026-11-01");
+            Directory.CreateDirectory(day);
+            _segmentPath = Path.Combine(day, SegmentName);
+            File.WriteAllBytes(_segmentPath, Enumerable.Repeat((byte)0x47, 188 * 3).ToArray());
+
+            _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            {
+                builder.UseSetting("Recording:StorageDirectory", _storage.Path);
+                builder.UseSetting("Recording:Retention:MinFreeSpaceGB", "0");
+                builder.UseSetting("Recording:MinReconnectDelay", "00:00:00.050");
+                builder.UseSetting("Recording:MaxReconnectDelay", "00:00:00.100");
+                builder.UseSetting("Recording:Cameras:0:Id", "cam1");
+                builder.UseSetting("Recording:Cameras:0:RtspUrl", "rtsp://admin:secret@127.0.0.1:1/stream");
+                builder.UseSetting("Recording:Cameras:0:Username", "admin");
+                builder.UseSetting("Recording:Cameras:0:Password", "secret");
+                builder.UseSetting("Recording:Cameras:1:Id", "disabled");
+                builder.UseSetting("Recording:Cameras:1:Enabled", "false");
+                builder.UseSetting("Recording:Cameras:1:RtspUrl", "rtsp://127.0.0.1:1/other");
+            });
+
+            _client = _factory.CreateClient();
+        }
+
+        #endregion
+
+        #region Private Variables
+
+        private const string SegmentName = "cam1_20261101T080000000Z.ts";
+
+        private readonly TempDirectory _storage;
+        private readonly string _segmentPath;
+        private readonly WebApplicationFactory<Program> _factory;
+        private readonly HttpClient _client;
+
+        #endregion
+
+        #region Public Methods
+
+        [Fact]
+        public async Task CamerasShouldListEnabledCamerasWithoutCredentials()
+        {
+            var body = await _client.GetStringAsync("/api/cameras");
+            var cameras = JsonDocument.Parse(body).RootElement;
+
+            Assert.Equal(1, cameras.GetArrayLength());
+            Assert.Equal("cam1", cameras[0].GetProperty("cameraId").GetString());
+            Assert.DoesNotContain("secret", body);
+
+            Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/cameras/disabled")).StatusCode);
+        }
+
+        [Fact]
+        public async Task SegmentsShouldBeListedAndDownloadable()
+        {
+            var segments = JsonDocument.Parse(await _client.GetStringAsync("/api/cameras/cam1/segments")).RootElement;
+
+            var segment = Assert.Single(segments.EnumerateArray());
+            Assert.Equal(SegmentName, segment.GetProperty("fileName").GetString());
+            Assert.Equal(188 * 3, segment.GetProperty("size").GetInt64());
+
+            var download = await _client.GetAsync(segment.GetProperty("url").GetString());
+            Assert.Equal(HttpStatusCode.OK, download.StatusCode);
+            Assert.Equal("video/mp2t", download.Content.Headers.ContentType?.MediaType);
+            Assert.Equal(File.ReadAllBytes(_segmentPath), await download.Content.ReadAsByteArrayAsync());
+
+            var range = new HttpRequestMessage(HttpMethod.Get, segment.GetProperty("url").GetString());
+            range.Headers.Range = new System.Net.Http.Headers.RangeHeaderValue(0, 187);
+            Assert.Equal(HttpStatusCode.PartialContent, (await _client.SendAsync(range)).StatusCode);
+        }
+
+        [Theory]
+        [InlineData("/api/cameras/cam1/segments/missing.ts")]
+        [InlineData("/api/cameras/cam1/segments/..%2F..%2Fappsettings.json")]
+        [InlineData("/api/cameras/..%2Fcam1/segments/" + SegmentName)]
+        public async Task UnknownOrTraversalPathsShouldBeNotFound(string url)
+        {
+            Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync(url)).StatusCode);
+        }
+
+        [Fact]
+        public async Task DeleteShouldRemoveSegment()
+        {
+            var response = await _client.DeleteAsync($"/api/cameras/cam1/segments/{SegmentName}");
+
+            Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+            Assert.False(File.Exists(_segmentPath));
+            Assert.Equal(HttpStatusCode.NotFound, (await _client.DeleteAsync($"/api/cameras/cam1/segments/{SegmentName}")).StatusCode);
+        }
+
+        [Fact]
+        public async Task CameraCanBeStoppedAndStarted()
+        {
+            var stopped = JsonDocument.Parse(await (await _client.PostAsync("/api/cameras/cam1/stop", null)).Content.ReadAsStringAsync()).RootElement;
+            Assert.Equal("Stopped", stopped.GetProperty("state").GetString());
+
+            Assert.Equal(HttpStatusCode.Accepted, (await _client.PostAsync("/api/cameras/cam1/start", null)).StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsync("/api/cameras/nope/start", null)).StatusCode);
+        }
+
+        [Fact]
+        public async Task UnreachableCameraShouldReportError()
+        {
+            await Eventually.True(() =>
+            {
+                var camera = JsonDocument.Parse(_client.GetStringAsync("/api/cameras/cam1").Result).RootElement;
+                return camera.GetProperty("lastError").ValueKind == JsonValueKind.String;
+            }, "the connection error is reported");
+        }
+
+        [Fact]
+        public async Task StorageAndHealthShouldRespond()
+        {
+            var storage = JsonDocument.Parse(await _client.GetStringAsync("/api/storage")).RootElement;
+            Assert.Equal(188 * 3, storage.GetProperty("totalBytes").GetInt64());
+            Assert.Equal(1, storage.GetProperty("segmentCount").GetInt32());
+            Assert.True(storage.GetProperty("availableFreeBytes").GetInt64() > 0);
+
+            var retention = await _client.PostAsync("/api/retention", null);
+            Assert.Equal(HttpStatusCode.OK, retention.StatusCode);
+
+            Assert.Equal(HttpStatusCode.OK, (await _client.GetAsync("/health")).StatusCode);
+        }
+
+        public void Dispose()
+        {
+            _client.Dispose();
+            _factory.Dispose();
+            _storage.Dispose();
+        }
+
+        #endregion
+    }
+}

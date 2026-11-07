@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <RootNamespace>Onvif.Open.Recorder</RootNamespace>
+    <AssemblyName>Onvif.Open.Recorder</AssemblyName>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Onvif.Open.Camera\Onvif.Open.Camera.csproj" />
+    <ProjectReference Include="..\Onvif.Open.Recording\Onvif.Open.Recording.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Reference configuration only: copy the cameras you need into appsettings.json. -->
+    <Content Update="appsettings.Example.json" CopyToOutputDirectory="Never" CopyToPublishDirectory="Never" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Onvif.Open.Test.Recording" />
+  </ItemGroup>
+
+</Project>

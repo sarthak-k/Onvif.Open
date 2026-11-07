@@ -10,4 +10,8 @@
     <PackageReference Include="System.ServiceModel.Primitives" Version="10.1.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Onvif.Open.Recording" />
+  </ItemGroup>
+
 </Project>
