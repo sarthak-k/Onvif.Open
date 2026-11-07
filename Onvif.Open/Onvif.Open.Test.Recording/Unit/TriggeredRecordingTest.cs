@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Extensions.Logging.Abstractions;
+using Onvif.Open.Core.Analytics;
 using Onvif.Open.Core.Events;
 using Onvif.Open.Recording.Implementation.Recorder;
 using Onvif.Open.Test.Recording.Fakes;
@@ -131,6 +132,56 @@ namespace Onvif.Open.Test.Recording.Unit
 
             Assert.Equal(3, forwarded.Count);
             Assert.All(forwarded, e => Assert.Equal("cam1", e.CameraId));
+        }
+
+        [Fact]
+        public void AnalyticsMonitorShouldTriggerOnConfiguredClassesAboveTheLikelihood()
+        {
+            var trigger = new RecordingTrigger(TimeSpan.FromSeconds(10));
+            var forwarded = new List<AnalyticsFrame>();
+            var monitor = new AnalyticsMonitor("cam1", null, new[] { "Human" }, 0.6, trigger, TimeProvider.System, NullLogger.Instance, forwarded.Add);
+
+            AnalyticsFrame Frame(string type, double likelihood) => new AnalyticsFrame(DateTimeOffset.UtcNow, "VS_1", new[]
+            {
+                new DetectedObject("1", new[] { new ObjectClassification(type, likelihood) }, null)
+            });
+
+            monitor.Handle(Frame("Vehicle", 0.99));
+            monitor.Handle(Frame("Human", 0.4));
+            Assert.False(trigger.IsActive(DateTimeOffset.UtcNow));
+
+            monitor.Handle(Frame("human", 0.8));
+            Assert.True(trigger.IsActive(DateTimeOffset.UtcNow.AddSeconds(5)));
+            Assert.False(trigger.IsActive(DateTimeOffset.UtcNow.AddSeconds(15)));
+
+            Assert.Equal(3, forwarded.Count);
+            Assert.All(forwarded, f => Assert.Equal("cam1", f.CameraId));
+        }
+
+        [Fact]
+        public async System.Threading.Tasks.Task UnsupportedAnalyticsShouldNotBeRetried()
+        {
+            var attempts = 0;
+
+            async IAsyncEnumerable<AnalyticsFrame> Unsupported([System.Runtime.CompilerServices.EnumeratorCancellation] System.Threading.CancellationToken ct)
+            {
+                attempts++;
+                await System.Threading.Tasks.Task.Yield();
+                throw new NotSupportedException("no metadata configuration");
+#pragma warning disable CS0162
+                yield break;
+#pragma warning restore CS0162
+            }
+
+            var monitor = new AnalyticsMonitor("cam1", Unsupported, Array.Empty<string>(), 0.5, null, TimeProvider.System, NullLogger.Instance, null);
+
+            using (var timeout = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(10)))
+            {
+                await monitor.RunAsync(timeout.Token);
+                Assert.False(timeout.IsCancellationRequested);
+            }
+
+            Assert.Equal(1, attempts);
         }
 
         [Fact]

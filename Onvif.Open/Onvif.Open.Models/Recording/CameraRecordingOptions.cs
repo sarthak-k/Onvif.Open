@@ -40,6 +40,27 @@ namespace Onvif.Open.Core.Recording
         /// </summary>
         public IList<string> EventTriggers { get; } = new List<string>();
 
+        /// <summary>
+        /// Receive the camera's analytics metadata (ONVIF Profile M: detected objects) and raise it as
+        /// IRecordingManager.AnalyticsReceived (and to plugins). Implied by <see cref="AnalyticsTriggers"/>. Default: off.
+        /// </summary>
+        public bool ReceiveAnalytics { get; set; }
+
+        /// <summary>
+        /// Object classes that trigger recording while the camera sees them, e.g. "Human" or "Vehicle" (case-insensitive,
+        /// as the camera names them).
+        /// </summary>
+        public IList<string> AnalyticsTriggers { get; } = new List<string>();
+
+        /// <summary>Minimum likelihood (0..1) for <see cref="AnalyticsTriggers"/>. Default: 0.5.</summary>
+        public double AnalyticsMinLikelihood { get; set; } = 0.5;
+
+        /// <summary>Media profile with the metadata configuration; the first one that has one when null.</summary>
+        public string AnalyticsProfileToken { get; set; }
+
+        /// <summary>True when analytics are received (explicitly or because of triggers).</summary>
+        public bool UsesAnalytics => ReceiveAnalytics || AnalyticsTriggers.Count > 0;
+
         /// <summary>Motion topics used by most devices.</summary>
         public static IReadOnlyList<string> CommonMotionTopics { get; } = new[]
         {

@@ -19,5 +19,8 @@ namespace Onvif.Open.Core.Abstract.Interface.Media
 
         /// <summary>Token of the physical video source (used by the Imaging service).</summary>
         string VideoSourceToken { get; }
+
+        /// <summary>Metadata configuration of the profile: set when its stream carries analytics metadata.</summary>
+        string MetadataConfigurationToken { get; }
     }
 }

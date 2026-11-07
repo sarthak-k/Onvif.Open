@@ -16,6 +16,7 @@ namespace Onvif.Open.Streaming.Interface
         #region Public Methods
 
         Task<ILiveVideoStream> BuildAsync(CancellationToken cancellationToken = default);
+        Task<Core.Abstract.Interface.Analytics.IAnalyticsStream> BuildAnalyticsAsync(CancellationToken cancellationToken = default);
         LiveVideoStreamBuilder SetStreamUri(Uri streamUri);
         LiveVideoStreamBuilder SetCamera(ICameraInformation camera);
         LiveVideoStreamBuilder SetCredentials(string username, string password);

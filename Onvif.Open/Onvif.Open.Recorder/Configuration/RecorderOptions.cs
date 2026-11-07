@@ -96,6 +96,28 @@ namespace Onvif.Open.Recorder.Configuration
         #endregion
     }
 
+    /// <summary>
+    /// "Analytics": the camera's own object detection (ONVIF Profile M metadata stream).
+    /// </summary>
+    public sealed class CameraAnalyticsOptions
+    {
+        #region Public Variables
+
+        /// <summary>Receive detected objects and pass them to plugins (IAnalyticsObserver). Default: off.</summary>
+        public bool Enabled { get; set; }
+
+        /// <summary>Object classes that trigger recording in triggered mode, e.g. "Human", "Vehicle" (implies Enabled).</summary>
+        public List<string> TriggerClasses { get; set; } = new List<string>();
+
+        /// <summary>Minimum likelihood (0..1) for TriggerClasses. Default: 0.5.</summary>
+        public double MinLikelihood { get; set; } = 0.5;
+
+        /// <summary>Media profile with the metadata configuration; the first one that has one when empty.</summary>
+        public string ProfileToken { get; set; }
+
+        #endregion
+    }
+
     public sealed class CameraEventOptions
     {
         #region Public Variables
@@ -103,7 +125,10 @@ namespace Onvif.Open.Recorder.Configuration
         /// <summary>Subscribe to the camera's ONVIF events (ONVIF cameras only). Default: on.</summary>
         public bool Enabled { get; set; } = true;
 
-        /// <summary>Topics that trigger recording in triggered mode; the common motion topics when empty.</summary>
+        /// <summary>
+        /// Topics that trigger recording in triggered mode; the common motion topics when empty (unless analytics
+        /// TriggerClasses are configured).
+        /// </summary>
         public List<string> TriggerTopics { get; set; } = new List<string>();
 
         #endregion
@@ -216,6 +241,8 @@ namespace Onvif.Open.Recorder.Configuration
         public TimeSpan PostRoll { get; set; } = TimeSpan.FromSeconds(10);
 
         public CameraEventOptions Events { get; set; } = new CameraEventOptions();
+
+        public CameraAnalyticsOptions Analytics { get; set; } = new CameraAnalyticsOptions();
 
         #endregion
     }

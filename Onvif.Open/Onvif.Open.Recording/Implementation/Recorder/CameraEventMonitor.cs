@@ -41,8 +41,6 @@ namespace Onvif.Open.Recording.Implementation.Recorder
 
         #region Private Variables
 
-        private static readonly TimeSpan RestartDelay = TimeSpan.FromSeconds(5);
-
         private readonly string _cameraId;
         private readonly Func<CancellationToken, IAsyncEnumerable<CameraEvent>> _eventSource;
         private readonly IReadOnlyList<string> _triggerTopics;
@@ -55,35 +53,9 @@ namespace Onvif.Open.Recording.Implementation.Recorder
 
         #region Public Methods
 
-        public async Task RunAsync(CancellationToken cancellationToken)
+        public Task RunAsync(CancellationToken cancellationToken)
         {
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                try
-                {
-                    await foreach (var received in _eventSource(cancellationToken).WithCancellation(cancellationToken).ConfigureAwait(false))
-                    {
-                        Handle(received);
-                    }
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    return;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "Camera {CameraId}: event subscription failed, restarting", _cameraId);
-                }
-
-                try
-                {
-                    await Task.Delay(RestartDelay, _timeProvider, cancellationToken).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
-                {
-                    return;
-                }
-            }
+            return SourceMonitor.RunAsync(_eventSource, Handle, _cameraId, "event subscription", _timeProvider, _logger, cancellationToken);
         }
 
         /// <summary>Applies one event to the trigger and forwards it (internal for tests).</summary>

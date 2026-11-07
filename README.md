@@ -137,6 +137,22 @@ await foreach (var change in io.WatchDigitalInputsAsync())          // from the 
 }
 ```
 
+What the camera's own analytics detect (ONVIF Profile M metadata): objects with class, confidence and position
+(image fractions, 0..1 from the top left). Uses the first profile with a metadata configuration:
+
+```csharp
+await using (var analytics = await camera.InitializeMedia().StartAnalyticsStreamAsync())
+{
+    await foreach (var frame in analytics.ReadFramesAsync())
+    {
+        foreach (var detected in frame.Objects.Where(o => o.Is("Human", 0.6)))
+        {
+            Console.WriteLine($"{frame.UtcTime:O} person {detected.ObjectId} at {detected.BoundingBox}");
+        }
+    }
+}
+```
+
 Recordings stored on the camera itself (SD card or NVR disk, ONVIF Profile G): find them, play them back, or export a clip.
 Replay frames carry their recording time (`CaptureTime`), and the stream ends at `To` or at the end of the recording:
 
@@ -276,10 +292,16 @@ var manager = RecordingManagerBuilder.GetBuilder()
       "Transport": "Udp", "Rotation": { "AlignToClock": "01:00:00" } },
     { "Id": "parking", "OnvifUrl": "http://192.168.1.12", "Username": "admin", "Password": "...",
       "Mode": "Triggered", "PreRoll": "00:00:05", "PostRoll": "00:00:10",
-      "Events": { "TriggerTopics": [ "RuleEngine/CellMotionDetector/Motion" ] } }
+      "Events": { "TriggerTopics": [ "RuleEngine/CellMotionDetector/Motion" ] } },
+    { "Id": "entrance", "OnvifUrl": "http://192.168.1.13", "Username": "admin", "Password": "...",
+      "Mode": "Triggered", "PostRoll": "00:00:10",
+      "Analytics": { "TriggerClasses": [ "Human", "Vehicle" ], "MinLikelihood": 0.6 } }
   ]
 }
 ```
+
+`Analytics` uses the camera's own object detection (ONVIF Profile M): `TriggerClasses` records while such an object is
+in view (instead of on every motion event), and `"Enabled": true` passes detected objects to plugins.
 
 ```
 dotnet run --project Onvif.Open/Onvif.Open.Recorder
@@ -324,7 +346,7 @@ authentication before exposing it on a network.
 Domain features such as exam proctoring or "camera went offline during opening hours" alerts are written as plugins
 against a small SDK in `Onvif.Open.Core`. A plugin implements `IPlugin` plus any of `IFrameProcessor` (video frames),
 `ICameraStateObserver` (online/offline), `ISegmentObserver` (completed files), `ICameraEventObserver` (the cameras'
-own ONVIF events) and `IPluginEventObserver` (events from other plugins). Plugins can also trigger recording and
+own ONVIF events), `IAnalyticsObserver` (objects the cameras detect) and `IPluginEventObserver` (events from other plugins). Plugins can also trigger recording and
 control PTZ (e.g. turn to a preset on an alarm), imaging (e.g. day/night on a schedule) and relays (e.g. sound a
 siren on a detection), and read the camera's own recordings (e.g. footage from before an incident). The host gives it settings, a logger, snapshots and recording control for its assigned cameras only,
 and publishes its `PluginEvent`s through the API. Each plugin has its own queues, threads and load context, so a slow or

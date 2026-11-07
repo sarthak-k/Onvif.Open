@@ -41,6 +41,9 @@ namespace Onvif.Open.Media.Ver20
 
         [XmlElement("PTZ")]
         public PtzConfiguration Ptz { get; set; }
+
+        [XmlElement("Metadata")]
+        public Ver10.MetadataConfiguration Metadata { get; set; }
     }
 
     [XmlType(Namespace = Media2Namespaces.Schema)]

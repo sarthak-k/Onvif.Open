@@ -8,6 +8,7 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Onvif.Open.Core.Abstract.Interface.Plugin;
+using Onvif.Open.Core.Analytics;
 using Onvif.Open.Core.Events;
 using Onvif.Open.Core.Plugin;
 using Onvif.Open.Core.Recording;
@@ -35,6 +36,7 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
             _segmentObserver = Plugin as ISegmentObserver;
             _eventObserver = Plugin as IPluginEventObserver;
             _cameraEventObserver = Plugin as ICameraEventObserver;
+            _analyticsObserver = Plugin as IAnalyticsObserver;
 
             _frames = Channel.CreateBounded<CameraFrame>(
                 new BoundedChannelOptions(frameQueueCapacity) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true },
@@ -57,6 +59,7 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
         private readonly ISegmentObserver _segmentObserver;
         private readonly IPluginEventObserver _eventObserver;
         private readonly ICameraEventObserver _cameraEventObserver;
+        private readonly IAnalyticsObserver _analyticsObserver;
         private readonly Channel<CameraFrame> _frames;
         private readonly Channel<Func<CancellationToken, Task>> _notifications;
         private readonly CancellationTokenSource _abort = new CancellationTokenSource();
@@ -204,6 +207,14 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
             }
         }
 
+        public void OnAnalytics(AnalyticsFrame frame)
+        {
+            if (_analyticsObserver != null && IsAssigned(frame.CameraId))
+            {
+                Enqueue(ct => _analyticsObserver.OnAnalyticsAsync(frame, ct));
+            }
+        }
+
         public void OnPluginEvent(PluginEvent pluginEvent)
         {
             // Plugins never receive their own events, and only events of cameras assigned to them.
@@ -230,6 +241,7 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
             if (_segmentObserver != null) capabilities.Add(nameof(ISegmentObserver));
             if (_eventObserver != null) capabilities.Add(nameof(IPluginEventObserver));
             if (_cameraEventObserver != null) capabilities.Add(nameof(ICameraEventObserver));
+            if (_analyticsObserver != null) capabilities.Add(nameof(IAnalyticsObserver));
 
             lock (_sync)
             {

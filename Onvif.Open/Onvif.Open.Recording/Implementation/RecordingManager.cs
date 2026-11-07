@@ -10,6 +10,7 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Onvif.Open.Core.Abstract.Interface.Camera;
+using Onvif.Open.Core.Analytics;
 using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Core.Abstract.Interface.Streaming;
 using Onvif.Open.Core.Events;
@@ -106,6 +107,8 @@ namespace Onvif.Open.Recording.Implementation
 
         public event EventHandler<CameraEvent> CameraEventReceived;
 
+        public event EventHandler<AnalyticsFrame> AnalyticsReceived;
+
         #endregion
 
         #region Public Methods
@@ -130,7 +133,8 @@ namespace Onvif.Open.Recording.Implementation
                 cameraId,
                 ct => media.StartLiveStreamAsync(options.ProfileToken, options.Transport, ct),
                 options,
-                events == null ? (Func<CancellationToken, IAsyncEnumerable<CameraEvent>>)null : ct => events.ReadEventsAsync(ct));
+                events == null ? (Func<CancellationToken, IAsyncEnumerable<CameraEvent>>)null : ct => events.ReadEventsAsync(ct),
+                options.UsesAnalytics ? ct => ReadAnalyticsAsync(media, options.AnalyticsProfileToken, options.Transport, ct) : (Func<CancellationToken, IAsyncEnumerable<AnalyticsFrame>>)null);
         }
 
         public void AddCamera(string cameraId, Func<CancellationToken, Task<ILiveVideoStream>> streamFactory, IRotationPolicy rotationPolicy = null)
@@ -138,7 +142,7 @@ namespace Onvif.Open.Recording.Implementation
             AddCamera(cameraId, streamFactory, new CameraRecordingOptions { RotationPolicy = rotationPolicy });
         }
 
-        public void AddCamera(string cameraId, Func<CancellationToken, Task<ILiveVideoStream>> streamFactory, CameraRecordingOptions options, Func<CancellationToken, IAsyncEnumerable<CameraEvent>> eventSource = null)
+        public void AddCamera(string cameraId, Func<CancellationToken, Task<ILiveVideoStream>> streamFactory, CameraRecordingOptions options, Func<CancellationToken, IAsyncEnumerable<CameraEvent>> eventSource = null, Func<CancellationToken, IAsyncEnumerable<AnalyticsFrame>> analyticsSource = null)
         {
             CameraIdentifier.Require(cameraId);
 
@@ -163,7 +167,9 @@ namespace Onvif.Open.Recording.Implementation
                 change => CameraStateChanged?.Invoke(this, change),
                 options,
                 eventSource,
-                cameraEvent => CameraEventReceived?.Invoke(this, cameraEvent));
+                cameraEvent => CameraEventReceived?.Invoke(this, cameraEvent),
+                analyticsSource,
+                frame => AnalyticsReceived?.Invoke(this, frame));
 
             if (!_recorders.TryAdd(cameraId, recorder))
             {
@@ -388,6 +394,17 @@ namespace Onvif.Open.Recording.Implementation
             }
 
             return recorder;
+        }
+
+        private static async IAsyncEnumerable<AnalyticsFrame> ReadAnalyticsAsync(ICameraMedia media, string profileToken, StreamTransport transport, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            await using (var stream = await media.StartAnalyticsStreamAsync(profileToken, transport, cancellationToken).ConfigureAwait(false))
+            {
+                await foreach (var frame in stream.ReadFramesAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    yield return frame;
+                }
+            }
         }
 
         private RecordingSegment Find(RecordingSegment segment)

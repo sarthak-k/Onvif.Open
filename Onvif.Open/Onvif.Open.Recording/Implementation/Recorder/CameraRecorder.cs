@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Core.Abstract.Interface.Streaming;
+using Onvif.Open.Core.Analytics;
 using Onvif.Open.Core.Events;
 using Onvif.Open.Core.Plugin;
 using Onvif.Open.Core.Recording;
@@ -41,7 +42,9 @@ namespace Onvif.Open.Recording.Implementation.Recorder
             Action<CameraStateChange> onStateChanged = null,
             CameraRecordingOptions recordingOptions = null,
             Func<CancellationToken, IAsyncEnumerable<CameraEvent>> eventSource = null,
-            Action<CameraEvent> onEvent = null)
+            Action<CameraEvent> onEvent = null,
+            Func<CancellationToken, IAsyncEnumerable<AnalyticsFrame>> analyticsSource = null,
+            Action<AnalyticsFrame> onAnalytics = null)
         {
             recordingOptions = recordingOptions ?? new CameraRecordingOptions();
             _mode = recordingOptions.Mode;
@@ -58,6 +61,19 @@ namespace Onvif.Open.Recording.Implementation.Recorder
                     timeProvider,
                     logger,
                     onEvent);
+            }
+
+            if (analyticsSource != null)
+            {
+                _analyticsMonitor = new AnalyticsMonitor(
+                    cameraId,
+                    analyticsSource,
+                    recordingOptions.AnalyticsTriggers.ToList(),
+                    recordingOptions.AnalyticsMinLikelihood,
+                    _mode == RecordingMode.Triggered ? _trigger : null,
+                    timeProvider,
+                    logger,
+                    onAnalytics);
             }
 
             _onFrame = onFrame;
@@ -96,10 +112,12 @@ namespace Onvif.Open.Recording.Implementation.Recorder
         private readonly RecordingTrigger _trigger;
         private readonly PreRollBuffer _preRoll;
         private readonly CameraEventMonitor _eventMonitor;
+        private readonly AnalyticsMonitor _analyticsMonitor;
 
         private CancellationTokenSource _stop;
         private Task _run = Task.CompletedTask;
         private Task _events = Task.CompletedTask;
+        private Task _analytics = Task.CompletedTask;
 
         private Stream _segmentStream;
         private ISegmentMuxer _muxer;
@@ -145,6 +163,11 @@ namespace Onvif.Open.Recording.Implementation.Recorder
                 {
                     _events = Task.Run(() => _eventMonitor.RunAsync(token));
                 }
+
+                if (_analyticsMonitor != null)
+                {
+                    _analytics = Task.Run(() => _analyticsMonitor.RunAsync(token));
+                }
             }
         }
 
@@ -159,12 +182,14 @@ namespace Onvif.Open.Recording.Implementation.Recorder
             CancellationTokenSource stop;
             Task run;
             Task events;
+            Task analytics;
 
             lock (_sync)
             {
                 stop = _stop;
                 run = _run;
                 events = _events;
+                analytics = _analytics;
                 _stop = null;
             }
 
@@ -174,7 +199,7 @@ namespace Onvif.Open.Recording.Implementation.Recorder
             }
 
             stop.Cancel();
-            await Task.WhenAll(run, events).ConfigureAwait(false);
+            await Task.WhenAll(run, events, analytics).ConfigureAwait(false);
             stop.Dispose();
         }
 

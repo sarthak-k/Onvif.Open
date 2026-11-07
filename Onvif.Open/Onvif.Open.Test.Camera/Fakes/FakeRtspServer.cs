@@ -56,6 +56,9 @@ namespace Onvif.Open.Test.Camera.Fakes
 
         /// <summary>Closes the connection after sending the packets, like a device at the end of a recording.</summary>
         public bool CloseAfterPackets { get; set; }
+
+        /// <summary>Adds an ONVIF metadata track (payload type 107) to the session description.</summary>
+        public bool IncludeMetadataTrack { get; set; }
         /// <summary>Sends UDP packets in reverse order inside each pair, to exercise re-ordering.</summary>
         public bool ReorderUdpPackets { get; set; }
 
@@ -77,7 +80,8 @@ namespace Onvif.Open.Test.Camera.Fakes
             $"a=fmtp:96 packetization-mode=1;profile-level-id=42001F;sprop-parameter-sets={Convert.ToBase64String(Sps)},{Convert.ToBase64String(Pps)}\r\n" +
             "a=control:trackID=1\r\n" +
             "m=audio 0 RTP/AVP 0\r\n" +
-            "a=control:trackID=2\r\n";
+            "a=control:trackID=2\r\n" +
+            (IncludeMetadataTrack ? "m=application 0 RTP/AVP 107\r\na=rtpmap:107 vnd.onvif.metadata/90000\r\na=control:trackID=3\r\n" : string.Empty);
 
         private async Task ServeAsync()
         {

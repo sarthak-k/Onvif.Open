@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using Onvif.Open.Core.Abstract.Interface.Analytics;
 using Onvif.Open.Core.Abstract.Interface.Camera;
 using Onvif.Open.Core.Abstract.Interface.Device;
 using Onvif.Open.Core.Abstract.Interface.Media;
@@ -59,6 +60,33 @@ namespace Onvif.Open.Camera.Implementation
         public Task<ILiveVideoStream> StartLiveStreamAsync(string profileToken = null, StreamTransport transport = StreamTransport.Rtsp, CancellationToken cancellationToken = default)
         {
             return _clock.RunAsync(ct => StartLiveStreamCoreAsync(profileToken, transport, ct), cancellationToken);
+        }
+
+        public Task<IAnalyticsStream> StartAnalyticsStreamAsync(string profileToken = null, StreamTransport transport = StreamTransport.Rtsp, CancellationToken cancellationToken = default)
+        {
+            return _clock.RunAsync(ct => StartAnalyticsStreamCoreAsync(profileToken, transport, ct), cancellationToken);
+        }
+
+        private async Task<IAnalyticsStream> StartAnalyticsStreamCoreAsync(string profileToken, StreamTransport transport, CancellationToken cancellationToken)
+        {
+            var mediaService = await GetMediaServiceAsync(cancellationToken).ConfigureAwait(false);
+
+            if (profileToken == null)
+            {
+                // The metadata track is part of a profile's stream only when the profile has a metadata configuration.
+                var profiles = await mediaService.GetProfilesAsync(cancellationToken).ConfigureAwait(false);
+                profileToken = profiles.FirstOrDefault(p => p.MetadataConfigurationToken != null)?.Token
+                               ?? throw new NotSupportedException("No media profile of the camera has a metadata configuration: enable analytics metadata on the camera (ONVIF Profile M).");
+            }
+
+            var streamUri = await mediaService.GetStreamUriAsync(profileToken, transport, cancellationToken).ConfigureAwait(false);
+
+            return await LiveVideoStreamBuilder.GetBuilder()
+                .SetStreamUri(streamUri)
+                .SetCamera(_camera)
+                .SetTransport(transport)
+                .BuildAnalyticsAsync(cancellationToken)
+                .ConfigureAwait(false);
         }
 
         private async Task<byte[]> GetSnapshotCoreAsync(string profileToken, CancellationToken cancellationToken)
