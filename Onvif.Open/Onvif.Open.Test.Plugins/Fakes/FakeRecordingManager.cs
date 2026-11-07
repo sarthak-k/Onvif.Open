@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Onvif.Open.Core.Abstract.Interface.Camera;
 using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Core.Abstract.Interface.Streaming;
+using Onvif.Open.Core.Events;
 using Onvif.Open.Core.Operations;
 using Onvif.Open.Core.Plugin;
 using Onvif.Open.Core.Recording;
@@ -34,6 +35,21 @@ namespace Onvif.Open.Test.Plugins.Fakes
         public event EventHandler<RecordingSegment> SegmentCompleted;
         public event EventHandler<CameraFrame> FrameReceived;
         public event EventHandler<CameraStateChange> CameraStateChanged;
+        public event EventHandler<CameraEvent> CameraEventReceived;
+
+        public void RaiseCameraEvent(string cameraId, string topic, string isMotion)
+        {
+            CameraEventReceived?.Invoke(this, new CameraEvent(cameraId, topic, DateTimeOffset.UtcNow, "Changed", null, null,
+                new Dictionary<string, string> { ["IsMotion"] = isMotion }));
+        }
+
+        public void AddCamera(string cameraId, ICamera camera, CameraRecordingOptions options) => throw new NotSupportedException();
+        public void AddCamera(string cameraId, Func<CancellationToken, Task<ILiveVideoStream>> streamFactory, CameraRecordingOptions options, Func<CancellationToken, IAsyncEnumerable<CameraEvent>> eventSource = null) => throw new NotSupportedException();
+
+        public void TriggerRecording(string cameraId, TimeSpan duration)
+        {
+            Calls.Enqueue($"trigger:{cameraId}:{duration.TotalSeconds}");
+        }
 
         public bool HasSubscribers => FrameReceived != null;
 

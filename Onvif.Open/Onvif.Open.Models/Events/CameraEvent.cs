@@ -115,6 +115,12 @@ namespace Onvif.Open.Core.Events
             return $"{TopicPath} {string.Join(", ", Data.Select(d => d.Key + "=" + d.Value))}".Trim();
         }
 
+        /// <summary>A copy attributed to <paramref name="cameraId"/>.</summary>
+        public CameraEvent WithCameraId(string cameraId)
+        {
+            return new CameraEvent(cameraId, Topic, UtcTime, PropertyOperation, Source, Key, Data);
+        }
+
         internal static string NormalizeTopic(string topic)
         {
             return string.Join("/", topic

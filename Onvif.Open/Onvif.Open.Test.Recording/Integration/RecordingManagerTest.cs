@@ -335,8 +335,123 @@ namespace Onvif.Open.Test.Recording.Integration
         }
 
         [Fact]
+        public async Task TriggeredModeShouldRecordPreRollTriggerAndPostRollOnly()
+        {
+            using (var temp = new TempDirectory())
+            {
+                var stream = new FakeLiveVideoStream();
+                var options = new CameraRecordingOptions
+                {
+                    Mode = RecordingMode.Triggered,
+                    PreRoll = TimeSpan.FromMilliseconds(100),
+                    PostRoll = TimeSpan.FromSeconds(1)
+                };
+
+                await using (var manager = Builder(temp).Build())
+                {
+                    manager.AddCamera("cam1", new FakeStreamSource().Add(stream).ConnectAsync, options);
+                    await manager.StartAsync();
+
+                    // Not triggered: the stream is consumed but nothing is written.
+                    stream.Push(10, gop: 5);
+                    await Eventually.True(() => manager.GetStatus()[0].State == RecordingState.Recording, "the camera is connected");
+                    await Task.Delay(300);
+                    Assert.Empty(manager.GetSegments());
+                    Assert.False(manager.GetStatus()[0].IsTriggered);
+
+                    manager.TriggerRecording("cam1", TimeSpan.Zero);
+                    Assert.True(manager.GetStatus()[0].IsTriggered);
+
+                    // The recording starts with the buffered pre-roll GOP (frames 5-9) and continues live (10-14).
+                    stream.Push(5, gop: 5);
+                    await Eventually.True(() => manager.GetStatus()[0].FramesRecorded == 10, "pre-roll and live frames are written");
+                    Assert.True(Assert.Single(manager.GetSegments()).IsActive);
+
+                    // After the post-roll the segment is closed and buffering resumes.
+                    await Task.Delay(1500);
+                    stream.Push(5, gop: 5);
+                    await Eventually.True(() => manager.GetStatus()[0].SegmentsCompleted == 1, "the triggered segment is closed");
+
+                    Assert.Equal(10, manager.GetStatus()[0].FramesRecorded);
+                    Assert.False(Assert.Single(manager.GetSegments()).IsActive);
+                    Assert.Equal(RecordingMode.Triggered, manager.GetStatus()[0].Mode);
+                }
+            }
+        }
+
+        [Fact]
+        public async Task CameraEventsShouldTriggerRecordingAndBeForwarded()
+        {
+            using (var temp = new TempDirectory())
+            {
+                var stream = new FakeLiveVideoStream();
+                var events = System.Threading.Channels.Channel.CreateUnbounded<Onvif.Open.Core.Events.CameraEvent>();
+                var forwarded = new ConcurrentQueue<Onvif.Open.Core.Events.CameraEvent>();
+                var options = new CameraRecordingOptions { Mode = RecordingMode.Triggered, PreRoll = TimeSpan.Zero, PostRoll = TimeSpan.Zero };
+                options.EventTriggers.Add("RuleEngine/CellMotionDetector/Motion");
+
+                Onvif.Open.Core.Events.CameraEvent Motion(bool on) => new Onvif.Open.Core.Events.CameraEvent(null, "tns1:RuleEngine/CellMotionDetector/Motion", DateTimeOffset.UtcNow, "Changed", null, null,
+                    new System.Collections.Generic.Dictionary<string, string> { ["IsMotion"] = on ? "true" : "false" });
+
+                await using (var manager = Builder(temp).Build())
+                {
+                    manager.CameraEventReceived += (_, e) => forwarded.Enqueue(e);
+                    manager.AddCamera("cam1", new FakeStreamSource().Add(stream).ConnectAsync, options, ct => events.Reader.ReadAllAsync(ct));
+                    await manager.StartAsync();
+
+                    stream.Push(5, gop: 5);
+                    await Eventually.True(() => manager.GetStatus()[0].State == RecordingState.Recording, "the camera is connected");
+
+                    await events.Writer.WriteAsync(Motion(true));
+                    await Eventually.True(() => manager.GetStatus()[0].IsTriggered, "motion triggered the recording");
+
+                    stream.Push(5, gop: 5);
+                    await Eventually.True(() => manager.GetStatus()[0].FramesRecorded == 5, "frames during motion are written");
+
+                    await events.Writer.WriteAsync(Motion(false));
+                    await Eventually.True(() => !manager.GetStatus()[0].IsTriggered, "motion ended");
+                    stream.Push(5, gop: 5);
+                    await Eventually.True(() => manager.GetStatus()[0].SegmentsCompleted == 1, "the segment is closed");
+
+                    Assert.Equal(5, manager.GetStatus()[0].FramesRecorded);
+                    Assert.Equal(2, forwarded.Count);
+                    Assert.All(forwarded, e => Assert.Equal("cam1", e.CameraId));
+                }
+            }
+        }
+
+        [Fact]
+        public async Task ContinuousModeShouldIgnoreTriggersButForwardEvents()
+        {
+            using (var temp = new TempDirectory())
+            {
+                var events = System.Threading.Channels.Channel.CreateUnbounded<Onvif.Open.Core.Events.CameraEvent>();
+                var forwarded = new ConcurrentQueue<Onvif.Open.Core.Events.CameraEvent>();
+
+                await using (var manager = Builder(temp).Build())
+                {
+                    manager.CameraEventReceived += (_, e) => forwarded.Enqueue(e);
+                    manager.AddCamera("cam1", new FakeStreamSource().Add(new FakeLiveVideoStream().Push(5)).ConnectAsync, new CameraRecordingOptions(), ct => events.Reader.ReadAllAsync(ct));
+                    await manager.StartAsync();
+
+                    await events.Writer.WriteAsync(new Onvif.Open.Core.Events.CameraEvent(null, "tns1:Device/HardwareFailure/StorageFailure", DateTimeOffset.UtcNow, null, null, null, null));
+                    await Eventually.True(() => manager.GetStatus()[0].FramesRecorded == 5 && forwarded.Count == 1, "frames are recorded and the event forwarded");
+
+                    manager.TriggerRecording("cam1", TimeSpan.FromSeconds(1));
+                    Assert.False(manager.GetStatus()[0].IsTriggered);
+                    Assert.Equal(RecordingMode.Continuous, manager.GetStatus()[0].Mode);
+                }
+            }
+        }
+
+        [Fact]
         public void InvalidRegistrationsShouldThrow()
         {
+            using (var temp0 = new TempDirectory())
+            {
+                Assert.Throws<KeyNotFoundException>(() => Builder(temp0).Build().TriggerRecording("unknown", TimeSpan.FromSeconds(1)));
+            }
+
             using (var temp = new TempDirectory())
             {
                 var manager = Builder(temp).Build();
@@ -365,7 +480,16 @@ namespace Onvif.Open.Test.Recording.Integration
             public ICameraInformation GetCameraInformation() => throw new NotSupportedException();
             public ICameraMedia InitializeMedia() => Media;
             public TimeSpan SynchronizeClock() => TimeSpan.Zero;
-            public Onvif.Open.Core.Abstract.Interface.Events.ICameraEvents InitializeEvents() => throw new NotSupportedException();
+            public Onvif.Open.Core.Abstract.Interface.Events.ICameraEvents InitializeEvents() => new NoEvents();
+
+            private sealed class NoEvents : Onvif.Open.Core.Abstract.Interface.Events.ICameraEvents
+            {
+                public async System.Collections.Generic.IAsyncEnumerable<Onvif.Open.Core.Events.CameraEvent> ReadEventsAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+                {
+                    await Task.Delay(Timeout.Infinite, cancellationToken).ContinueWith(_ => { });
+                    yield break;
+                }
+            }
         }
 
         private sealed class StubMedia : ICameraMedia

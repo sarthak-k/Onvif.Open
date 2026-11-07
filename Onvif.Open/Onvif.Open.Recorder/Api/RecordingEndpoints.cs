@@ -54,6 +54,36 @@ namespace Onvif.Open.Recorder.Api
                 return Results.Ok(ToDto(Find(manager, id)));
             });
 
+            api.MapPost("/cameras/{id}/trigger", (string id, IRecordingManager manager, double? seconds) =>
+            {
+                var status = Find(manager, id);
+                if (status == null)
+                {
+                    return Results.NotFound();
+                }
+
+                if (status.Mode != RecordingMode.Triggered)
+                {
+                    return Results.Conflict(new { error = "The camera records continuously; triggers only apply to triggered mode." });
+                }
+
+                manager.TriggerRecording(status.CameraId, TimeSpan.FromSeconds(Math.Clamp(seconds ?? 30, 0, 3600)));
+                return Results.Accepted($"/api/cameras/{status.CameraId}", ToDto(Find(manager, id)));
+            });
+
+            api.MapGet("/camera-events", (Onvif.Open.Recorder.Hosting.CameraEventStore store, string cameraId, string topic, int? limit) =>
+                store.Query(cameraId, topic, Math.Clamp(limit ?? 100, 1, 1000)).Select(e => new
+                {
+                    e.CameraId,
+                    e.Topic,
+                    e.TopicPath,
+                    e.UtcTime,
+                    e.PropertyOperation,
+                    state = e.GetState(),
+                    e.Source,
+                    e.Data
+                }));
+
             api.MapGet("/cameras/{id}/segments", (string id, IRecordingManager manager, DateTimeOffset? from, DateTimeOffset? to) =>
                 manager.GetSegments(id)
                     .Where(s => (!from.HasValue || s.LastWriteTime >= from) && (!to.HasValue || s.StartTime <= to))
@@ -138,6 +168,9 @@ namespace Onvif.Open.Recorder.Api
             {
                 cameraId = status.CameraId,
                 state = status.State.ToString(),
+                mode = status.Mode.ToString(),
+                status.IsTriggered,
+                status.LastTriggeredAt,
                 codec = status.Codec.ToString(),
                 transport = status.Transport?.ToString(),
                 streamUri = Redact(status.StreamUri),

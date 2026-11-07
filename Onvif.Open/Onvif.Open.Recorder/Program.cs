@@ -25,6 +25,7 @@ builder.Services.AddSingleton(sp =>
 builder.Services.AddSingleton(sp =>
     RecordingConfiguration.Create(sp.GetRequiredService<RecorderOptions>(), sp.GetRequiredService<ILoggerFactory>()));
 builder.Services.AddSingleton<IRecordingManager>(sp => sp.GetRequiredService<ConfiguredRecording>().Manager);
+builder.Services.AddSingleton(sp => new CameraEventStore(sp.GetRequiredService<IRecordingManager>()));
 builder.Services.AddSingleton(sp => DiscoveryConfiguration.CreateDiscovery(
     sp.GetRequiredService<IConfiguration>().GetSection(DiscoveryOptions.SectionName).Get<DiscoveryOptions>()));
 builder.Services.AddSingleton<IPluginHost>(sp => PluginConfiguration.CreateHost(
@@ -33,6 +34,9 @@ builder.Services.AddSingleton<IPluginHost>(sp => PluginConfiguration.CreateHost(
     sp.GetRequiredService<RecorderOptions>(),
     sp.GetRequiredService<ConfiguredRecording>(),
     sp.GetRequiredService<ILoggerFactory>()));
+
+// Created eagerly so it sees events from the start.
+builder.Services.AddHostedService(sp => new EagerSingleton<CameraEventStore>(sp));
 
 // Order matters: plugins start before and stop after recording.
 builder.Services.AddHostedService<PluginHostedService>();

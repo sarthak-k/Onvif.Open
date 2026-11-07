@@ -92,6 +92,26 @@ namespace Onvif.Open.Test.Recording.Unit
         }
 
         [Fact]
+        public void TriggeredCamerasShouldDefaultToCommonMotionTopics()
+        {
+            var triggered = RecordingConfiguration.ToRecordingOptions(new CameraOptions { Id = "cam", Mode = RecordingMode.Triggered, PreRoll = TimeSpan.FromSeconds(3) });
+            var custom = RecordingConfiguration.ToRecordingOptions(new CameraOptions
+            {
+                Id = "cam",
+                Mode = RecordingMode.Triggered,
+                Events = new CameraEventOptions { TriggerTopics = new List<string> { "Device/Trigger/DigitalInput" } }
+            });
+            var continuous = RecordingConfiguration.ToRecordingOptions(new CameraOptions { Id = "cam", Events = new CameraEventOptions { Enabled = false } });
+
+            Assert.Equal(CameraRecordingOptions.CommonMotionTopics, triggered.EventTriggers);
+            Assert.Equal(TimeSpan.FromSeconds(3), triggered.PreRoll);
+            Assert.Equal(new[] { "Device/Trigger/DigitalInput" }, custom.EventTriggers);
+            Assert.Empty(continuous.EventTriggers);
+            Assert.False(continuous.SubscribeToEvents);
+            Assert.Equal(RecordingMode.Continuous, continuous.Mode);
+        }
+
+        [Fact]
         public void StreamUriCredentialsShouldBeRedacted()
         {
             Assert.Equal("rtsp://192.168.1.3/stream", RecordingEndpoints.Redact(new Uri("rtsp://admin:secret@192.168.1.3/stream")));
