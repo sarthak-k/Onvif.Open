@@ -365,6 +365,7 @@ namespace Onvif.Open.Test.Recording.Integration
             public ICameraInformation GetCameraInformation() => throw new NotSupportedException();
             public ICameraMedia InitializeMedia() => Media;
             public TimeSpan SynchronizeClock() => TimeSpan.Zero;
+            public Onvif.Open.Core.Abstract.Interface.Events.ICameraEvents InitializeEvents() => throw new NotSupportedException();
         }
 
         private sealed class StubMedia : ICameraMedia

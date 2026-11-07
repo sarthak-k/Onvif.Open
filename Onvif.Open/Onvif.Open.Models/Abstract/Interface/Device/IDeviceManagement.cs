@@ -31,6 +31,11 @@ namespace Onvif.Open.Core.Abstract.Interface.Device
         System.Uri GetMediaServiceUri();
 
         /// <summary>
+        /// Address of the device's Events service (from GetCapabilities). Falls back to the device service address.
+        /// </summary>
+        System.Uri GetEventServiceUri();
+
+        /// <summary>
         /// Device clock minus local clock, measured with an unauthenticated GetSystemDateAndTime
         /// (allowed by the ONVIF Core Specification precisely so clients can synchronize).
         /// Null when the device does not report its UTC time.

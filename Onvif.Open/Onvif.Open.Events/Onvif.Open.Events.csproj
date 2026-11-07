@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Onvif.Open.Events</RootNamespace>
+    <AssemblyName>Onvif.Open.Events</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Onvif.Open.Models\Onvif.Open.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Onvif.Open.Test.Camera" />
+  </ItemGroup>
+
+</Project>

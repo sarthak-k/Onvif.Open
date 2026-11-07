@@ -26,6 +26,8 @@ namespace Onvif.Open.Camera.Implementation
 
         private ICameraMedia CameraMedia { get; set; }
 
+        private Core.Abstract.Interface.Events.ICameraEvents CameraEvents { get; set; }
+
         private ClockSynchronizer _clock;
         private readonly object _clockSync = new object();
         
@@ -50,6 +52,12 @@ namespace Onvif.Open.Camera.Implementation
             return CameraMedia ??
                    (CameraMedia =
                        CameraMediaBuilder.GetBuilder().SetCamera(this).SetDeviceManagement(Initialize()).SetClockSynchronizer(GetClock()).Build());
+        }
+
+        public Core.Abstract.Interface.Events.ICameraEvents InitializeEvents()
+        {
+            return CameraEvents ??
+                   (CameraEvents = Implementation.CameraEvents.CreateInstance(this, Initialize().GetDeviceManagement(), GetClock()));
         }
 
         public TimeSpan SynchronizeClock()
