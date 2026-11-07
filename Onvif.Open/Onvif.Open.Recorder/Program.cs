@@ -55,6 +55,7 @@ app.MapDiscoveryApi();
 app.MapPtzApi();
 app.MapImagingApi();
 app.MapDeviceIoApi();
+app.MapDeviceRecordingsApi();
 app.Run();
 
 public partial class Program

@@ -14,6 +14,7 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using Onvif.Open.Core.Abstract.Interface.Streaming;
 using Onvif.Open.Core.Operations;
+using Onvif.Open.Core.Replay;
 using Onvif.Open.Core.Streaming;
 using Onvif.Open.Streaming.Implementation.Authentication;
 using Onvif.Open.Streaming.Implementation.Depacketizer;
@@ -31,8 +32,10 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
     {
         #region Constructor
 
-        private RtspLiveVideoStream(Uri streamUri, NetworkCredential credential, StreamTransport transport, TimeSpan timeout, int frameBufferCapacity)
+        private RtspLiveVideoStream(Uri streamUri, NetworkCredential credential, StreamTransport transport, TimeSpan timeout, int frameBufferCapacity, DateTimeOffset? replayFrom, ReplayOptions replay)
         {
+            _replayFrom = replayFrom;
+            _replay = replay;
             Transport = transport;
             StreamUri = streamUri;
             _requestUri = WithoutUserInfo(streamUri);
@@ -41,7 +44,8 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
             _frames = Channel.CreateBounded<VideoFrame>(new BoundedChannelOptions(frameBufferCapacity)
             {
                 // Live video: never block the network reader, drop the oldest frames for slow consumers.
-                FullMode = BoundedChannelFullMode.DropOldest,
+                // Replay: every frame matters (export), so wait for the consumer; TCP flow control slows the device down.
+                FullMode = replay == null ? BoundedChannelFullMode.DropOldest : BoundedChannelFullMode.Wait,
                 SingleReader = false,
                 SingleWriter = true
             });
@@ -59,6 +63,13 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
         private readonly TimeSpan _timeout;
         private readonly Channel<VideoFrame> _frames;
         private readonly CancellationTokenSource _lifetime = new CancellationTokenSource();
+        private readonly DateTimeOffset? _replayFrom;
+        private readonly ReplayOptions _replay;
+
+        // RTP timestamp -> capture time (ONVIF replay extension) of recent packets, to stamp the frames.
+        private readonly Dictionary<uint, DateTimeOffset> _captureTimes = new Dictionary<uint, DateTimeOffset>();
+        private readonly Queue<uint> _captureTimeOrder = new Queue<uint>();
+        private const int MaxCaptureTimes = 64;
 
         private RtspConnection _connection;
         private IRtspAuthenticator _authenticator;
@@ -85,9 +96,27 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
 
         #region Public Methods
 
-        internal static async Task<ILiveVideoStream> StartAsync(Uri streamUri, NetworkCredential credential, StreamTransport transport, TimeSpan timeout, int frameBufferCapacity, CancellationToken cancellationToken)
+        /// <summary>
+        /// Starts live video, or, with <paramref name="replayFrom"/>, the replay of a recording stored on the device
+        /// (ONVIF Streaming Specification: "Require: onvif-replay", absolute "clock" ranges, RTP over RTSP/TCP).
+        /// </summary>
+        internal static async Task<ILiveVideoStream> StartAsync(Uri streamUri, NetworkCredential credential, StreamTransport transport, TimeSpan timeout, int frameBufferCapacity, CancellationToken cancellationToken, DateTimeOffset? replayFrom = null, ReplayOptions replay = null)
         {
-            var stream = new RtspLiveVideoStream(streamUri, credential ?? CredentialFromUri(streamUri), transport, timeout, frameBufferCapacity);
+            if (replayFrom.HasValue)
+            {
+                replay = (replay ?? new ReplayOptions()).Validate(replayFrom.Value);
+
+                if (transport != StreamTransport.Rtsp)
+                {
+                    throw new NotSupportedException("Replay is only supported with StreamTransport.Rtsp (RTP over the RTSP connection).");
+                }
+            }
+            else
+            {
+                replay = null;
+            }
+
+            var stream = new RtspLiveVideoStream(streamUri, credential ?? CredentialFromUri(streamUri), transport, timeout, frameBufferCapacity, replayFrom, replay);
 
             try
             {
@@ -193,7 +222,7 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
             ParseSession(setup.GetHeader("Session"));
             _transport.Configure(setup.GetHeader("Transport"));
 
-            await RequestAsync("PLAY", _playUri, new[] { Header("Range", "npt=0.000-") }, cancellationToken).ConfigureAwait(false);
+            await RequestAsync("PLAY", _playUri, PlayHeaders(), cancellationToken).ConfigureAwait(false);
 
             _readLoop = Task.Run(() => ReadLoopAsync(_lifetime.Token));
             _keepAlive = Task.Run(() => KeepAliveLoopAsync(_lifetime.Token));
@@ -274,41 +303,123 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
                 all.Add(Header("Session", _session));
             }
 
+            if (_replay != null)
+            {
+                all.Add(Header("Require", "onvif-replay"));
+            }
+
             return all;
+        }
+
+        private IEnumerable<KeyValuePair<string, string>> PlayHeaders()
+        {
+            if (_replay == null)
+            {
+                return new[] { Header("Range", "npt=0.000-") };
+            }
+
+            var range = "clock=" + ClockTime(_replayFrom.Value) + "-" + (_replay.To.HasValue ? ClockTime(_replay.To.Value) : string.Empty);
+            var headers = new List<KeyValuePair<string, string>> { Header("Range", range) };
+
+            if (_replay.RealTime)
+            {
+                if (Math.Abs(_replay.Speed - 1.0) > 1e-9)
+                {
+                    headers.Add(Header("Scale", _replay.Speed.ToString("0.0##", CultureInfo.InvariantCulture)));
+                }
+            }
+            else
+            {
+                headers.Add(Header("Rate-Control", "no"));
+            }
+
+            return headers;
+        }
+
+        private static string ClockTime(DateTimeOffset time)
+        {
+            return time.UtcDateTime.ToString("yyyyMMdd'T'HHmmss.fff'Z'", CultureInfo.InvariantCulture);
+        }
+
+        private VideoFrame Stamp(VideoFrame frame)
+        {
+            return _captureTimes.TryGetValue(frame.RtpTimestamp, out var captureTime)
+                ? new VideoFrame(frame.Codec, frame.Data, frame.IsKeyFrame, frame.RtpTimestamp, frame.Timestamp, captureTime)
+                : frame;
+        }
+
+        private void RememberCaptureTime(in RtpPacket packet)
+        {
+            if (!packet.CaptureTime.HasValue || _captureTimes.ContainsKey(packet.Timestamp))
+            {
+                return;
+            }
+
+            _captureTimes[packet.Timestamp] = packet.CaptureTime.Value;
+            _captureTimeOrder.Enqueue(packet.Timestamp);
+
+            while (_captureTimeOrder.Count > MaxCaptureTimes)
+            {
+                _captureTimes.Remove(_captureTimeOrder.Dequeue());
+            }
         }
 
         private async Task ReadLoopAsync(CancellationToken cancellationToken)
         {
             var completed = new List<VideoFrame>();
 
-            try
+            // Replay ends at the requested time (or when the device closes the connection at the end of the recording).
+            using (var end = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
             {
-                await _transport.ReceiveAsync(_connection, data =>
+                try
                 {
-                    if (!RtpPacket.TryParse(data, out var packet))
+                    await _transport.ReceiveAsync(_connection, async data =>
                     {
-                        return;
-                    }
+                        if (!RtpPacket.TryParse(data, out var packet))
+                        {
+                            return;
+                        }
 
-                    _depacketizer.Process(packet, completed);
+                        RememberCaptureTime(packet);
+                        _depacketizer.Process(packet, completed);
 
-                    foreach (var frame in completed)
-                    {
-                        _frames.Writer.TryWrite(frame);
-                    }
+                        foreach (var frame in completed)
+                        {
+                            var stamped = Stamp(frame);
 
-                    completed.Clear();
-                }, cancellationToken).ConfigureAwait(false);
+                            if (_replay == null)
+                            {
+                                _frames.Writer.TryWrite(stamped);
+                                continue;
+                            }
 
-                _frames.Writer.TryComplete();
-            }
-            catch (Exception) when (cancellationToken.IsCancellationRequested)
-            {
-                _frames.Writer.TryComplete();
-            }
-            catch (Exception ex)
-            {
-                _frames.Writer.TryComplete(ex);
+                            if (_replay.To.HasValue && stamped.CaptureTime > _replay.To.Value)
+                            {
+                                end.Cancel();
+                                break;
+                            }
+
+                            await _frames.Writer.WriteAsync(stamped, end.Token).ConfigureAwait(false);
+                        }
+
+                        completed.Clear();
+                    }, end.Token).ConfigureAwait(false);
+
+                    _frames.Writer.TryComplete();
+                }
+                catch (Exception) when (end.IsCancellationRequested)
+                {
+                    _frames.Writer.TryComplete();
+                }
+                catch (IOException) when (_replay != null)
+                {
+                    // The device closed the connection: the recording has ended.
+                    _frames.Writer.TryComplete();
+                }
+                catch (Exception ex)
+                {
+                    _frames.Writer.TryComplete(ex);
+                }
             }
         }
 

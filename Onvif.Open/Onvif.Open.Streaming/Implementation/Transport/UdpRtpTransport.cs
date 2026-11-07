@@ -80,7 +80,7 @@ namespace Onvif.Open.Streaming.Implementation.Transport
             }
         }
 
-        public async Task ReceiveAsync(RtspConnection connection, Action<byte[]> onRtpPacket, CancellationToken cancellationToken)
+        public async Task ReceiveAsync(RtspConnection connection, Func<byte[], ValueTask> onRtpPacket, CancellationToken cancellationToken)
         {
             await OpenNatBindingsAsync(cancellationToken).ConfigureAwait(false);
 
@@ -211,7 +211,7 @@ namespace Onvif.Open.Streaming.Implementation.Transport
             }
         }
 
-        private async Task ReceiveRtpAsync(Action<byte[]> onRtpPacket, CancellationToken cancellationToken)
+        private async Task ReceiveRtpAsync(Func<byte[], ValueTask> onRtpPacket, CancellationToken cancellationToken)
         {
             var ready = new List<byte[]>();
 
@@ -229,7 +229,7 @@ namespace Onvif.Open.Streaming.Implementation.Transport
 
                 foreach (var packet in ready)
                 {
-                    onRtpPacket(packet);
+                    await onRtpPacket(packet).ConfigureAwait(false);
                 }
 
                 ready.Clear();

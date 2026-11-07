@@ -57,6 +57,16 @@ namespace Onvif.Open.Test.Camera.Fakes
 
         public bool HasImaging { get; set; } = true;
 
+        public Uri SearchServiceUri => new Uri($"http://127.0.0.1:{Port}/onvif/search_service");
+        public Uri ReplayServiceUri => new Uri($"http://127.0.0.1:{Port}/onvif/replay_service");
+        public bool HasProfileG { get; set; } = true;
+
+        /// <summary>Returned by GetReplayUri (e.g. a FakeRtspServer).</summary>
+        public Uri ReplayRtspUri { get; set; }
+
+        public int EndSearches { get; private set; }
+        public string LastReplayRecording { get; private set; }
+
         public Uri DeviceIoServiceUri => new Uri($"http://127.0.0.1:{Port}/onvif/deviceio_service");
         public bool HasDeviceIo { get; set; } = true;
 
@@ -511,6 +521,69 @@ namespace Onvif.Open.Test.Camera.Fakes
             return null;
         }
 
+        private string ProfileGResponse(string request)
+        {
+            string Value(string element) =>
+                System.Text.RegularExpressions.Regex.Match(request, $"<(?:\\w+:)?{element}(?:\\s[^>]*)?>([^<]*)</").Groups[1].Value;
+
+            const string Search = "xmlns:tse=\"http://www.onvif.org/ver10/search/wsdl\"";
+
+            string Recording(string token, string name, string from, string to, string status) =>
+                $"<tt:RecordingToken>{token}</tt:RecordingToken>" +
+                $"<tt:Source><tt:SourceId>http://127.0.0.1/source/{name}</tt:SourceId><tt:Name>{name}</tt:Name><tt:Location>Lobby</tt:Location><tt:Description>Front</tt:Description><tt:Address>http://127.0.0.1</tt:Address></tt:Source>" +
+                $"<tt:EarliestRecording>{from}</tt:EarliestRecording><tt:LatestRecording>{to}</tt:LatestRecording><tt:Content>SD card</tt:Content>" +
+                $"<tt:Track><tt:TrackToken>VIDEO001</tt:TrackToken><tt:TrackType>Video</tt:TrackType><tt:Description>Video</tt:Description><tt:DataFrom>{from}</tt:DataFrom><tt:DataTo>{to}</tt:DataTo></tt:Track>" +
+                $"<tt:Track><tt:TrackToken>AUDIO001</tt:TrackToken><tt:TrackType>Audio</tt:TrackType><tt:Description>Audio</tt:Description><tt:DataFrom>{from}</tt:DataFrom><tt:DataTo>{to}</tt:DataTo></tt:Track>" +
+                $"<tt:RecordingStatus>{status}</tt:RecordingStatus>";
+
+            if (request.Contains("http://www.onvif.org/ver10/search/wsdl", StringComparison.Ordinal))
+            {
+                if (request.Contains("GetRecordingSummary", StringComparison.Ordinal))
+                {
+                    return $"<tse:GetRecordingSummaryResponse {Search}><tse:Summary><tt:DataFrom>2026-11-01T00:00:00Z</tt:DataFrom><tt:DataUntil>2026-11-07T12:00:00Z</tt:DataUntil><tt:NumberRecordings>2</tt:NumberRecordings></tse:Summary></tse:GetRecordingSummaryResponse>";
+                }
+
+                if (request.Contains("FindRecordings", StringComparison.Ordinal))
+                {
+                    _searchPage = 0;
+                    return $"<tse:FindRecordingsResponse {Search}><tse:SearchToken>Search_1</tse:SearchToken></tse:FindRecordingsResponse>";
+                }
+
+                if (request.Contains("GetRecordingSearchResults", StringComparison.Ordinal))
+                {
+                    // Two pages: the search is still running after the first one.
+                    var page = ++_searchPage;
+                    var results = page == 1
+                        ? $"<tt:SearchState>Searching</tt:SearchState><tt:RecordingInformation>{Recording("Rec_1", "Lobby", "2026-11-01T00:00:00Z", "2026-11-07T12:00:00Z", "Recording")}</tt:RecordingInformation>"
+                        : $"<tt:SearchState>Completed</tt:SearchState><tt:RecordingInformation>{Recording("Rec_2", "Garage", "2026-11-05T08:00:00Z", "2026-11-05T09:30:00Z", "Stopped")}</tt:RecordingInformation>";
+                    return $"<tse:GetRecordingSearchResultsResponse {Search}><tse:ResultList>{results}</tse:ResultList></tse:GetRecordingSearchResultsResponse>";
+                }
+
+                if (request.Contains("EndSearch", StringComparison.Ordinal))
+                {
+                    EndSearches++;
+                    return $"<tse:EndSearchResponse {Search}><tse:Endpoint>2026-11-07T12:00:00Z</tse:Endpoint></tse:EndSearchResponse>";
+                }
+
+                if (request.Contains("GetRecordingInformation", StringComparison.Ordinal))
+                {
+                    return Value("RecordingToken") == "Rec_1"
+                        ? $"<tse:GetRecordingInformationResponse {Search}><tse:RecordingInformation>{Recording("Rec_1", "Lobby", "2026-11-01T00:00:00Z", "2026-11-07T12:00:00Z", "Recording")}</tse:RecordingInformation></tse:GetRecordingInformationResponse>"
+                        : "<s:Fault xmlns:ter=\"http://www.onvif.org/ver10/error\"><s:Code><s:Value>s:Sender</s:Value><s:Subcode><s:Value>ter:InvalidArgVal</s:Value><s:Subcode><s:Value>ter:NoRecording</s:Value></s:Subcode></s:Subcode></s:Code><s:Reason><s:Text xml:lang=\"en\">No such recording</s:Text></s:Reason></s:Fault>";
+                }
+            }
+
+            if (request.Contains("http://www.onvif.org/ver10/replay/wsdl", StringComparison.Ordinal) && request.Contains("GetReplayUri", StringComparison.Ordinal))
+            {
+                LastReplayRecording = Value("RecordingToken");
+                return $"<trp:GetReplayUriResponse xmlns:trp=\"http://www.onvif.org/ver10/replay/wsdl\"><trp:Uri>{ReplayRtspUri}</trp:Uri></trp:GetReplayUriResponse>";
+            }
+
+            return null;
+        }
+
+        private int _searchPage;
+
         private string ServicesResponse()
         {
             string Service(string ns, Uri address) =>
@@ -523,6 +596,7 @@ namespace Onvif.Open.Test.Camera.Fakes
                    Service("http://www.onvif.org/ver10/events/wsdl", EventServiceUri) +
                    (HasPtz ? Service("http://www.onvif.org/ver20/ptz/wsdl", PtzServiceUri) : string.Empty) +
                    (HasDeviceIo ? Service("http://www.onvif.org/ver10/deviceIO/wsdl", DeviceIoServiceUri) : string.Empty) +
+                   (HasProfileG ? Service("http://www.onvif.org/ver10/search/wsdl", SearchServiceUri) + Service("http://www.onvif.org/ver10/replay/wsdl", ReplayServiceUri) : string.Empty) +
                    "</tds:GetServicesResponse>";
         }
 
@@ -580,6 +654,12 @@ namespace Onvif.Open.Test.Camera.Fakes
                 return SupportsGetServices
                     ? ServicesResponse()
                     : "<s:Fault><s:Code><s:Value>s:Sender</s:Value></s:Code><s:Reason><s:Text xml:lang=\"en\">Action not supported</s:Text></s:Reason></s:Fault>";
+            }
+
+            var profileGResponse = ProfileGResponse(request);
+            if (profileGResponse != null)
+            {
+                return profileGResponse;
             }
 
             var deviceIoResponse = DeviceIoResponse(request);

@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Onvif.Open.Core.Abstract.Interface.Camera;
 using Onvif.Open.Core.Abstract.Interface.Streaming;
 using Onvif.Open.Core.Operations;
+using Onvif.Open.Core.Replay;
 using Onvif.Open.Streaming.Implementation.Rtsp;
 using Onvif.Open.Streaming.Interface;
 
@@ -43,6 +44,8 @@ namespace Onvif.Open.Streaming.Implementation.Builder
         private StreamTransport _transport = StreamTransport.Rtsp;
         private TimeSpan _timeout = DefaultTimeout;
         private int _frameBufferCapacity = DefaultFrameBufferCapacity;
+        private DateTimeOffset? _replayFrom;
+        private ReplayOptions _replay;
 
         #endregion
 
@@ -56,7 +59,7 @@ namespace Onvif.Open.Streaming.Implementation.Builder
                 return Task.FromException<ILiveVideoStream>(new InvalidOperationException("Live Video Stream Builder must have a stream URL to start streaming."));
             }
 
-            return RtspLiveVideoStream.StartAsync(_streamUri, _credential, _transport, _timeout, _frameBufferCapacity, cancellationToken);
+            return RtspLiveVideoStream.StartAsync(_streamUri, _credential, _transport, _timeout, _frameBufferCapacity, cancellationToken, _replayFrom, _replay);
         }
 
         public LiveVideoStreamBuilder SetStreamUri(Uri streamUri)
@@ -110,6 +113,17 @@ namespace Onvif.Open.Streaming.Implementation.Builder
             }
 
             _transport = transport;
+            return this;
+        }
+
+        /// <summary>
+        /// Plays a recording stored on the device from <paramref name="from"/> instead of live video
+        /// (ONVIF replay URI from the Replay service). Frames then carry their <see cref="Core.Streaming.VideoFrame.CaptureTime"/>.
+        /// </summary>
+        public LiveVideoStreamBuilder SetReplay(DateTimeOffset from, ReplayOptions options = null)
+        {
+            _replay = (options ?? new ReplayOptions()).Validate(from);
+            _replayFrom = from;
             return this;
         }
 

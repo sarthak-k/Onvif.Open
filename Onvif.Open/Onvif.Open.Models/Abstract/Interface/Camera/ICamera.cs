@@ -39,6 +39,9 @@ namespace Onvif.Open.Core.Abstract.Interface.Camera
         /// <summary>Relay outputs and digital inputs.</summary>
         DeviceIo.ICameraIo InitializeIo();
 
+        /// <summary>Recordings stored on the camera (ONVIF Profile G): find and replay them.</summary>
+        Replay.ICameraRecordings InitializeRecordings();
+
         /// <summary>
         /// Measures the device clock and stamps all further WS-Security tokens in device time.
         /// Media operations do this automatically (and again when the device rejects a token);

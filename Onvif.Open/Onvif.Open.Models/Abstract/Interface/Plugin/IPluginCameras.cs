@@ -58,6 +58,12 @@ namespace Onvif.Open.Core.Abstract.Interface.Plugin
         /// </summary>
         DeviceIo.ICameraIo GetIo(string cameraId);
 
+        /// <summary>
+        /// Recordings stored on the camera itself (SD card, ONVIF Profile G), e.g. to fetch footage from before the
+        /// recorder saw an incident. Throws <see cref="System.NotSupportedException"/> for cameras without ONVIF.
+        /// </summary>
+        Replay.ICameraRecordings GetDeviceRecordings(string cameraId);
+
         #endregion
     }
 }

@@ -11,6 +11,7 @@ using Onvif.Open.Core.Abstract.Interface.DeviceIo;
 using Onvif.Open.Core.Abstract.Interface.Imaging;
 using Onvif.Open.Core.Abstract.Interface.Ptz;
 using Onvif.Open.Core.Abstract.Interface.Recording;
+using Onvif.Open.Core.Abstract.Interface.Replay;
 using Onvif.Open.Core.Recording;
 
 namespace Onvif.Open.Plugins.Implementation.Runtime
@@ -22,8 +23,9 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
     {
         #region Constructor
 
-        public PluginCameras(IRecordingManager manager, IReadOnlyList<string> assigned, Func<string, CancellationToken, Task<byte[]>> snapshotProvider, Func<string, ICameraPtz> ptzProvider = null, Func<string, ICameraImaging> imagingProvider = null, Func<string, ICameraIo> ioProvider = null)
+        public PluginCameras(IRecordingManager manager, IReadOnlyList<string> assigned, Func<string, CancellationToken, Task<byte[]>> snapshotProvider, Func<string, ICameraPtz> ptzProvider = null, Func<string, ICameraImaging> imagingProvider = null, Func<string, ICameraIo> ioProvider = null, Func<string, ICameraRecordings> deviceRecordingsProvider = null)
         {
+            _deviceRecordingsProvider = deviceRecordingsProvider;
             _ioProvider = ioProvider;
             _ptzProvider = ptzProvider;
             _imagingProvider = imagingProvider;
@@ -42,6 +44,7 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
         private readonly Func<string, ICameraPtz> _ptzProvider;
         private readonly Func<string, ICameraImaging> _imagingProvider;
         private readonly Func<string, ICameraIo> _ioProvider;
+        private readonly Func<string, ICameraRecordings> _deviceRecordingsProvider;
 
         #endregion
 
@@ -117,6 +120,18 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
             }
 
             return _ioProvider(cameraId);
+        }
+
+        public ICameraRecordings GetDeviceRecordings(string cameraId)
+        {
+            Require(cameraId);
+
+            if (_deviceRecordingsProvider == null)
+            {
+                throw new NotSupportedException("Device recordings are not available in this host.");
+            }
+
+            return _deviceRecordingsProvider(cameraId);
         }
 
         public void TriggerRecording(string cameraId, TimeSpan duration)

@@ -50,6 +50,12 @@ namespace Onvif.Open.Test.Camera.Fakes
         public Uri StreamUri => new Uri($"rtsp://127.0.0.1:{Port}/stream");
         public List<byte[]> Packets { get; } = new List<byte[]>();
         public ConcurrentQueue<string> Requests { get; } = new ConcurrentQueue<string>();
+
+        /// <summary>Headers of every request, as "METHOD Header: value" lines.</summary>
+        public ConcurrentQueue<string> RequestHeaders { get; } = new ConcurrentQueue<string>();
+
+        /// <summary>Closes the connection after sending the packets, like a device at the end of a recording.</summary>
+        public bool CloseAfterPackets { get; set; }
         /// <summary>Sends UDP packets in reverse order inside each pair, to exercise re-ordering.</summary>
         public bool ReorderUdpPackets { get; set; }
 
@@ -105,6 +111,10 @@ namespace Onvif.Open.Test.Camera.Fakes
                     var method = parts[0];
                     var uri = parts[1];
                     Requests.Enqueue(method + " " + uri);
+                    foreach (var header in headers)
+                    {
+                        RequestHeaders.Enqueue($"{method} {header.Key}: {header.Value}");
+                    }
                     headers.TryGetValue("CSeq", out var cseq);
 
                     if (!IsAuthorized(method, uri, headers))
@@ -140,6 +150,12 @@ namespace Onvif.Open.Test.Camera.Fakes
                             {
                                 await WriteInterleavedAsync(stream, 0, packet).ConfigureAwait(false);
                             }
+
+                            if (CloseAfterPackets)
+                            {
+                                return;
+                            }
+
                             break;
                         case "TEARDOWN":
                             await WriteAsync(stream, $"RTSP/1.0 200 OK\r\nCSeq: {cseq}\r\n\r\n").ConfigureAwait(false);

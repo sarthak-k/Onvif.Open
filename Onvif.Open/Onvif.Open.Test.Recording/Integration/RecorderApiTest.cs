@@ -178,6 +178,14 @@ namespace Onvif.Open.Test.Recording.Integration
         }
 
         [Fact]
+        public async Task DeviceRecordingsShouldRequireAnOnvifCamera()
+        {
+            Assert.Equal(HttpStatusCode.NotImplemented, (await _client.GetAsync("/api/cameras/cam1/device-recordings")).StatusCode);
+            Assert.Equal(HttpStatusCode.NotImplemented, (await _client.GetAsync("/api/cameras/cam1/device-recordings/Rec_1/export?from=2026-11-05T08:00:00Z&to=2026-11-05T08:01:00Z")).StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/cameras/nope/device-recordings")).StatusCode);
+        }
+
+        [Fact]
         public async Task StorageAndHealthShouldRespond()
         {
             var storage = JsonDocument.Parse(await _client.GetStringAsync("/api/storage")).RootElement;

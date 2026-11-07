@@ -42,6 +42,8 @@ namespace Onvif.Open.Test.Camera.Unit.Streaming
                     {
                         received.TrySetResult(packet);
                     }
+
+                    return default;
                 }, timeout.Token);
 
                 for (ushort sequence = 0; sequence < 4; sequence++)

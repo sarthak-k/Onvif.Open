@@ -22,6 +22,7 @@ namespace Onvif.Open.Streaming.Interface
         LiveVideoStreamBuilder SetTransport(StreamTransport transport);
         LiveVideoStreamBuilder SetTimeout(TimeSpan timeout);
         LiveVideoStreamBuilder SetFrameBufferCapacity(int capacity);
+        LiveVideoStreamBuilder SetReplay(DateTimeOffset from, Core.Replay.ReplayOptions options = null);
 
         #endregion
     }

@@ -51,6 +51,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Onvif.Open.Storage.Gcs", "O
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Onvif.Open.Test.Storage", "Onvif.Open\Onvif.Open.Test.Storage\Onvif.Open.Test.Storage.csproj", "{DF2C1BD1-867C-446D-B1A8-8B8B3AE5BF14}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Onvif.Open.Replay", "Onvif.Open\Onvif.Open.Replay\Onvif.Open.Replay.csproj", "{B7443D92-1EC9-4ABD-BEEB-9EA46C32D7FB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -325,6 +327,18 @@ Global
 		{DF2C1BD1-867C-446D-B1A8-8B8B3AE5BF14}.Release|x64.Build.0 = Release|Any CPU
 		{DF2C1BD1-867C-446D-B1A8-8B8B3AE5BF14}.Release|x86.ActiveCfg = Release|Any CPU
 		{DF2C1BD1-867C-446D-B1A8-8B8B3AE5BF14}.Release|x86.Build.0 = Release|Any CPU
+		{B7443D92-1EC9-4ABD-BEEB-9EA46C32D7FB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B7443D92-1EC9-4ABD-BEEB-9EA46C32D7FB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B7443D92-1EC9-4ABD-BEEB-9EA46C32D7FB}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B7443D92-1EC9-4ABD-BEEB-9EA46C32D7FB}.Debug|x64.Build.0 = Debug|Any CPU
+		{B7443D92-1EC9-4ABD-BEEB-9EA46C32D7FB}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{B7443D92-1EC9-4ABD-BEEB-9EA46C32D7FB}.Debug|x86.Build.0 = Debug|Any CPU
+		{B7443D92-1EC9-4ABD-BEEB-9EA46C32D7FB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B7443D92-1EC9-4ABD-BEEB-9EA46C32D7FB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B7443D92-1EC9-4ABD-BEEB-9EA46C32D7FB}.Release|x64.ActiveCfg = Release|Any CPU
+		{B7443D92-1EC9-4ABD-BEEB-9EA46C32D7FB}.Release|x64.Build.0 = Release|Any CPU
+		{B7443D92-1EC9-4ABD-BEEB-9EA46C32D7FB}.Release|x86.ActiveCfg = Release|Any CPU
+		{B7443D92-1EC9-4ABD-BEEB-9EA46C32D7FB}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -335,5 +349,6 @@ Global
 		{3A9BD8EA-A9B9-419F-B582-591D2320C2CC} = {D2366A70-11CA-A0AA-0F9A-FF95D3F22A1C}
 		{FC0048FB-9117-4E2B-A645-6022A0E24FC9} = {D2366A70-11CA-A0AA-0F9A-FF95D3F22A1C}
 		{DF2C1BD1-867C-446D-B1A8-8B8B3AE5BF14} = {D2366A70-11CA-A0AA-0F9A-FF95D3F22A1C}
+		{B7443D92-1EC9-4ABD-BEEB-9EA46C32D7FB} = {D2366A70-11CA-A0AA-0F9A-FF95D3F22A1C}
 	EndGlobalSection
 EndGlobal
