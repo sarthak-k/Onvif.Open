@@ -1,4 +1,4 @@
-﻿// Sarthak Killedar
+// Sarthak Killedar
 // 2016-03-06 @ 10:01 PM
 
 using System;
@@ -52,7 +52,9 @@ namespace Onvif.Open.Device.Management.Implementation.Builder
         {
             _httpTransportBinding = new HttpTransportBindingElement()
             {
-                AuthenticationScheme = AuthenticationSchemes.Digest
+                AuthenticationScheme = AuthenticationSchemes.Digest,
+                MaxReceivedMessageSize = OnvifBindingFactory.MaxMessageSize,
+                MaxBufferSize = (int)OnvifBindingFactory.MaxMessageSize
             };
             return this;
         }
@@ -96,7 +98,18 @@ namespace Onvif.Open.Device.Management.Implementation.Builder
 
         public IOnvifClienBuilder<DeviceClient> SetAuthenticator(IEndpointBehavior behavior)
         {
-            _deviceClient.Endpoint.Behaviors.Add(behavior);
+            if (_deviceClient == null)
+            {
+                throw new InvalidOperationException("SetClient must be called before SetAuthenticator.");
+            }
+
+            if (behavior == null)
+            {
+                throw new ArgumentNullException(nameof(behavior));
+            }
+
+            _deviceClient.Endpoint.EndpointBehaviors.Add(behavior);
+            (behavior as PasswordDigestBehaviour)?.ConfigureCredentials(_deviceClient.ClientCredentials);
             return this;
         }
 

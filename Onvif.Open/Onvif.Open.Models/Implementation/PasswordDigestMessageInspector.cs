@@ -1,12 +1,11 @@
-﻿// Sarthak Killedar
+// Sarthak Killedar
 // 2016-03-06 @ 12:39 PM
 
 using System;
 using System.ServiceModel;
 using System.ServiceModel.Channels;
 using System.ServiceModel.Dispatcher;
-using System.Xml;
-using Microsoft.Web.Services3.Security.Tokens;
+using Onvif.Open.Core.Implementation.Security;
 
 namespace Onvif.Open.Core.Implementation
 {
@@ -41,18 +40,13 @@ namespace Onvif.Open.Core.Implementation
 
         public object BeforeSendRequest(ref Message request, IClientChannel channel)
         {
-            // Use the WSE 3.0 security token class
-            UsernameToken token = new UsernameToken(_username, _password, PasswordOption.SendHashed);
+            // Anonymous access: devices allow some calls (e.g. GetSystemDateAndTime) without credentials.
+            if (!string.IsNullOrEmpty(_username))
+            {
+                request.Headers.Add(new UsernameTokenHeader(_username, _password));
+            }
 
-            // Serialize the token to XML
-            XmlElement securityToken = token.GetXml(new XmlDocument());
-
-            //
-            MessageHeader securityHeader = MessageHeader.CreateHeader("Security", "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd", securityToken, false);
-            request.Headers.Add(securityHeader);
-
-            // complete
-            return Convert.DBNull;
+            return null;
         }
 
         public void AfterReceiveReply(ref Message reply, object correlationState)

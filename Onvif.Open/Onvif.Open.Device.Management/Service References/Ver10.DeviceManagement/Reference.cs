@@ -17688,21 +17688,6 @@ namespace Onvif.Open.Device.Management.Ver10.DeviceManagement {
     [System.CodeDom.Compiler.GeneratedCodeAttribute("System.ServiceModel", "4.0.0.0")]
     public partial class DeviceClient : System.ServiceModel.ClientBase<Onvif.Open.Device.Management.Ver10.DeviceManagement.Device>, Onvif.Open.Device.Management.Ver10.DeviceManagement.Device {
         
-        public DeviceClient() {
-        }
-        
-        public DeviceClient(string endpointConfigurationName) : 
-                base(endpointConfigurationName) {
-        }
-        
-        public DeviceClient(string endpointConfigurationName, string remoteAddress) : 
-                base(endpointConfigurationName, remoteAddress) {
-        }
-        
-        public DeviceClient(string endpointConfigurationName, System.ServiceModel.EndpointAddress remoteAddress) : 
-                base(endpointConfigurationName, remoteAddress) {
-        }
-        
         public DeviceClient(System.ServiceModel.Channels.Binding binding, System.ServiceModel.EndpointAddress remoteAddress) : 
                 base(binding, remoteAddress) {
         }

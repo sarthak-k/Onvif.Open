@@ -1,4 +1,4 @@
-﻿// Sarthak Killedar
+// Sarthak Killedar
 // 2016-03-07 @ 9:08 PM
 
 using Onvif.Open.Camera.Implementation;
@@ -117,6 +117,20 @@ namespace Onvif.Open.Test.Camera.Unit.CameraTests
             var cameraInformation = camera.GetCameraInformation();
 
             Assert.Equal(Username, cameraInformation.Username);
+        }
+
+        [Fact]
+        public void CameraShouldReturnICameraMedia()
+        {
+            var camera = _cameraBuilder.SetUrl(CameraUrl)
+                .SetUsername(Username)
+                .SetPassword(Password)
+                .Build();
+
+            var cameraMedia = camera.InitializeMedia();
+
+            Assert.IsAssignableFrom<ICameraMedia>(cameraMedia);
+            Assert.Same(cameraMedia, camera.InitializeMedia());
         }
 
         #endregion
