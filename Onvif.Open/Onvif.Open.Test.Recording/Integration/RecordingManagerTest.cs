@@ -13,6 +13,7 @@ using Onvif.Open.Core.Abstract.Interface.Media;
 using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Core.Abstract.Interface.Streaming;
 using Onvif.Open.Core.Operations;
+using Onvif.Open.Core.Plugin;
 using Onvif.Open.Core.Recording;
 using Onvif.Open.Core.Streaming;
 using Onvif.Open.Recording.Implementation.Builder;
@@ -297,6 +298,43 @@ namespace Onvif.Open.Test.Recording.Integration
         }
 
         [Fact]
+        public async Task ShouldRaiseFrameAndStateChangeEvents()
+        {
+            using (var temp = new TempDirectory())
+            {
+                var source = new FakeStreamSource()
+                    .Add(new FakeLiveVideoStream().Push(5).End(new IOException("camera unplugged")))
+                    .Add(new FakeLiveVideoStream().Push(5));
+                var states = new ConcurrentQueue<CameraStateChange>();
+                var frames = new ConcurrentQueue<CameraFrame>();
+
+                await using (var manager = Builder(temp).Build())
+                {
+                    manager.CameraStateChanged += (_, change) => states.Enqueue(change);
+                    manager.FrameReceived += (_, frame) => frames.Enqueue(frame);
+                    manager.AddCamera("cam1", source.ConnectAsync);
+                    await manager.StartAsync();
+
+                    await Eventually.True(() => frames.Count == 10 && states.Count(s => s.State == RecordingState.Recording) == 2, "both sessions were recorded");
+                    await manager.StopAsync();
+                }
+
+                var sequence = states.Select(s => s.State).ToArray();
+                Assert.Equal(new[]
+                {
+                    RecordingState.Connecting, RecordingState.Recording, RecordingState.Reconnecting,
+                    RecordingState.Connecting, RecordingState.Recording, RecordingState.Stopped
+                }, sequence);
+
+                var lost = states.Single(s => s.IsConnectionLost);
+                Assert.Equal("camera unplugged", lost.Error);
+                Assert.Equal("cam1", lost.CameraId);
+                Assert.All(states.Where(s => !s.IsConnectionLost), s => Assert.Null(s.Error));
+                Assert.All(frames, f => Assert.Equal("cam1", f.CameraId));
+            }
+        }
+
+        [Fact]
         public void InvalidRegistrationsShouldThrow()
         {
             using (var temp = new TempDirectory())
@@ -341,6 +379,8 @@ namespace Onvif.Open.Test.Recording.Integration
             public StreamTransport RequestedTransport { get; private set; }
 
             public IMediaService GetMediaService() => throw new NotSupportedException();
+
+            public Task<byte[]> GetSnapshotAsync(string profileToken = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
 
             public Task<ILiveVideoStream> StartLiveStreamAsync(string profileToken = null, StreamTransport transport = StreamTransport.Rtsp, CancellationToken cancellationToken = default)
             {

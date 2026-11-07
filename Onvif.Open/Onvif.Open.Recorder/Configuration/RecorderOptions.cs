@@ -39,6 +39,42 @@ namespace Onvif.Open.Recorder.Configuration
     }
 
     /// <summary>
+    /// The "Plugins" section of appsettings.json.
+    /// </summary>
+    public sealed class PluginsOptions
+    {
+        #region Public Variables
+
+        public const string SectionName = "Plugins";
+
+        /// <summary>Folder holding one sub folder per plugin: {Directory}/{PluginFolder}/{PluginFolder}.dll.</summary>
+        public string Directory { get; set; } = "plugins";
+
+        public int FrameQueueCapacity { get; set; } = 32;
+
+        public int EventHistory { get; set; } = 1000;
+
+        public TimeSpan StopTimeout { get; set; } = TimeSpan.FromSeconds(10);
+
+        /// <summary>Plugins to load, keyed by plugin folder name. Folders not listed (or disabled) are never loaded.</summary>
+        public Dictionary<string, PluginItemOptions> Items { get; set; } = new Dictionary<string, PluginItemOptions>(StringComparer.OrdinalIgnoreCase);
+
+        #endregion
+    }
+
+    public sealed class PluginItemOptions
+    {
+        #region Public Variables
+
+        public bool Enabled { get; set; } = true;
+
+        /// <summary>Camera ids the plugin may use; all cameras when empty.</summary>
+        public List<string> Cameras { get; set; } = new List<string>();
+
+        #endregion
+    }
+
+    /// <summary>
     /// A new file is started (at the next key frame) as soon as any configured limit is reached.
     /// </summary>
     public sealed class RotationOptions

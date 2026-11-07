@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Core.Abstract.Interface.Streaming;
+using Onvif.Open.Core.Plugin;
 using Onvif.Open.Core.Recording;
 using Onvif.Open.Core.Streaming;
 using Onvif.Open.Recording.Implementation.Format;
@@ -32,8 +33,12 @@ namespace Onvif.Open.Recording.Implementation.Recorder
             RecorderOptions options,
             TimeProvider timeProvider,
             ILogger logger,
-            Action<RecordingSegment> onSegmentCompleted)
+            Action<RecordingSegment> onSegmentCompleted,
+            Action<CameraFrame> onFrame = null,
+            Action<CameraStateChange> onStateChanged = null)
         {
+            _onFrame = onFrame;
+            _onStateChanged = onStateChanged;
             CameraId = cameraId;
             _streamFactory = streamFactory;
             _storage = storage;
@@ -58,6 +63,8 @@ namespace Onvif.Open.Recording.Implementation.Recorder
         private readonly TimeProvider _timeProvider;
         private readonly ILogger _logger;
         private readonly Action<RecordingSegment> _onSegmentCompleted;
+        private readonly Action<CameraFrame> _onFrame;
+        private readonly Action<CameraStateChange> _onStateChanged;
         private readonly object _sync = new object();
         private readonly CameraRecordingStatus _status;
         private readonly SegmentProgress _progress = new SegmentProgress();
@@ -153,7 +160,7 @@ namespace Onvif.Open.Recording.Implementation.Recorder
             while (!cancellationToken.IsCancellationRequested)
             {
                 var recordedFrames = false;
-                Update(s => s.State = RecordingState.Connecting);
+                SetState(RecordingState.Connecting);
 
                 try
                 {
@@ -169,11 +176,11 @@ namespace Onvif.Open.Recording.Implementation.Recorder
                         _codec = stream.Codec;
                         Update(s =>
                         {
-                            s.State = RecordingState.Recording;
                             s.Codec = stream.Codec;
                             s.Transport = stream.Transport;
                             s.StreamUri = stream.StreamUri;
                         });
+                        SetState(RecordingState.Recording);
                         _logger.LogInformation("Camera {CameraId}: recording {Codec} from {StreamUri}", CameraId, stream.Codec, stream.StreamUri);
 
                         recordedFrames = await RecordAsync(stream, cancellationToken).ConfigureAwait(false);
@@ -208,7 +215,7 @@ namespace Onvif.Open.Recording.Implementation.Recorder
                     delay = _options.MinReconnectDelay;
                 }
 
-                Update(s => s.State = RecordingState.Reconnecting);
+                SetState(RecordingState.Reconnecting);
 
                 try
                 {
@@ -222,7 +229,7 @@ namespace Onvif.Open.Recording.Implementation.Recorder
                 delay = TimeSpan.FromTicks(Math.Min(delay.Ticks * 2, _options.MaxReconnectDelay.Ticks));
             }
 
-            Update(s => s.State = RecordingState.Stopped);
+            SetState(RecordingState.Stopped);
             _logger.LogInformation("Camera {CameraId}: recording stopped", CameraId);
         }
 
@@ -295,6 +302,7 @@ namespace Onvif.Open.Recording.Implementation.Recorder
                 s.LastFrameAt = now;
             });
 
+            Notify(_onFrame, new CameraFrame(CameraId, frame, now), "frame");
             return true;
         }
 
@@ -358,6 +366,43 @@ namespace Onvif.Open.Recording.Implementation.Recorder
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Camera {CameraId}: segment completed handler failed", CameraId);
+            }
+        }
+
+        private void SetState(RecordingState state)
+        {
+            RecordingState previous;
+            string error;
+
+            lock (_sync)
+            {
+                previous = _status.State;
+                _status.State = state;
+                error = _status.LastError;
+            }
+
+            if (previous != state && _onStateChanged != null)
+            {
+                // Only report the error with the transition it caused.
+                var reportedError = state == RecordingState.Reconnecting ? error : null;
+                Notify(_onStateChanged, new CameraStateChange(CameraId, previous, state, reportedError, _timeProvider.GetUtcNow()), "state change");
+            }
+        }
+
+        private void Notify<T>(Action<T> handler, T value, string what)
+        {
+            if (handler == null)
+            {
+                return;
+            }
+
+            try
+            {
+                handler(value);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Camera {CameraId}: {What} handler failed", CameraId, what);
             }
         }
 

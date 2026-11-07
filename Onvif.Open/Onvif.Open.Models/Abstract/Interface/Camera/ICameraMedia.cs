@@ -18,5 +18,10 @@ namespace Onvif.Open.Core.Abstract.Interface.Camera
         /// <param name="transport"><see cref="StreamTransport.Rtsp"/> (TCP, default) or <see cref="StreamTransport.Udp"/>.</param>
         /// <param name="cancellationToken">Cancels connecting.</param>
         Task<ILiveVideoStream> StartLiveStreamAsync(string profileToken = null, StreamTransport transport = StreamTransport.Rtsp, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Downloads a JPEG picture for <paramref name="profileToken"/> (or the first profile when null) from the device's snapshot URI.
+        /// </summary>
+        Task<byte[]> GetSnapshotAsync(string profileToken = null, CancellationToken cancellationToken = default);
     }
 }

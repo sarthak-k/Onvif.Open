@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Onvif.Open.Core.Abstract.Interface.Camera;
 using Onvif.Open.Core.Abstract.Interface.Streaming;
 using Onvif.Open.Core.Operations;
+using Onvif.Open.Core.Plugin;
 using Onvif.Open.Core.Recording;
 
 namespace Onvif.Open.Core.Abstract.Interface.Recording
@@ -22,6 +23,14 @@ namespace Onvif.Open.Core.Abstract.Interface.Recording
 
         /// <summary>Raised after a segment file has been closed.</summary>
         event EventHandler<RecordingSegment> SegmentCompleted;
+
+        /// <summary>
+        /// Raised for every recorded frame, on the camera's recording thread: handlers must return quickly.
+        /// </summary>
+        event EventHandler<CameraFrame> FrameReceived;
+
+        /// <summary>Raised when a camera's recorder changes state.</summary>
+        event EventHandler<CameraStateChange> CameraStateChanged;
 
         #endregion
 

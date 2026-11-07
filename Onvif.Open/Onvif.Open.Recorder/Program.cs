@@ -9,7 +9,9 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Onvif.Open.Core.Abstract.Interface.Plugin;
 using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Recorder.Api;
 using Onvif.Open.Recorder.Configuration;
@@ -20,12 +22,23 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.Configure<JsonOptions>(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddSingleton(sp =>
     sp.GetRequiredService<IConfiguration>().GetSection(RecorderOptions.SectionName).Get<RecorderOptions>() ?? new RecorderOptions());
-builder.Services.AddSingleton<IRecordingManager>(sp =>
-    RecordingConfiguration.CreateManager(sp.GetRequiredService<RecorderOptions>(), sp.GetRequiredService<ILoggerFactory>()));
+builder.Services.AddSingleton(sp =>
+    RecordingConfiguration.Create(sp.GetRequiredService<RecorderOptions>(), sp.GetRequiredService<ILoggerFactory>()));
+builder.Services.AddSingleton<IRecordingManager>(sp => sp.GetRequiredService<ConfiguredRecording>().Manager);
+builder.Services.AddSingleton<IPluginHost>(sp => PluginConfiguration.CreateHost(
+    sp.GetRequiredService<IConfiguration>(),
+    sp.GetRequiredService<IHostEnvironment>().ContentRootPath,
+    sp.GetRequiredService<RecorderOptions>(),
+    sp.GetRequiredService<ConfiguredRecording>(),
+    sp.GetRequiredService<ILoggerFactory>()));
+
+// Order matters: plugins start before and stop after recording.
+builder.Services.AddHostedService<PluginHostedService>();
 builder.Services.AddHostedService<RecordingHostedService>();
 
 var app = builder.Build();
 app.MapRecordingApi();
+app.MapPluginApi();
 app.Run();
 
 public partial class Program
