@@ -37,6 +37,17 @@ namespace Onvif.Open.Test.Camera.Fakes
         public ConcurrentQueue<string> RequestBodies { get; } = new ConcurrentQueue<string>();
         public string LastSnapshotAuthorization { get; private set; }
 
+        /// <summary>Device clock minus real time.</summary>
+        public TimeSpan ClockOffset { get; set; }
+
+        /// <summary>Reject tokens whose wsu:Created is further than 5 seconds from the device clock, like real devices.</summary>
+        public bool RequireFreshTokens { get; set; }
+
+        public int RejectedRequests { get; private set; }
+
+        /// <summary>Reject every secured request (simulates a wrong password).</summary>
+        public bool RejectAllTokens { get; set; }
+
         private async Task ServeAsync()
         {
             while (_listener.IsListening)
@@ -65,8 +76,17 @@ namespace Onvif.Open.Test.Camera.Fakes
 
                 RequestBodies.Enqueue(body);
 
-                var response = Envelope(CreateBody(body));
+                var secured = !body.Contains("GetSystemDateAndTime", StringComparison.Ordinal);
+                var rejected = secured && (RejectAllTokens || (RequireFreshTokens && !IsTokenFresh(body)));
+                var response = Envelope(rejected ? NotAuthorizedFault() : CreateBody(body));
                 var bytes = Encoding.UTF8.GetBytes(response);
+
+                if (rejected)
+                {
+                    RejectedRequests++;
+                    context.Response.StatusCode = 400;
+                }
+
                 context.Response.ContentType = "application/soap+xml; charset=utf-8";
                 context.Response.ContentLength64 = bytes.Length;
                 await context.Response.OutputStream.WriteAsync(bytes, 0, bytes.Length).ConfigureAwait(false);
@@ -94,8 +114,43 @@ namespace Onvif.Open.Test.Camera.Fakes
             context.Response.Close();
         }
 
+        private bool IsTokenFresh(string body)
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(body, "<[^>]*Created[^>]*>([^<]+)<");
+            if (!match.Success || !DateTime.TryParse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AdjustToUniversal, out var created))
+            {
+                return false;
+            }
+
+            var deviceNow = DateTime.UtcNow + ClockOffset;
+            return (created - deviceNow).Duration() <= TimeSpan.FromSeconds(5);
+        }
+
+        private static string NotAuthorizedFault()
+        {
+            return "<s:Fault><s:Code><s:Value>s:Sender</s:Value><s:Subcode><s:Value xmlns:ter=\"http://www.onvif.org/ver10/error\">ter:NotAuthorized</s:Value></s:Subcode></s:Code>" +
+                   "<s:Reason><s:Text xml:lang=\"en\">Sender not Authorized</s:Text></s:Reason></s:Fault>";
+        }
+
+        private string SystemDateAndTime()
+        {
+            var now = DateTime.UtcNow + ClockOffset;
+            return "<tds:GetSystemDateAndTimeResponse><tds:SystemDateAndTime>" +
+                   "<tt:DateTimeType>NTP</tt:DateTimeType><tt:DaylightSavings>false</tt:DaylightSavings><tt:TimeZone><tt:TZ>UTC0</tt:TZ></tt:TimeZone>" +
+                   $"<tt:UTCDateTime><tt:Time><tt:Hour>{now.Hour}</tt:Hour><tt:Minute>{now.Minute}</tt:Minute><tt:Second>{now.Second}</tt:Second></tt:Time>" +
+                   $"<tt:Date><tt:Year>{now.Year}</tt:Year><tt:Month>{now.Month}</tt:Month><tt:Day>{now.Day}</tt:Day></tt:Date></tt:UTCDateTime>" +
+                   $"<tt:LocalDateTime><tt:Time><tt:Hour>{now.Hour}</tt:Hour><tt:Minute>{now.Minute}</tt:Minute><tt:Second>{now.Second}</tt:Second></tt:Time>" +
+                   $"<tt:Date><tt:Year>{now.Year}</tt:Year><tt:Month>{now.Month}</tt:Month><tt:Day>{now.Day}</tt:Day></tt:Date></tt:LocalDateTime>" +
+                   "</tds:SystemDateAndTime></tds:GetSystemDateAndTimeResponse>";
+        }
+
         private string CreateBody(string request)
         {
+            if (request.Contains("GetSystemDateAndTime", StringComparison.Ordinal))
+            {
+                return SystemDateAndTime();
+            }
+
             if (request.Contains("GetCapabilities", StringComparison.Ordinal))
             {
                 return $"<tds:GetCapabilitiesResponse><tds:Capabilities><tt:Media><tt:XAddr>{MediaServiceUri}</tt:XAddr>" +

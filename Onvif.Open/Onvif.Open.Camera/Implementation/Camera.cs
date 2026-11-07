@@ -25,6 +25,9 @@ namespace Onvif.Open.Camera.Implementation
         private ICameraDeviceManagement CameraDeviceManagement { get; set; }
 
         private ICameraMedia CameraMedia { get; set; }
+
+        private ClockSynchronizer _clock;
+        private readonly object _clockSync = new object();
         
         #endregion
 
@@ -46,8 +49,16 @@ namespace Onvif.Open.Camera.Implementation
         {
             return CameraMedia ??
                    (CameraMedia =
-                       CameraMediaBuilder.GetBuilder().SetCamera(this).SetDeviceManagement(Initialize()).Build());
+                       CameraMediaBuilder.GetBuilder().SetCamera(this).SetDeviceManagement(Initialize()).SetClockSynchronizer(GetClock()).Build());
         }
+
+        public TimeSpan SynchronizeClock()
+        {
+            return GetClock().Synchronize();
+        }
+
+        /// <summary>Device time minus local time, as last measured (zero until synchronized).</summary>
+        public TimeSpan ClockOffset => GetClock().Offset;
 
         public ICameraInformation GetCameraInformation()
         {
@@ -57,6 +68,14 @@ namespace Onvif.Open.Camera.Implementation
         #endregion
 
         #region Private Methods
+
+        private ClockSynchronizer GetClock()
+        {
+            lock (_clockSync)
+            {
+                return _clock ?? (_clock = new ClockSynchronizer(this, Initialize().GetDeviceManagement()));
+            }
+        }
 
         internal static ICamera CreateInstance(Uri cameraUri, string username, string password)
         {

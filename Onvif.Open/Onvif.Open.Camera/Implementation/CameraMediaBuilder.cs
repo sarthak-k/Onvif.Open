@@ -22,6 +22,7 @@ namespace Onvif.Open.Camera.Implementation
 
         private ICameraInformation Camera { get; set; }
         private ICameraDeviceManagement CameraDeviceManagement { get; set; }
+        private ClockSynchronizer Clock { get; set; }
 
         #endregion
 
@@ -34,7 +35,7 @@ namespace Onvif.Open.Camera.Implementation
                 throw new InvalidOperationException("Camera and Device Management must be set before building Camera Media.");
             }
 
-            return CameraMedia.CreateInstance(Camera, CameraDeviceManagement.GetDeviceManagement());
+            return CameraMedia.CreateInstance(Camera, CameraDeviceManagement.GetDeviceManagement(), Clock);
         }
 
         public CameraMediaBuilder SetCamera(ICameraInformation camera)
@@ -46,6 +47,12 @@ namespace Onvif.Open.Camera.Implementation
         public CameraMediaBuilder SetDeviceManagement(ICameraDeviceManagement cameraDeviceManagement)
         {
             CameraDeviceManagement = cameraDeviceManagement ?? throw new ArgumentNullException(nameof(cameraDeviceManagement));
+            return this;
+        }
+
+        internal CameraMediaBuilder SetClockSynchronizer(ClockSynchronizer clock)
+        {
+            Clock = clock ?? throw new ArgumentNullException(nameof(clock));
             return this;
         }
 

@@ -5,21 +5,21 @@ using System;
 using System.ServiceModel;
 using System.ServiceModel.Channels;
 using System.ServiceModel.Dispatcher;
+using System.Security.Cryptography;
+using Onvif.Open.Core.Abstract.Interface.Camera;
 using Onvif.Open.Core.Implementation.Security;
 
 namespace Onvif.Open.Core.Implementation
 {
     internal class PasswordDigestMessageInspector : IClientMessageInspector
     {
-        private readonly string _username;
-        private readonly string _password;
+        private readonly ICameraInformation _camera;
 
         #region Constructor
 
-        public PasswordDigestMessageInspector(string username, string password)
+        public PasswordDigestMessageInspector(ICameraInformation camera)
         {
-            _username = username;
-            _password = password;
+            _camera = camera;
         }
 
         #endregion
@@ -41,9 +41,11 @@ namespace Onvif.Open.Core.Implementation
         public object BeforeSendRequest(ref Message request, IClientChannel channel)
         {
             // Anonymous access: devices allow some calls (e.g. GetSystemDateAndTime) without credentials.
-            if (!string.IsNullOrEmpty(_username))
+            if (!string.IsNullOrEmpty(_camera.Username))
             {
-                request.Headers.Add(new UsernameTokenHeader(_username, _password));
+                // Stamp the token in device time so a skewed device clock does not reject it.
+                var created = DeviceClock.For(_camera).UtcNow;
+                request.Headers.Add(new UsernameTokenHeader(_camera.Username, _camera.Password, RandomNumberGenerator.GetBytes(16), created));
             }
 
             return null;

@@ -110,6 +110,41 @@ namespace Onvif.Open.Device.Management.Implementation.Client
             return _camera.CameraUri;
         }
 
+        public TimeSpan? GetClockOffset()
+        {
+            // No WS-Security header: a token stamped with a skewed clock could itself be rejected.
+            var client = DeviceClientBuilder.GetBuilder()
+                .SetHttpTransportBinding()
+                .SetMessageElement()
+                .SetEndpoint(new EndpointAddress(_camera.CameraUri))
+                .SetCustomeBinding()
+                .SetClient()
+                .Build();
+
+            try
+            {
+                var before = System.DateTime.UtcNow;
+                var deviceTime = client.GetSystemDateAndTime();
+                var after = System.DateTime.UtcNow;
+
+                var utc = deviceTime?.UTCDateTime;
+                if (utc?.Date == null || utc.Time == null)
+                {
+                    return null;
+                }
+
+                var device = new System.DateTime(utc.Date.Year, utc.Date.Month, utc.Date.Day, utc.Time.Hour, utc.Time.Minute, utc.Time.Second, DateTimeKind.Utc);
+
+                // The device read its clock roughly halfway through the round trip.
+                var local = before + TimeSpan.FromTicks((after - before).Ticks / 2);
+                return device - local;
+            }
+            finally
+            {
+                CloseClient(client);
+            }
+        }
+
         private static void CloseClient(ICommunicationObject client)
         {
             try
