@@ -29,6 +29,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Onvif.Open.Plugins.Sample",
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Onvif.Open.Test.Plugins", "Onvif.Open\Onvif.Open.Test.Plugins\Onvif.Open.Test.Plugins.csproj", "{35EDE4F8-243F-423C-B176-BFDD2ADF2BA9}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Onvif.Open.Discovery", "Onvif.Open\Onvif.Open.Discovery\Onvif.Open.Discovery.csproj", "{20D038DF-EB8A-4FE2-9392-86217E44563F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -195,6 +197,18 @@ Global
 		{35EDE4F8-243F-423C-B176-BFDD2ADF2BA9}.Release|x64.Build.0 = Release|Any CPU
 		{35EDE4F8-243F-423C-B176-BFDD2ADF2BA9}.Release|x86.ActiveCfg = Release|Any CPU
 		{35EDE4F8-243F-423C-B176-BFDD2ADF2BA9}.Release|x86.Build.0 = Release|Any CPU
+		{20D038DF-EB8A-4FE2-9392-86217E44563F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{20D038DF-EB8A-4FE2-9392-86217E44563F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{20D038DF-EB8A-4FE2-9392-86217E44563F}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{20D038DF-EB8A-4FE2-9392-86217E44563F}.Debug|x64.Build.0 = Debug|Any CPU
+		{20D038DF-EB8A-4FE2-9392-86217E44563F}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{20D038DF-EB8A-4FE2-9392-86217E44563F}.Debug|x86.Build.0 = Debug|Any CPU
+		{20D038DF-EB8A-4FE2-9392-86217E44563F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{20D038DF-EB8A-4FE2-9392-86217E44563F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{20D038DF-EB8A-4FE2-9392-86217E44563F}.Release|x64.ActiveCfg = Release|Any CPU
+		{20D038DF-EB8A-4FE2-9392-86217E44563F}.Release|x64.Build.0 = Release|Any CPU
+		{20D038DF-EB8A-4FE2-9392-86217E44563F}.Release|x86.ActiveCfg = Release|Any CPU
+		{20D038DF-EB8A-4FE2-9392-86217E44563F}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

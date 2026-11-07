@@ -25,6 +25,8 @@ builder.Services.AddSingleton(sp =>
 builder.Services.AddSingleton(sp =>
     RecordingConfiguration.Create(sp.GetRequiredService<RecorderOptions>(), sp.GetRequiredService<ILoggerFactory>()));
 builder.Services.AddSingleton<IRecordingManager>(sp => sp.GetRequiredService<ConfiguredRecording>().Manager);
+builder.Services.AddSingleton(sp => DiscoveryConfiguration.CreateDiscovery(
+    sp.GetRequiredService<IConfiguration>().GetSection(DiscoveryOptions.SectionName).Get<DiscoveryOptions>()));
 builder.Services.AddSingleton<IPluginHost>(sp => PluginConfiguration.CreateHost(
     sp.GetRequiredService<IConfiguration>(),
     sp.GetRequiredService<IHostEnvironment>().ContentRootPath,
@@ -39,6 +41,7 @@ builder.Services.AddHostedService<RecordingHostedService>();
 var app = builder.Build();
 app.MapRecordingApi();
 app.MapPluginApi();
+app.MapDiscoveryApi();
 app.Run();
 
 public partial class Program

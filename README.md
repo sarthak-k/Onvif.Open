@@ -10,6 +10,7 @@ Targets **.NET 10 (LTS)** and runs on Windows, Linux and macOS.
 | `Onvif.Open.Core` | Abstractions (`ICamera`, `IMediaService`, `ILiveVideoStream`, ...), WS-Security UsernameToken authentication, shared SOAP binding |
 | `Onvif.Open.Device.Management` | ONVIF Device service (device information, date & time, media service discovery) |
 | `Onvif.Open.Media` | ONVIF Media service (profiles, stream URI, snapshot URI) |
+| `Onvif.Open.Discovery` | WS-Discovery: find ONVIF devices on the network |
 | `Onvif.Open.Streaming` | Dependency-free RTSP/RTP client: Basic/Digest auth, RTP over TCP (interleaved) or UDP, H.264 and H.265 depacketizing |
 | `Onvif.Open.Camera` | The `Camera` façade tying everything together |
 | `Onvif.Open.Recording` | Multi-camera recording to files: segment rotation, retention, reconnects, MPEG-TS muxer |
@@ -19,6 +20,25 @@ Targets **.NET 10 (LTS)** and runs on Windows, Linux and macOS.
 | `Onvif.Open.Sample` | Console app recording a camera's live stream to a file |
 
 ## Usage
+
+Find cameras on the network (WS-Discovery):
+
+```csharp
+foreach (var device in await CameraDiscoveryBuilder.GetBuilder().Build().FindAsync())
+{
+    Console.WriteLine($"{device.Name} ({device.Hardware}) at {device.DeviceServiceUri}");
+}
+
+var camera = CameraBuilder.GetBuilder()
+    .SetDeviceServiceUrl(device.DeviceServiceUri.ToString())   // keeps the device's exact service path
+    .SetUsername("admin").SetPassword("12345")
+    .Build();
+```
+
+Probes go to the multicast group on every network interface. Cameras on other subnets (multicast is not routed)
+can be probed directly with `.AddTarget(IPAddress.Parse("10.0.5.20"))`.
+
+Connect to a known camera:
 
 ```csharp
 var camera = CameraBuilder.GetBuilder()
@@ -154,6 +174,7 @@ Passwords can be supplied through environment variables instead of the file, e.g
 | `GET /api/storage` | Free space and usage per camera |
 | `POST /api/retention` | Apply the retention policy now |
 | `GET /api/cameras/{id}/snapshot` | JPEG snapshot (ONVIF cameras) |
+| `GET /api/discovery` | ONVIF devices on the network (WS-Discovery), with `configuredCameraId` for those already set up |
 | `GET /api/plugins` | Plugin state, delivered/dropped frames, errors |
 | `GET /api/events?cameraId=&type=&source=&since=&severity=&limit=` | Plugin events, each linked to the recording covering it |
 | `GET /health` | Liveness |

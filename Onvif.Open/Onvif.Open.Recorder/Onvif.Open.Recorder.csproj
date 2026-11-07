@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Onvif.Open.Camera\Onvif.Open.Camera.csproj" />
+    <ProjectReference Include="..\Onvif.Open.Discovery\Onvif.Open.Discovery.csproj" />
     <ProjectReference Include="..\Onvif.Open.Plugins\Onvif.Open.Plugins.csproj" />
     <ProjectReference Include="..\Onvif.Open.Recording\Onvif.Open.Recording.csproj" />
   </ItemGroup>
