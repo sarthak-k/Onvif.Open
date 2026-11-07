@@ -46,7 +46,15 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
 
         #region Public Variables
 
-        public IPAddress RemoteAddress => ((IPEndPoint)_client.Client.RemoteEndPoint).Address;
+        /// <summary>The server address, with IPv4-mapped IPv6 addresses (dual-stack sockets) converted back to IPv4.</summary>
+        public IPAddress RemoteAddress
+        {
+            get
+            {
+                var address = ((IPEndPoint)_client.Client.RemoteEndPoint).Address;
+                return address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address;
+            }
+        }
 
         #endregion
 

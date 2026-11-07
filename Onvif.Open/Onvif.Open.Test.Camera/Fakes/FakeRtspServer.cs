@@ -76,12 +76,13 @@ namespace Onvif.Open.Test.Camera.Fakes
         private async Task ServeAsync()
         {
             using (var client = await _listener.AcceptTcpClientAsync(_stop.Token).ConfigureAwait(false))
+            using (_stop.Token.Register(client.Dispose))
             using (var stream = client.GetStream())
             using (var reader = new StreamReader(stream, Encoding.ASCII, false, 1024, true))
             {
                 while (!_stop.IsCancellationRequested)
                 {
-                    var requestLine = await reader.ReadLineAsync().ConfigureAwait(false);
+                    var requestLine = await reader.ReadLineAsync(_stop.Token).ConfigureAwait(false);
                     if (requestLine == null)
                     {
                         return;
@@ -94,7 +95,7 @@ namespace Onvif.Open.Test.Camera.Fakes
 
                     var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                     string line;
-                    while (!string.IsNullOrEmpty(line = await reader.ReadLineAsync().ConfigureAwait(false)))
+                    while (!string.IsNullOrEmpty(line = await reader.ReadLineAsync(_stop.Token).ConfigureAwait(false)))
                     {
                         var separator = line.IndexOf(':');
                         headers[line.Substring(0, separator).Trim()] = line.Substring(separator + 1).Trim();
@@ -240,7 +241,7 @@ namespace Onvif.Open.Test.Camera.Fakes
             _udpRtcp?.Dispose();
             try
             {
-                await _serve.ConfigureAwait(false);
+                await _serve.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
             }
             catch
             {
