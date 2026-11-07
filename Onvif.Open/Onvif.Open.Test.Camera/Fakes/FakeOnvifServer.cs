@@ -32,7 +32,10 @@ namespace Onvif.Open.Test.Camera.Fakes
         public Uri RtspUri { get; }
         public Uri DeviceServiceUri => new Uri($"http://127.0.0.1:{Port}/onvif/device_service");
         public Uri MediaServiceUri => new Uri($"http://127.0.0.1:{Port}/onvif/media_service");
+        public Uri SnapshotUri => new Uri($"http://127.0.0.1:{Port}/onvif/snapshot.jpg");
+        public static readonly byte[] SnapshotJpeg = { 0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0xFF, 0xD9 };
         public ConcurrentQueue<string> RequestBodies { get; } = new ConcurrentQueue<string>();
+        public string LastSnapshotAuthorization { get; private set; }
 
         private async Task ServeAsync()
         {
@@ -46,6 +49,12 @@ namespace Onvif.Open.Test.Camera.Fakes
                 catch (Exception)
                 {
                     return;
+                }
+
+                if (context.Request.HttpMethod == "GET" && context.Request.Url.AbsolutePath == SnapshotUri.AbsolutePath)
+                {
+                    await ServeSnapshotAsync(context).ConfigureAwait(false);
+                    continue;
                 }
 
                 string body;
@@ -63,6 +72,26 @@ namespace Onvif.Open.Test.Camera.Fakes
                 await context.Response.OutputStream.WriteAsync(bytes, 0, bytes.Length).ConfigureAwait(false);
                 context.Response.Close();
             }
+        }
+
+        private async Task ServeSnapshotAsync(HttpListenerContext context)
+        {
+            var authorization = context.Request.Headers["Authorization"];
+
+            // Require HTTP Basic, like many cameras do for snapshots.
+            if (authorization == null)
+            {
+                context.Response.StatusCode = 401;
+                context.Response.AddHeader("WWW-Authenticate", "Basic realm=\"camera\"");
+                context.Response.Close();
+                return;
+            }
+
+            LastSnapshotAuthorization = authorization;
+            context.Response.ContentType = "image/jpeg";
+            context.Response.ContentLength64 = SnapshotJpeg.Length;
+            await context.Response.OutputStream.WriteAsync(SnapshotJpeg, 0, SnapshotJpeg.Length).ConfigureAwait(false);
+            context.Response.Close();
         }
 
         private string CreateBody(string request)
@@ -89,7 +118,7 @@ namespace Onvif.Open.Test.Camera.Fakes
 
             if (request.Contains("GetSnapshotUri", StringComparison.Ordinal))
             {
-                return $"<trt:GetSnapshotUriResponse>{MediaUri($"http://127.0.0.1:{Port}/snapshot.jpg")}</trt:GetSnapshotUriResponse>";
+                return $"<trt:GetSnapshotUriResponse>{MediaUri(SnapshotUri.ToString())}</trt:GetSnapshotUriResponse>";
             }
 
             return "<s:Fault><s:Code><s:Value>s:Receiver</s:Value></s:Code><s:Reason><s:Text xml:lang=\"en\">Not implemented</s:Text></s:Reason></s:Fault>";

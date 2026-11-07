@@ -13,6 +13,7 @@ using Onvif.Open.Core.Abstract.Interface.Camera;
 using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Core.Abstract.Interface.Streaming;
 using Onvif.Open.Core.Operations;
+using Onvif.Open.Core.Plugin;
 using Onvif.Open.Core.Recording;
 using Onvif.Open.Recording.Implementation.Format;
 using Onvif.Open.Recording.Implementation.Recorder;
@@ -88,6 +89,10 @@ namespace Onvif.Open.Recording.Implementation
 
         public event EventHandler<RecordingSegment> SegmentCompleted;
 
+        public event EventHandler<CameraFrame> FrameReceived;
+
+        public event EventHandler<CameraStateChange> CameraStateChanged;
+
         #endregion
 
         #region Public Methods
@@ -121,7 +126,9 @@ namespace Onvif.Open.Recording.Implementation
                 _recorderOptions,
                 _timeProvider,
                 _loggerFactory.CreateLogger($"{typeof(CameraRecorder).FullName}.{cameraId}"),
-                OnSegmentCompleted);
+                OnSegmentCompleted,
+                frame => FrameReceived?.Invoke(this, frame),
+                change => CameraStateChanged?.Invoke(this, change));
 
             if (!_recorders.TryAdd(cameraId, recorder))
             {

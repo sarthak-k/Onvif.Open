@@ -13,7 +13,9 @@ Targets **.NET 10 (LTS)** and runs on Windows, Linux and macOS.
 | `Onvif.Open.Streaming` | Dependency-free RTSP/RTP client: Basic/Digest auth, RTP over TCP (interleaved) or UDP, H.264 and H.265 depacketizing |
 | `Onvif.Open.Camera` | The `Camera` façade tying everything together |
 | `Onvif.Open.Recording` | Multi-camera recording to files: segment rotation, retention, reconnects, MPEG-TS muxer |
-| `Onvif.Open.Recorder` | Backend service: records the cameras from `appsettings.json` and exposes a REST API |
+| `Onvif.Open.Recorder` | Backend service: records the cameras from `appsettings.json`, hosts plugins and exposes a REST API |
+| `Onvif.Open.Plugins` | Plugin runtime: isolated delivery of frames, camera state changes, segments and events; folder loader |
+| `Onvif.Open.Plugins.Sample` | Template plugin project |
 | `Onvif.Open.Sample` | Console app recording a camera's live stream to a file |
 
 ## Usage
@@ -50,6 +52,12 @@ the camera can reach you over UDP:
 
 ```csharp
 await using var stream = await camera.InitializeMedia().StartLiveStreamAsync(transport: StreamTransport.Udp);
+```
+
+A JPEG snapshot (ONVIF `GetSnapshotUri`, authenticated with the camera credentials):
+
+```csharp
+byte[] jpeg = await camera.InitializeMedia().GetSnapshotAsync();
 ```
 
 Media profiles and URIs are available through the media service:
@@ -145,10 +153,33 @@ Passwords can be supplied through environment variables instead of the file, e.g
 | `DELETE /api/cameras/{id}/segments/{file}` | Delete a completed file |
 | `GET /api/storage` | Free space and usage per camera |
 | `POST /api/retention` | Apply the retention policy now |
+| `GET /api/cameras/{id}/snapshot` | JPEG snapshot (ONVIF cameras) |
+| `GET /api/plugins` | Plugin state, delivered/dropped frames, errors |
+| `GET /api/events?cameraId=&type=&source=&since=&severity=&limit=` | Plugin events, each linked to the recording covering it |
 | `GET /health` | Liveness |
 
 The API has no authentication and listens on `http://localhost:5080` by default. Put it behind a reverse proxy with
 authentication before exposing it on a network.
+
+## Plugins
+
+Domain features such as exam proctoring or "camera went offline during opening hours" alerts are written as plugins
+against a small SDK in `Onvif.Open.Core`. A plugin implements `IPlugin` plus any of `IFrameProcessor` (video frames),
+`ICameraStateObserver` (online/offline), `ISegmentObserver` (completed files) and `IPluginEventObserver` (events from
+other plugins). The host gives it settings, a logger, snapshots and recording control for its assigned cameras only,
+and publishes its `PluginEvent`s through the API. Each plugin has its own queues, threads and load context, so a slow or
+crashing plugin never affects recording or other plugins.
+
+```json
+"Plugins": {
+  "Directory": "plugins",
+  "Items": {
+    "Contoso.ExamProctoring": { "Enabled": true, "Cameras": [ "room-101" ], "Settings": { "Threshold": "0.8" } }
+  }
+}
+```
+
+See [docs/PLUGINS.md](docs/PLUGINS.md) for the authoring guide and `Onvif.Open/Onvif.Open.Plugins.Sample` for a template.
 
 ## Build & test
 

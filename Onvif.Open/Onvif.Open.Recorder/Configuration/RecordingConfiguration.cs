@@ -4,7 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Onvif.Open.Core.Abstract.Interface.Camera;
 using Onvif.Open.Camera.Implementation;
 using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Recording.Implementation.Builder;
@@ -24,6 +27,12 @@ namespace Onvif.Open.Recorder.Configuration
 
         public static IRecordingManager CreateManager(RecorderOptions options, ILoggerFactory loggerFactory)
         {
+            return Create(options, loggerFactory).Manager;
+        }
+
+        /// <summary>Creates the manager and keeps the ONVIF cameras, which also provide snapshots.</summary>
+        public static ConfiguredRecording Create(RecorderOptions options, ILoggerFactory loggerFactory)
+        {
             Validate(options);
 
             var manager = RecordingManagerBuilder.GetBuilder()
@@ -37,12 +46,18 @@ namespace Onvif.Open.Recorder.Configuration
                 .SetLoggerFactory(loggerFactory)
                 .Build();
 
+            var onvifCameras = new Dictionary<string, (ICamera Camera, string ProfileToken)>(StringComparer.OrdinalIgnoreCase);
+
             foreach (var camera in options.Cameras.Where(c => c.Enabled))
             {
-                AddCamera(manager, camera);
+                var onvifCamera = AddCamera(manager, camera);
+                if (onvifCamera != null)
+                {
+                    onvifCameras[camera.Id] = (onvifCamera, string.IsNullOrWhiteSpace(camera.ProfileToken) ? null : camera.ProfileToken);
+                }
             }
 
-            return manager;
+            return new ConfiguredRecording(manager, onvifCameras);
         }
 
         public static void Validate(RecorderOptions options)
@@ -141,7 +156,7 @@ namespace Onvif.Open.Recorder.Configuration
 
         #region Private Methods
 
-        private static void AddCamera(IRecordingManager manager, CameraOptions camera)
+        private static ICamera AddCamera(IRecordingManager manager, CameraOptions camera)
         {
             var rotation = ToRotationPolicy(camera.Rotation);
 
@@ -159,8 +174,9 @@ namespace Onvif.Open.Recorder.Configuration
                     builder.SetPassword(camera.Password);
                 }
 
-                manager.AddCamera(camera.Id, builder.Build(), string.IsNullOrWhiteSpace(camera.ProfileToken) ? null : camera.ProfileToken, camera.Transport, rotation);
-                return;
+                var onvifCamera = builder.Build();
+                manager.AddCamera(camera.Id, onvifCamera, string.IsNullOrWhiteSpace(camera.ProfileToken) ? null : camera.ProfileToken, camera.Transport, rotation);
+                return onvifCamera;
             }
 
             var streamUri = new Uri(camera.RtspUrl);
@@ -175,6 +191,8 @@ namespace Onvif.Open.Recorder.Configuration
 
                 return builder.BuildAsync(ct);
             }, rotation);
+
+            return null;
         }
 
         private static ISegmentFormat ToFormat(string format)
@@ -201,6 +219,48 @@ namespace Onvif.Open.Recorder.Configuration
             }
 
             return (long)(value * unit);
+        }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// The recording manager built from configuration, plus the ONVIF cameras for snapshots.
+    /// </summary>
+    public sealed class ConfiguredRecording
+    {
+        #region Constructor
+
+        internal ConfiguredRecording(IRecordingManager manager, IReadOnlyDictionary<string, (ICamera Camera, string ProfileToken)> onvifCameras)
+        {
+            Manager = manager;
+            _onvifCameras = onvifCameras;
+        }
+
+        #endregion
+
+        #region Private Variables
+
+        private readonly IReadOnlyDictionary<string, (ICamera Camera, string ProfileToken)> _onvifCameras;
+
+        #endregion
+
+        #region Public Variables
+
+        public IRecordingManager Manager { get; }
+
+        #endregion
+
+        #region Public Methods
+
+        public Task<byte[]> GetSnapshotAsync(string cameraId, CancellationToken cancellationToken)
+        {
+            if (cameraId == null || !_onvifCameras.TryGetValue(cameraId, out var camera))
+            {
+                throw new NotSupportedException($"Camera '{cameraId}' is not an ONVIF camera: snapshots are not available.");
+            }
+
+            return camera.Camera.InitializeMedia().GetSnapshotAsync(camera.ProfileToken, cancellationToken);
         }
 
         #endregion
