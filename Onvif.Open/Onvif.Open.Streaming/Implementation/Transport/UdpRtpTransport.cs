@@ -22,9 +22,11 @@ namespace Onvif.Open.Streaming.Implementation.Transport
 
         public UdpRtpTransport(IPAddress serverAddress, int reorderCapacity = DefaultReorderCapacity)
         {
+            // Dual-stack TCP sockets report IPv4 servers as IPv4-mapped IPv6 addresses: normalize first, or the RTP
+            // socket would be IPv6-only and never receive the device's IPv4 datagrams.
             _serverAddress = Normalize(serverAddress ?? throw new ArgumentNullException(nameof(serverAddress)));
             _reorderBuffer = new RtpReorderBuffer(reorderCapacity);
-            BindPortPair(serverAddress.AddressFamily);
+            BindPortPair(_serverAddress.AddressFamily);
         }
 
         #endregion
@@ -123,7 +125,7 @@ namespace Onvif.Open.Streaming.Implementation.Transport
 
             for (var attempt = 0; attempt < MaxBindAttempts; attempt++)
             {
-                var rtp = new UdpClient(new IPEndPoint(any, 0));
+                var rtp = CreateSocket(any, 0);
                 var port = ((IPEndPoint)rtp.Client.LocalEndPoint).Port;
 
                 // RFC 3550: RTP on an even port, RTCP on the next (odd) one.
@@ -135,7 +137,7 @@ namespace Onvif.Open.Streaming.Implementation.Transport
 
                 try
                 {
-                    _rtcp = new UdpClient(new IPEndPoint(any, port + 1));
+                    _rtcp = CreateSocket(any, port + 1);
                 }
                 catch (SocketException)
                 {
@@ -150,6 +152,28 @@ namespace Onvif.Open.Streaming.Implementation.Transport
             }
 
             throw new IOException("Could not bind a free UDP port pair for RTP/RTCP.");
+        }
+
+        private static UdpClient CreateSocket(IPAddress any, int port)
+        {
+            var client = new UdpClient(any.AddressFamily);
+
+            if (any.AddressFamily == AddressFamily.InterNetworkV6)
+            {
+                // Also accept IPv4 datagrams (the device may stream from its IPv4 address).
+                client.Client.DualMode = true;
+            }
+
+            try
+            {
+                client.Client.Bind(new IPEndPoint(any, port));
+                return client;
+            }
+            catch
+            {
+                client.Dispose();
+                throw;
+            }
         }
 
         private async Task OpenNatBindingsAsync(CancellationToken cancellationToken)

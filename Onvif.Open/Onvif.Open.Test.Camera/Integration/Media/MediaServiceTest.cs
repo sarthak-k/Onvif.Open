@@ -79,7 +79,7 @@ namespace Onvif.Open.Test.Camera.Integration.Media
                 {
                     Assert.Equal(VideoCodec.H264, stream.Codec);
 
-                    await foreach (var frame in stream.ReadFramesAsync())
+                    await foreach (var frame in stream.ReadFramesAsync(new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(10)).Token))
                     {
                         Assert.True(frame.IsKeyFrame);
                         break;
@@ -103,7 +103,7 @@ namespace Onvif.Open.Test.Camera.Integration.Media
                 {
                     Assert.Equal(StreamTransport.Udp, stream.Transport);
 
-                    await foreach (var frame in stream.ReadFramesAsync())
+                    await foreach (var frame in stream.ReadFramesAsync(new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(10)).Token))
                     {
                         Assert.True(frame.IsKeyFrame);
                         break;
