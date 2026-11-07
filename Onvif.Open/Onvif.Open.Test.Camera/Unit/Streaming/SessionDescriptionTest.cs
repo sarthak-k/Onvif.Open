@@ -36,7 +36,7 @@ namespace Onvif.Open.Test.Camera.Unit.Streaming
         [InlineData("rtsp://cam/stream", "rtsp://other/track1", "rtsp://other/track1")]
         public void ShouldResolveControlUrl(string baseUri, string control, string expected)
         {
-            Assert.Equal(expected, RtspLiveVideoStream.ResolveControl(baseUri, control));
+            Assert.Equal(expected, RtspUris.ResolveControl(baseUri, control));
         }
 
         [Theory]

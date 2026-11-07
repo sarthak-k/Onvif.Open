@@ -13,6 +13,7 @@ using Onvif.Open.Core.Abstract.Interface.Imaging;
 using Onvif.Open.Core.Abstract.Interface.Replay;
 using Onvif.Open.Core.Abstract.Interface.Ptz;
 using Onvif.Open.Core.Abstract.Interface.Recording;
+using Onvif.Open.Core.Analytics;
 using Onvif.Open.Core.Events;
 using Onvif.Open.Core.Plugin;
 using Onvif.Open.Core.Recording;
@@ -97,6 +98,7 @@ namespace Onvif.Open.Plugins.Implementation
             _manager.CameraStateChanged += OnCameraStateChanged;
             _manager.SegmentCompleted += OnSegmentCompleted;
             _manager.CameraEventReceived += OnCameraEventReceived;
+            _manager.AnalyticsReceived += OnAnalyticsReceived;
 
             _logger.LogInformation("{Running} of {Count} plugin(s) running", _runners.Count(r => r.State == PluginState.Running), _runners.Count);
         }
@@ -117,6 +119,7 @@ namespace Onvif.Open.Plugins.Implementation
             _manager.CameraStateChanged -= OnCameraStateChanged;
             _manager.SegmentCompleted -= OnSegmentCompleted;
             _manager.CameraEventReceived -= OnCameraEventReceived;
+            _manager.AnalyticsReceived -= OnAnalyticsReceived;
 
             await Task.WhenAll(_runners.Select(r => r.StopAsync(_stopTimeout, cancellationToken))).ConfigureAwait(false);
         }
@@ -214,6 +217,14 @@ namespace Onvif.Open.Plugins.Implementation
             foreach (var runner in _runners)
             {
                 runner.OnCameraEvent(cameraEvent);
+            }
+        }
+
+        private void OnAnalyticsReceived(object sender, AnalyticsFrame frame)
+        {
+            foreach (var runner in _runners)
+            {
+                runner.OnAnalytics(frame);
             }
         }
 

@@ -36,6 +36,20 @@ namespace Onvif.Open.Media.Ver10
 
         [XmlElement("PTZConfiguration")]
         public PtzConfiguration PTZConfiguration { get; set; }
+
+        /// <summary>Present when the profile streams analytics metadata (ONVIF Profile M / T).</summary>
+        [XmlElement("MetadataConfiguration")]
+        public MetadataConfiguration MetadataConfiguration { get; set; }
+    }
+
+    [XmlType(Namespace = OnvifNamespaces.Schema)]
+    public class MetadataConfiguration
+    {
+        [XmlAttribute("token")]
+        public string Token { get; set; }
+
+        [XmlElement("Name")]
+        public string Name { get; set; }
     }
 
     [XmlType(Namespace = OnvifNamespaces.Schema)]

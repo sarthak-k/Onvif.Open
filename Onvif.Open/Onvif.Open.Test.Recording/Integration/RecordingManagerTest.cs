@@ -423,6 +423,45 @@ namespace Onvif.Open.Test.Recording.Integration
         }
 
         [Fact]
+        public async Task DetectedObjectsShouldTriggerRecordingAndBeForwarded()
+        {
+            using (var temp = new TempDirectory())
+            {
+                var stream = new FakeLiveVideoStream();
+                var analytics = System.Threading.Channels.Channel.CreateUnbounded<Onvif.Open.Core.Analytics.AnalyticsFrame>();
+                var forwarded = new ConcurrentQueue<Onvif.Open.Core.Analytics.AnalyticsFrame>();
+                var options = new CameraRecordingOptions { Mode = RecordingMode.Triggered, PreRoll = TimeSpan.Zero, PostRoll = TimeSpan.FromMilliseconds(300) };
+                options.AnalyticsTriggers.Add("Human");
+
+                Onvif.Open.Core.Analytics.AnalyticsFrame Person() => new Onvif.Open.Core.Analytics.AnalyticsFrame(DateTimeOffset.UtcNow, null, new[]
+                {
+                    new Onvif.Open.Core.Analytics.DetectedObject("1", new[] { new Onvif.Open.Core.Analytics.ObjectClassification("Human", 0.9) }, null)
+                });
+
+                await using (var manager = Builder(temp).Build())
+                {
+                    manager.AnalyticsReceived += (_, f) => forwarded.Enqueue(f);
+                    manager.AddCamera("cam1", new FakeStreamSource().Add(stream).ConnectAsync, options, null, ct => analytics.Reader.ReadAllAsync(ct));
+                    await manager.StartAsync();
+
+                    stream.Push(5, gop: 5);
+                    await Eventually.True(() => manager.GetStatus()[0].State == RecordingState.Recording, "the camera is connected");
+                    Assert.False(manager.GetStatus()[0].IsTriggered);
+
+                    await analytics.Writer.WriteAsync(Person());
+                    await Eventually.True(() => manager.GetStatus()[0].IsTriggered, "a detected person triggered the recording");
+
+                    stream.Push(5, gop: 5);
+                    await Eventually.True(() => manager.GetStatus()[0].FramesRecorded == 5, "frames while the person is in view are written");
+                    await Eventually.True(() => !manager.GetStatus()[0].IsTriggered, "the post-roll ends");
+
+                    Assert.Single(forwarded);
+                    Assert.Equal("cam1", forwarded.Single().CameraId);
+                }
+            }
+        }
+
+        [Fact]
         public async Task ContinuousModeShouldIgnoreTriggersButForwardEvents()
         {
             using (var temp = new TempDirectory())
@@ -513,6 +552,9 @@ namespace Onvif.Open.Test.Recording.Integration
             public IMediaService GetMediaService() => throw new NotSupportedException();
 
             public Task<byte[]> GetSnapshotAsync(string profileToken = null, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+            public Task<Onvif.Open.Core.Abstract.Interface.Analytics.IAnalyticsStream> StartAnalyticsStreamAsync(string profileToken = null, StreamTransport transport = StreamTransport.Rtsp, CancellationToken cancellationToken = default)
+                => throw new NotSupportedException();
 
             public Task<ILiveVideoStream> StartLiveStreamAsync(string profileToken = null, StreamTransport transport = StreamTransport.Rtsp, CancellationToken cancellationToken = default)
             {

@@ -36,6 +36,9 @@ namespace Onvif.Open.Test.Plugins.Fakes
         public event EventHandler<CameraFrame> FrameReceived;
         public event EventHandler<CameraStateChange> CameraStateChanged;
         public event EventHandler<CameraEvent> CameraEventReceived;
+        public event EventHandler<Onvif.Open.Core.Analytics.AnalyticsFrame> AnalyticsReceived;
+
+        public void RaiseAnalytics(Onvif.Open.Core.Analytics.AnalyticsFrame frame) => AnalyticsReceived?.Invoke(this, frame);
 
         public void RaiseCameraEvent(string cameraId, string topic, string isMotion)
         {
@@ -44,7 +47,7 @@ namespace Onvif.Open.Test.Plugins.Fakes
         }
 
         public void AddCamera(string cameraId, ICamera camera, CameraRecordingOptions options) => throw new NotSupportedException();
-        public void AddCamera(string cameraId, Func<CancellationToken, Task<ILiveVideoStream>> streamFactory, CameraRecordingOptions options, Func<CancellationToken, IAsyncEnumerable<CameraEvent>> eventSource = null) => throw new NotSupportedException();
+        public void AddCamera(string cameraId, Func<CancellationToken, Task<ILiveVideoStream>> streamFactory, CameraRecordingOptions options, Func<CancellationToken, IAsyncEnumerable<CameraEvent>> eventSource = null, Func<CancellationToken, IAsyncEnumerable<Onvif.Open.Core.Analytics.AnalyticsFrame>> analyticsSource = null) => throw new NotSupportedException();
 
         public void TriggerRecording(string cameraId, TimeSpan duration)
         {

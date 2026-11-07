@@ -482,6 +482,44 @@ namespace Onvif.Open.Test.Plugins.Unit
             }
         }
 
+        [Fact]
+        public async Task AnalyticsObserversShouldReceiveFramesOfAssignedCamerasOnly()
+        {
+            var manager = new FakeRecordingManager("room-1", "room-2");
+            var plugin = new AnalyticsPlugin();
+
+            await using (var host = Builder(manager).AddPlugin(plugin, new[] { "room-1" }).Build())
+            {
+                await host.StartAsync();
+
+                Onvif.Open.Core.Analytics.AnalyticsFrame Frame(string camera) => new Onvif.Open.Core.Analytics.AnalyticsFrame(DateTimeOffset.UtcNow, null, Array.Empty<Onvif.Open.Core.Analytics.DetectedObject>(), camera);
+                manager.RaiseAnalytics(Frame("room-2"));
+                manager.RaiseAnalytics(Frame("room-1"));
+
+                await Eventually.True(() => plugin.Received.Count == 1, "the frame of room-1 is delivered");
+                await Task.Delay(100);
+                Assert.Equal("room-1", Assert.Single(plugin.Received).CameraId);
+                Assert.Contains(nameof(Onvif.Open.Core.Abstract.Interface.Plugin.IAnalyticsObserver), Status(host, "analytics").Capabilities);
+            }
+        }
+
+        private sealed class AnalyticsPlugin : Onvif.Open.Core.Abstract.Interface.Plugin.IAnalyticsObserver
+        {
+            public System.Collections.Concurrent.ConcurrentQueue<Onvif.Open.Core.Analytics.AnalyticsFrame> Received { get; } = new System.Collections.Concurrent.ConcurrentQueue<Onvif.Open.Core.Analytics.AnalyticsFrame>();
+
+            public string Name => "analytics";
+
+            public Task StartAsync(Onvif.Open.Core.Abstract.Interface.Plugin.IPluginContext context, System.Threading.CancellationToken cancellationToken) => Task.CompletedTask;
+
+            public Task StopAsync(System.Threading.CancellationToken cancellationToken) => Task.CompletedTask;
+
+            public Task OnAnalyticsAsync(Onvif.Open.Core.Analytics.AnalyticsFrame frame, System.Threading.CancellationToken cancellationToken)
+            {
+                Received.Enqueue(frame);
+                return Task.CompletedTask;
+            }
+        }
+
         private sealed class NoOpPtz : Onvif.Open.Core.Abstract.Interface.Ptz.ICameraPtz
         {
             public Task MoveAsync(double pan, double tilt, double zoom, TimeSpan? duration = null, CancellationToken cancellationToken = default) => Task.CompletedTask;

@@ -5,6 +5,7 @@ using System;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using Onvif.Open.Core.Abstract.Interface.Analytics;
 using Onvif.Open.Core.Abstract.Interface.Camera;
 using Onvif.Open.Core.Abstract.Interface.Streaming;
 using Onvif.Open.Core.Operations;
@@ -114,6 +115,20 @@ namespace Onvif.Open.Streaming.Implementation.Builder
 
             _transport = transport;
             return this;
+        }
+
+        /// <summary>
+        /// Starts the analytics metadata track of the stream URI instead of video (ONVIF Profile M): objects the
+        /// camera detects. The media profile must have a metadata configuration. Replay settings do not apply.
+        /// </summary>
+        public Task<IAnalyticsStream> BuildAnalyticsAsync(CancellationToken cancellationToken = default)
+        {
+            if (_streamUri == null)
+            {
+                return Task.FromException<IAnalyticsStream>(new InvalidOperationException("Live Video Stream Builder must have a stream URL to start streaming."));
+            }
+
+            return RtspAnalyticsStream.StartAsync(_streamUri, _credential, _transport, _timeout, _frameBufferCapacity, cancellationToken);
         }
 
         /// <summary>

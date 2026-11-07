@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Onvif.Open.Core.Abstract.Interface.Camera;
 using Onvif.Open.Core.Abstract.Interface.Streaming;
+using Onvif.Open.Core.Analytics;
 using Onvif.Open.Core.Events;
 using Onvif.Open.Core.Operations;
 using Onvif.Open.Core.Plugin;
@@ -36,6 +37,12 @@ namespace Onvif.Open.Core.Abstract.Interface.Recording
         /// <summary>Raised for every ONVIF event received from a camera (cameras with event subscriptions only).</summary>
         event EventHandler<CameraEvent> CameraEventReceived;
 
+        /// <summary>
+        /// Raised for every analytics frame (objects the camera detected) of cameras with
+        /// <see cref="CameraRecordingOptions.ReceiveAnalytics"/>, on the camera's analytics thread: handlers must return quickly.
+        /// </summary>
+        event EventHandler<AnalyticsFrame> AnalyticsReceived;
+
         #endregion
 
         #region Public Methods
@@ -51,9 +58,10 @@ namespace Onvif.Open.Core.Abstract.Interface.Recording
 
         /// <summary>
         /// Records any stream source; <paramref name="eventSource"/> optionally supplies camera events
-        /// (used for <see cref="CameraRecordingOptions.EventTriggers"/> and <see cref="CameraEventReceived"/>).
+        /// (used for <see cref="CameraRecordingOptions.EventTriggers"/> and <see cref="CameraEventReceived"/>),
+        /// <paramref name="analyticsSource"/> analytics frames (<see cref="CameraRecordingOptions.AnalyticsTriggers"/>, <see cref="AnalyticsReceived"/>).
         /// </summary>
-        void AddCamera(string cameraId, Func<CancellationToken, Task<ILiveVideoStream>> streamFactory, CameraRecordingOptions options, Func<CancellationToken, IAsyncEnumerable<CameraEvent>> eventSource = null);
+        void AddCamera(string cameraId, Func<CancellationToken, Task<ILiveVideoStream>> streamFactory, CameraRecordingOptions options, Func<CancellationToken, IAsyncEnumerable<CameraEvent>> eventSource = null, Func<CancellationToken, IAsyncEnumerable<AnalyticsFrame>> analyticsSource = null);
 
         /// <summary>
         /// Triggered mode: records for at least <paramref name="duration"/> from now (plus the post-roll).

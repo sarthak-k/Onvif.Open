@@ -94,6 +94,12 @@ namespace Onvif.Open.Test.Camera.Fakes
         /// <summary>When true the device lists and implements Media2 (ver20).</summary>
         public bool HasMedia2 { get; set; }
 
+        /// <summary>The sub stream profile gets a metadata configuration (analytics metadata, Profile M).</summary>
+        public bool HasMetadata { get; set; }
+
+        /// <summary>Profile token of the last GetStreamUri request.</summary>
+        public string LastStreamUriProfile { get; private set; }
+
         /// <summary>When false GetServices returns a fault, like pre-2.0 devices.</summary>
         public bool SupportsGetServices { get; set; } = true;
 
@@ -625,6 +631,7 @@ namespace Onvif.Open.Test.Camera.Fakes
                     $"<tt:Resolution><tt:Width>{width}</tt:Width><tt:Height>{height}</tt:Height></tt:Resolution>" +
                     $"<tt:RateControl ConstantBitRate=\"false\"><tt:FrameRateLimit>{fps}</tt:FrameRateLimit><tt:BitrateLimit>8192</tt:BitrateLimit></tt:RateControl><tt:Quality>5</tt:Quality></tr2:VideoEncoder>" +
                     (ptz ? "<tr2:PTZ token=\"PTZ_2\"><tt:Name>PTZ</tt:Name><tt:UseCount>1</tt:UseCount><tt:NodeToken>Node_1</tt:NodeToken></tr2:PTZ>" : string.Empty) +
+                    (ptz && HasMetadata ? "<tr2:Metadata token=\"MD_2\"><tt:Name>Analytics</tt:Name><tt:UseCount>1</tt:UseCount></tr2:Metadata>" : string.Empty) +
                     "</tr2:Configurations></tr2:Profiles>";
 
                 return $"<tr2:GetProfilesResponse {Ns}>" +
@@ -711,12 +718,13 @@ namespace Onvif.Open.Test.Camera.Fakes
             {
                 return "<trt:GetProfilesResponse>" +
                        Profile("Profile_1", "mainStream", 1920, 1080, 25, 4096) +
-                       Profile("Profile_2", "subStream", 640, 360, 15, 512, ptz: true) +
+                       Profile("Profile_2", "subStream", 640, 360, 15, 512, ptz: true, metadata: HasMetadata) +
                        "</trt:GetProfilesResponse>";
             }
 
             if (request.Contains("GetStreamUri", StringComparison.Ordinal))
             {
+                LastStreamUriProfile = System.Text.RegularExpressions.Regex.Match(request, "<(?:\\w+:)?ProfileToken(?:\\s[^>]*)?>([^<]*)<").Groups[1].Value;
                 return $"<trt:GetStreamUriResponse>{MediaUri(RtspUri.ToString())}</trt:GetStreamUriResponse>";
             }
 
@@ -728,9 +736,10 @@ namespace Onvif.Open.Test.Camera.Fakes
             return "<s:Fault><s:Code><s:Value>s:Receiver</s:Value></s:Code><s:Reason><s:Text xml:lang=\"en\">Not implemented</s:Text></s:Reason></s:Fault>";
         }
 
-        private static string Profile(string token, string name, int width, int height, int fps, int bitrate, bool ptz = false)
+        private static string Profile(string token, string name, int width, int height, int fps, int bitrate, bool ptz = false, bool metadata = false)
         {
             var ptzConfiguration = ptz ? "<tt:PTZConfiguration token=\"PTZ_1\"><tt:Name>PTZ</tt:Name><tt:UseCount>1</tt:UseCount><tt:NodeToken>Node_1</tt:NodeToken></tt:PTZConfiguration>" : string.Empty;
+            ptzConfiguration += metadata ? "<tt:MetadataConfiguration token=\"MD_1\"><tt:Name>Analytics</tt:Name><tt:UseCount>1</tt:UseCount><tt:Analytics>true</tt:Analytics><tt:SessionTimeout>PT60S</tt:SessionTimeout></tt:MetadataConfiguration>" : string.Empty;
             return $"<trt:Profiles token=\"{token}\" fixed=\"true\"><tt:Name>{name}</tt:Name>" +
                    "<tt:VideoSourceConfiguration token=\"VSC_1\"><tt:Name>VSC</tt:Name><tt:UseCount>2</tt:UseCount><tt:SourceToken>VS_1</tt:SourceToken><tt:Bounds x=\"0\" y=\"0\" width=\"1920\" height=\"1080\"/></tt:VideoSourceConfiguration>" +
                    $"<tt:VideoEncoderConfiguration token=\"VEC_{token}\"><tt:Name>VEC</tt:Name><tt:UseCount>1</tt:UseCount><tt:Encoding>H264</tt:Encoding>" +

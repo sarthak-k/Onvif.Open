@@ -28,6 +28,7 @@ namespace Onvif.Open.Media.Implementation.Client
         public int? BitrateLimit { get; private set; }
         public string PtzConfigurationToken { get; private set; }
         public string VideoSourceToken { get; private set; }
+        public string MetadataConfigurationToken { get; private set; }
 
         #endregion
 
@@ -54,7 +55,8 @@ namespace Onvif.Open.Media.Implementation.Client
                 FrameRateLimit = encoder?.RateControl?.FrameRateLimit,
                 BitrateLimit = encoder?.RateControl?.BitrateLimit,
                 PtzConfigurationToken = profile.PTZConfiguration?.Token,
-                VideoSourceToken = profile.VideoSourceConfiguration?.SourceToken
+                VideoSourceToken = profile.VideoSourceConfiguration?.SourceToken,
+                MetadataConfigurationToken = profile.MetadataConfiguration?.Token
             };
         }
 
@@ -72,7 +74,8 @@ namespace Onvif.Open.Media.Implementation.Client
                 FrameRateLimit = encoder?.RateControl == null ? (int?)null : (int)System.Math.Round(encoder.RateControl.FrameRateLimit),
                 BitrateLimit = encoder?.RateControl?.BitrateLimit,
                 PtzConfigurationToken = profile.Configurations?.Ptz?.Token,
-                VideoSourceToken = profile.Configurations?.VideoSource?.SourceToken
+                VideoSourceToken = profile.Configurations?.VideoSource?.SourceToken,
+                MetadataConfigurationToken = profile.Configurations?.Metadata?.Token
             };
         }
 

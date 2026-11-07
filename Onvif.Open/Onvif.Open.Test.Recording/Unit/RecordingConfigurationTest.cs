@@ -112,6 +112,36 @@ namespace Onvif.Open.Test.Recording.Unit
         }
 
         [Fact]
+        public void AnalyticsTriggerClassesShouldReplaceTheMotionDefault()
+        {
+            var camera = new CameraOptions { Id = "cam", OnvifUrl = "http://192.168.1.10", Mode = RecordingMode.Triggered };
+            camera.Analytics.TriggerClasses.Add(" Human ");
+            camera.Analytics.MinLikelihood = 0.7;
+
+            var options = RecordingConfiguration.ToRecordingOptions(camera);
+
+            Assert.Equal(new[] { "Human" }, options.AnalyticsTriggers);
+            Assert.Equal(0.7, options.AnalyticsMinLikelihood);
+            Assert.True(options.UsesAnalytics);
+            Assert.Empty(options.EventTriggers);
+
+            var plain = RecordingConfiguration.ToRecordingOptions(new CameraOptions { Id = "cam", OnvifUrl = "http://192.168.1.10" });
+            Assert.False(plain.UsesAnalytics);
+        }
+
+        [Fact]
+        public void AnalyticsShouldRequireAnOnvifCameraAndAValidLikelihood()
+        {
+            var options = new RecorderOptions();
+            options.Cameras.Add(new CameraOptions { Id = "rtsp", RtspUrl = "rtsp://192.168.1.11/stream", Analytics = new CameraAnalyticsOptions { Enabled = true } });
+            options.Cameras.Add(new CameraOptions { Id = "onvif", OnvifUrl = "http://192.168.1.10", Analytics = new CameraAnalyticsOptions { Enabled = true, MinLikelihood = 1.5 } });
+
+            var error = Assert.Throws<InvalidOperationException>(() => RecordingConfiguration.Validate(options));
+            Assert.Contains("'rtsp': Analytics need an ONVIF camera", error.Message);
+            Assert.Contains("'onvif': Analytics:MinLikelihood", error.Message);
+        }
+
+        [Fact]
         public void StreamUriCredentialsShouldBeRedacted()
         {
             Assert.Equal("rtsp://192.168.1.3/stream", RecordingEndpoints.Redact(new Uri("rtsp://admin:secret@192.168.1.3/stream")));

@@ -102,6 +102,20 @@ namespace Onvif.Open.Recorder.Configuration
                 {
                     errors.Add($"Camera '{camera.Id}' needs exactly one of OnvifUrl or RtspUrl.");
                 }
+
+                var cameraAnalytics = camera.Analytics;
+                if (cameraAnalytics != null && (cameraAnalytics.Enabled || cameraAnalytics.TriggerClasses?.Count > 0))
+                {
+                    if (string.IsNullOrWhiteSpace(camera.OnvifUrl))
+                    {
+                        errors.Add($"Camera '{camera.Id}': Analytics need an ONVIF camera (OnvifUrl).");
+                    }
+
+                    if (cameraAnalytics.MinLikelihood < 0 || cameraAnalytics.MinLikelihood > 1)
+                    {
+                        errors.Add($"Camera '{camera.Id}': Analytics:MinLikelihood must be between 0 and 1.");
+                    }
+                }
             }
 
             if (options.Archive != null && options.Archive.IsEnabled
@@ -192,8 +206,21 @@ namespace Onvif.Open.Recorder.Configuration
                 SubscribeToEvents = camera.Events?.Enabled != false
             };
 
+            var analytics = camera.Analytics ?? new CameraAnalyticsOptions();
+            var classes = analytics.TriggerClasses?.Where(c => !string.IsNullOrWhiteSpace(c)).Select(c => c.Trim()).ToList() ?? new List<string>();
+            options.ReceiveAnalytics = analytics.Enabled;
+            options.AnalyticsMinLikelihood = analytics.MinLikelihood;
+            options.AnalyticsProfileToken = string.IsNullOrWhiteSpace(analytics.ProfileToken) ? null : analytics.ProfileToken;
+
+            foreach (var objectClass in classes)
+            {
+                options.AnalyticsTriggers.Add(objectClass);
+            }
+
+            // Motion is the default trigger, unless the camera's object detection decides instead.
             var topics = camera.Events?.TriggerTopics?.Where(t => !string.IsNullOrWhiteSpace(t)).ToList() ?? new List<string>();
-            foreach (var topic in topics.Count > 0 || camera.Mode != RecordingMode.Triggered ? topics : CameraRecordingOptions.CommonMotionTopics.ToList())
+            var defaultToMotion = topics.Count == 0 && classes.Count == 0 && camera.Mode == RecordingMode.Triggered;
+            foreach (var topic in defaultToMotion ? CameraRecordingOptions.CommonMotionTopics.ToList() : topics)
             {
                 options.EventTriggers.Add(topic);
             }
