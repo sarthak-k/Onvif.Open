@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Onvif.Open.Core.Abstract.Interface.Device;
 
 namespace Onvif.Open.Core.Abstract.Interface.Camera
@@ -25,6 +25,7 @@ namespace Onvif.Open.Core.Abstract.Interface.Camera
 
         ICameraDeviceManagement Initialize();
         ICameraInformation GetCameraInformation();
+        ICameraMedia InitializeMedia();
 
         #endregion
     }

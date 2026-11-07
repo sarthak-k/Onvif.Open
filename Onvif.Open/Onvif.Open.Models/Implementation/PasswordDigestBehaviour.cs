@@ -1,6 +1,7 @@
-﻿// Sarthak Killedar
+// Sarthak Killedar
 // 2016-03-06 @ 12:43 PM
 
+using System.Net;
 using System.ServiceModel.Channels;
 using System.ServiceModel.Description;
 using System.ServiceModel.Dispatcher;
@@ -53,7 +54,20 @@ namespace Onvif.Open.Core.Implementation
 
         public void ApplyClientBehavior(ServiceEndpoint endpoint, ClientRuntime clientRuntime)
         {
-            clientRuntime.MessageInspectors.Add(new PasswordDigestMessageInspector(_camera.Username, _camera.Password));
+            clientRuntime.ClientMessageInspectors.Add(new PasswordDigestMessageInspector(_camera.Username, _camera.Password));
+        }
+
+        /// <summary>
+        /// Configures HTTP Digest credentials for devices that authenticate at the transport level.
+        /// </summary>
+        public void ConfigureCredentials(ClientCredentials credentials)
+        {
+            if (credentials == null || string.IsNullOrEmpty(_camera?.Username))
+            {
+                return;
+            }
+
+            credentials.HttpDigest.ClientCredential = new NetworkCredential(_camera.Username, _camera.Password);
         }
 
         internal static PasswordDigestBehaviour CreateInstance(ICameraInformation camera)

@@ -1,4 +1,4 @@
-﻿// Sarthak Killedar
+// Sarthak Killedar
 // 2016-03-06 @ 1:08 AM
 namespace Onvif.Open.Core.Abstract.Interface.Device
 {
@@ -24,6 +24,11 @@ namespace Onvif.Open.Core.Abstract.Interface.Device
 
         IDeviceInfo GetDeviceInfo();
         IDeviceDateAndTime GetDeviceDateTime();
+
+        /// <summary>
+        /// Address of the device's Media service (from GetCapabilities). Falls back to the device service address.
+        /// </summary>
+        System.Uri GetMediaServiceUri();
 
         #endregion
 

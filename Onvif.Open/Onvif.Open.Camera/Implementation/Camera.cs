@@ -1,4 +1,4 @@
-﻿// Sarthak Killedar
+// Sarthak Killedar
 // 2016-03-03 @ 9:57 PM
 
 using System;
@@ -23,6 +23,8 @@ namespace Onvif.Open.Camera.Implementation
         #region Private Variables
 
         private ICameraDeviceManagement CameraDeviceManagement { get; set; }
+
+        private ICameraMedia CameraMedia { get; set; }
         
         #endregion
 
@@ -38,6 +40,13 @@ namespace Onvif.Open.Camera.Implementation
             return CameraDeviceManagement ??
                    (CameraDeviceManagement =
                        CameraDeviceManagementBuilder.GetBuilder().SetDeviceManagement(this).Build());
+        }
+
+        public ICameraMedia InitializeMedia()
+        {
+            return CameraMedia ??
+                   (CameraMedia =
+                       CameraMediaBuilder.GetBuilder().SetCamera(this).SetDeviceManagement(Initialize()).Build());
         }
 
         public ICameraInformation GetCameraInformation()
