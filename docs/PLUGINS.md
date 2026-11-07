@@ -1,5 +1,7 @@
 # Writing plugins
 
+Storage backends (cloud, NAS) are plugins too, with their own small contract: see [STORAGE.md](STORAGE.md).
+
 Plugins add behaviour to the recorder without changing it: video analytics, schedule-based alerts,
 notifications, uploads, ... Onvif.Open only provides the extension points; the plugins are yours.
 
@@ -41,7 +43,7 @@ Every plugin implements `IPlugin` (`Name`, `StartAsync`, `StopAsync`) and any of
 
 * `Settings`: your configuration (`Plugins:Items:<folder>:Settings`), keys like `Schedule:Start`.
 * `Logger`, `TimeProvider`.
-* `Cameras`: status, segments, `StartRecordingAsync` / `StopRecordingAsync`, `TriggerRecording` (for cameras in
+* `Cameras`: status, segments (`OpenSegmentAsync` reads one, whether it is on the local disk or in the archive), `StartRecordingAsync` / `StopRecordingAsync`, `TriggerRecording` (for cameras in
   triggered mode: record around what you detected), `GetPtz` (pan/tilt/zoom, presets), `GetImaging` (brightness, day/night, focus), `GetIo` (relays, digital inputs), and `GetSnapshotAsync` (JPEG through ONVIF,
   handy when you don't want to decode H.264). Only the cameras assigned to your plugin are accessible.
 * `PublishAsync(PluginEvent)`: report what you found. Events appear in `GET /api/events`, each linked to the recording

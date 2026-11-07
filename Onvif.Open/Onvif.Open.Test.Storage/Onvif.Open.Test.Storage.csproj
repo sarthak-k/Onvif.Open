@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Conformance tests for archive stores. The FileSystem store always runs; S3, Azure Blob and GCS run against
+    emulators when these variables are set (CI starts moto, Azurite and fake-gcs-server), otherwise they are skipped:
+      ONVIF_OPEN_TEST_S3_URL           e.g. http://127.0.0.1:5000
+      ONVIF_OPEN_TEST_AZURE_CONNECTION e.g. UseDevelopmentStorage=true
+      ONVIF_OPEN_TEST_GCS_URL          e.g. http://127.0.0.1:4443/storage/v1/
+  -->
+  <PropertyGroup>
+    <RootNamespace>Onvif.Open.Test.Storage</RootNamespace>
+    <AssemblyName>Onvif.Open.Test.Storage</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="Xunit.SkippableFact" Version="1.5.23" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Onvif.Open.Models\Onvif.Open.Core.csproj" />
+    <ProjectReference Include="..\Onvif.Open.Plugins\Onvif.Open.Plugins.csproj" />
+    <ProjectReference Include="..\Onvif.Open.Recording\Onvif.Open.Recording.csproj" />
+    <ProjectReference Include="..\Onvif.Open.Storage.S3\Onvif.Open.Storage.S3.csproj" />
+    <ProjectReference Include="..\Onvif.Open.Storage.Azure\Onvif.Open.Storage.Azure.csproj" />
+    <ProjectReference Include="..\Onvif.Open.Storage.Gcs\Onvif.Open.Storage.Gcs.csproj" />
+  </ItemGroup>
+
+</Project>

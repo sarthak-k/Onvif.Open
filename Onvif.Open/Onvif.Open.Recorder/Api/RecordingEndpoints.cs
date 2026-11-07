@@ -90,15 +90,7 @@ namespace Onvif.Open.Recorder.Api
                     .Select(s => ToDto(s, id)));
 
             // The file is looked up in the storage listing by name, so no user supplied path ever reaches the file system.
-            api.MapGet("/cameras/{id}/segments/{fileName}", (string id, string fileName, IRecordingManager manager) =>
-            {
-                var segment = FindSegment(manager, id, fileName);
-                return segment == null
-                    ? Results.NotFound()
-                    : Results.File(segment.Path, ContentType(segment.FileName), segment.FileName, enableRangeProcessing: true);
-            });
-
-            api.MapDelete("/cameras/{id}/segments/{fileName}", (string id, string fileName, IRecordingManager manager) =>
+            api.MapGet("/cameras/{id}/segments/{fileName}", async (string id, string fileName, IRecordingManager manager, CancellationToken ct) =>
             {
                 var segment = FindSegment(manager, id, fileName);
 
@@ -107,7 +99,28 @@ namespace Onvif.Open.Recorder.Api
                     return Results.NotFound();
                 }
 
-                if (!manager.DeleteSegment(segment))
+                if (segment.IsLocal && System.IO.File.Exists(segment.Path))
+                {
+                    return Results.File(segment.Path, ContentType(segment.FileName), segment.FileName, enableRangeProcessing: true);
+                }
+
+                // Only in the archive: streamed from the store (ranges when the store's stream can seek).
+                var stream = await manager.OpenSegmentAsync(segment, ct);
+                return stream == null
+                    ? Results.NotFound()
+                    : Results.Stream(stream, ContentType(segment.FileName), segment.FileName, enableRangeProcessing: stream.CanSeek);
+            });
+
+            api.MapDelete("/cameras/{id}/segments/{fileName}", async (string id, string fileName, IRecordingManager manager, CancellationToken ct) =>
+            {
+                var segment = FindSegment(manager, id, fileName);
+
+                if (segment == null)
+                {
+                    return Results.NotFound();
+                }
+
+                if (!await manager.DeleteSegmentAsync(segment, ct))
                 {
                     return Results.Conflict(new { error = "The segment is being recorded or could not be deleted." });
                 }
@@ -124,6 +137,18 @@ namespace Onvif.Open.Recorder.Api
                 {
                     location = storage.Location,
                     availableFreeBytes = storage.AvailableFreeBytes,
+                    archive = storage.Archive == null ? null : new
+                    {
+                        provider = storage.Archive.Provider,
+                        location = storage.Archive.Location,
+                        isAvailable = storage.Archive.IsAvailable,
+                        pendingUploads = storage.Archive.PendingUploads,
+                        lastUploadAt = storage.Archive.LastUploadAt,
+                        lastError = storage.Archive.LastError,
+                        lastErrorAt = storage.Archive.LastErrorAt
+                    },
+                    localBytes = segments.Where(s => s.IsLocal).Sum(s => s.Size),
+                    archivedBytes = segments.Where(s => s.IsArchived).Sum(s => s.Size),
                     totalBytes = segments.Sum(s => s.Size),
                     segmentCount = segments.Count,
                     cameras = segments.GroupBy(s => s.CameraId).Select(g => new
@@ -194,6 +219,8 @@ namespace Onvif.Open.Recorder.Api
                 segment.LastWriteTime,
                 segment.Size,
                 segment.IsActive,
+                segment.IsLocal,
+                segment.IsArchived,
                 url = $"/api/cameras/{Uri.EscapeDataString(segment.CameraId)}/segments/{Uri.EscapeDataString(segment.FileName)}"
             };
         }

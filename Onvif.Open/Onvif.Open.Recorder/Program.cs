@@ -23,7 +23,13 @@ builder.Services.Configure<JsonOptions>(o => o.SerializerOptions.Converters.Add(
 builder.Services.AddSingleton(sp =>
     sp.GetRequiredService<IConfiguration>().GetSection(RecorderOptions.SectionName).Get<RecorderOptions>() ?? new RecorderOptions());
 builder.Services.AddSingleton(sp =>
-    RecordingConfiguration.Create(sp.GetRequiredService<RecorderOptions>(), sp.GetRequiredService<ILoggerFactory>()));
+    RecordingConfiguration.Create(
+        sp.GetRequiredService<RecorderOptions>(),
+        sp.GetRequiredService<ILoggerFactory>(),
+        StorageConfiguration.CreateArchive(
+            sp.GetRequiredService<IConfiguration>(),
+            sp.GetRequiredService<IHostEnvironment>().ContentRootPath,
+            sp.GetRequiredService<ILoggerFactory>())));
 builder.Services.AddSingleton<IRecordingManager>(sp => sp.GetRequiredService<ConfiguredRecording>().Manager);
 builder.Services.AddSingleton(sp => new CameraEventStore(sp.GetRequiredService<IRecordingManager>()));
 builder.Services.AddSingleton(sp => DiscoveryConfiguration.CreateDiscovery(

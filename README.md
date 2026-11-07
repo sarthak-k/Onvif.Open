@@ -21,6 +21,7 @@ Targets **.NET 10 (LTS)** and runs on Windows, Linux and macOS.
 | `Onvif.Open.Recorder` | Backend service: records the cameras from `appsettings.json`, hosts plugins and exposes a REST API |
 | `Onvif.Open.Plugins` | Plugin runtime: isolated delivery of frames, camera state changes, segments and events; folder loader |
 | `Onvif.Open.Plugins.Sample` | Template plugin project |
+| `Onvif.Open.Storage.S3` / `.Azure` / `.Gcs` | Storage plugins: archive recordings to Amazon S3 (and S3-compatible), Azure Blob Storage, Google Cloud Storage |
 | `Onvif.Open.Sample` | Console app recording a camera's live stream to a file |
 
 ## Usage
@@ -211,11 +212,24 @@ await recorder.StartAsync();
   written is never deleted. Built-in: `KeepFor(age)`, `MaxTotalSize(bytes)`, `MaxSizePerCamera(bytes)`, `MinFreeSpace(bytes)`,
   `When(selector)`, `KeepAll`, combined with `And`/`All`. Default: keep at least 1 GiB free.
 * **Storage**: `FileSystemRecordingStorage`, or implement `IRecordingStorage`.
+* **Archive** (optional): `SetArchive(store)` uploads every completed segment to an `ISegmentStore`, i.e. the cloud
+  or a NAS. The local disk stays the write buffer, so a slow or unreachable store never interrupts recording; uploads are
+  retried and resumed after a restart, local copies are removed once uploaded (or kept for `KeepLocalCopyFor`), and the
+  retention policy then applies to the archive. `GetSegments`, `OpenSegmentAsync` and `DeleteSegmentAsync` cover both
+  places. See [docs/STORAGE.md](docs/STORAGE.md).
 * **Triggered recording**: the stream stays connected and whole GOPs covering the pre-roll are buffered; while a trigger is
   active (stateful events such as motion hold it, `TriggerRecording`/plugins/stateless events pulse it) and for the
   post-roll afterwards, video is written. Rotation still applies within a triggered recording.
 * **Events**: ONVIF cameras are subscribed to their events (`SubscribeToEvents`, on by default); every event is raised
   as `CameraEventReceived` and delivered to plugins implementing `ICameraEventObserver`.
+
+```csharp
+var manager = RecordingManagerBuilder.GetBuilder()
+    .SetStorageDirectory("/var/recordings")                          // local buffer
+    .SetArchive(new FileSystemSegmentStore("/mnt/nas/recordings"))   // or S3SegmentStore, AzureBlobSegmentStore, GcsSegmentStore
+    .SetRetentionPolicy(RetentionPolicies.KeepFor(TimeSpan.FromDays(30)))
+    .Build();
+```
 
 ### Recorder service
 
@@ -227,6 +241,10 @@ await recorder.StartAsync();
   "StorageDirectory": "/var/recordings",
   "Rotation": { "SegmentDuration": "00:10:00", "MaxSegmentSizeMB": 512 },
   "Retention": { "MaxAge": "7.00:00:00", "MaxSizePerCameraGB": 100, "MinFreeSpaceGB": 5 },
+  "Archive": {
+    "Provider": "Onvif.Open.Storage.S3",          // or "FileSystem" (NAS), "Onvif.Open.Storage.Azure", "Onvif.Open.Storage.Gcs"
+    "Settings": { "Bucket": "my-recordings", "Region": "eu-west-1" }
+  },
   "Cameras": [
     { "Id": "front-door", "OnvifUrl": "http://192.168.1.10", "Username": "admin", "Password": "..." },
     { "Id": "garage", "RtspUrl": "rtsp://192.168.1.11/stream1", "Username": "admin", "Password": "...",
@@ -251,9 +269,9 @@ Passwords can be supplied through environment variables instead of the file, e.g
 | `POST /api/cameras/{id}/trigger?seconds=30` | Triggered mode: record now (plus post-roll) |
 | `GET /api/camera-events?cameraId=&topic=&limit=` | Recent ONVIF events from the cameras |
 | `GET /api/cameras/{id}/segments?from=&to=` | Recorded files with download URLs |
-| `GET /api/cameras/{id}/segments/{file}` | Download (supports HTTP range requests) |
-| `DELETE /api/cameras/{id}/segments/{file}` | Delete a completed file |
-| `GET /api/storage` | Free space and usage per camera |
+| `GET /api/cameras/{id}/segments/{file}` | Download, from the local disk or the archive (supports HTTP range requests) |
+| `DELETE /api/cameras/{id}/segments/{file}` | Delete a completed file (locally and from the archive) |
+| `GET /api/storage` | Free space, usage per camera, archive state (pending uploads, last error) |
 | `POST /api/retention` | Apply the retention policy now |
 | `GET /api/cameras/{id}/snapshot` | JPEG snapshot (ONVIF cameras) |
 | `GET /api/cameras/{id}/imaging`, `PATCH .../imaging` `{irCutFilter, brightness, ...}` | Image settings (PATCH changes only what is given) |
@@ -304,6 +322,8 @@ dotnet test Onvif.Open.sln
 ```
 
 The tests run against in-process fake ONVIF (SOAP) and RTSP servers and fake streams, so no camera is needed.
+The cloud storage tests run against emulators when `ONVIF_OPEN_TEST_S3_URL`, `ONVIF_OPEN_TEST_AZURE_CONNECTION` and
+`ONVIF_OPEN_TEST_GCS_URL` are set (CI starts moto, Azurite and fake-gcs-server) and are skipped otherwise.
 
 ## Notes
 

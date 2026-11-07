@@ -7,8 +7,9 @@ namespace Onvif.Open.Core.Recording
     {
         #region Constructor
 
-        public StorageInformation(string location, long? availableFreeBytes)
+        public StorageInformation(string location, long? availableFreeBytes, ArchiveInformation archive = null)
         {
+            Archive = archive;
             Location = location;
             AvailableFreeBytes = availableFreeBytes;
         }
@@ -19,6 +20,9 @@ namespace Onvif.Open.Core.Recording
 
         public string Location { get; }
         public long? AvailableFreeBytes { get; }
+
+        /// <summary>The archive store, or null when recordings are only kept locally.</summary>
+        public ArchiveInformation Archive { get; }
 
         #endregion
     }

@@ -15,7 +15,9 @@ using Onvif.Open.Core.Abstract.Interface.Streaming;
 using Onvif.Open.Core.Events;
 using Onvif.Open.Core.Operations;
 using Onvif.Open.Core.Plugin;
+using Onvif.Open.Core.Abstract.Interface.Storage;
 using Onvif.Open.Core.Recording;
+using Onvif.Open.Recording.Implementation.Archive;
 using Onvif.Open.Recording.Implementation.Format;
 using Onvif.Open.Recording.Implementation.Recorder;
 using Onvif.Open.Recording.Implementation.Storage;
@@ -38,7 +40,9 @@ namespace Onvif.Open.Recording.Implementation
             TimeSpan retentionInterval,
             RecorderOptions recorderOptions,
             TimeProvider timeProvider,
-            ILoggerFactory loggerFactory)
+            ILoggerFactory loggerFactory,
+            ISegmentStore archiveStore,
+            SegmentArchiveOptions archiveOptions)
         {
             Storage = storage;
             _format = format;
@@ -49,6 +53,11 @@ namespace Onvif.Open.Recording.Implementation
             _timeProvider = timeProvider;
             _loggerFactory = loggerFactory;
             _logger = loggerFactory.CreateLogger<RecordingManager>();
+
+            if (archiveStore != null)
+            {
+                _archive = new SegmentArchive(archiveStore, archiveOptions, storage, timeProvider, loggerFactory.CreateLogger<SegmentArchive>(), () => _retentionSignal.Writer.TryWrite(true));
+            }
         }
 
         #endregion
@@ -63,6 +72,7 @@ namespace Onvif.Open.Recording.Implementation
         private readonly TimeProvider _timeProvider;
         private readonly ILoggerFactory _loggerFactory;
         private readonly ILogger _logger;
+        private readonly SegmentArchive _archive;
         private readonly ConcurrentDictionary<string, CameraRecorder> _recorders = new ConcurrentDictionary<string, CameraRecorder>(StringComparer.OrdinalIgnoreCase);
         private readonly SemaphoreSlim _retentionLock = new SemaphoreSlim(1, 1);
         private readonly Channel<bool> _retentionSignal = Channel.CreateBounded<bool>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
@@ -196,12 +206,14 @@ namespace Onvif.Open.Recording.Implementation
                 _retentionLoop = Task.Run(() => RetentionLoopAsync(token));
             }
 
+            _archive?.Start();
+
             foreach (var recorder in _recorders.Values)
             {
                 recorder.Start();
             }
 
-            _logger.LogInformation("Recording started for {Count} camera(s) into {Storage}", _recorders.Count, Storage);
+            _logger.LogInformation("Recording started for {Count} camera(s) into {Storage}{Archive}", _recorders.Count, Storage, _archive == null ? string.Empty : ", archived to " + _archive.GetInformation().Location);
             return Task.CompletedTask;
         }
 
@@ -218,6 +230,11 @@ namespace Onvif.Open.Recording.Implementation
             }
 
             await Task.WhenAll(_recorders.Values.Select(r => r.StopAsync())).ConfigureAwait(false);
+
+            if (_archive != null)
+            {
+                await _archive.StopAsync().ConfigureAwait(false);
+            }
 
             if (stop != null)
             {
@@ -245,22 +262,75 @@ namespace Onvif.Open.Recording.Implementation
 
         public IReadOnlyList<RecordingSegment> GetSegments(string cameraId = null)
         {
-            return Storage.GetSegments(cameraId);
-        }
+            var local = Storage.GetSegments(cameraId);
 
-        public bool DeleteSegment(RecordingSegment segment)
-        {
-            if (segment == null)
+            if (_archive == null)
             {
-                throw new ArgumentNullException(nameof(segment));
+                return local;
             }
 
-            return !segment.IsActive && Storage.Delete(segment);
+            var merged = new Dictionary<string, RecordingSegment>(StringComparer.Ordinal);
+
+            foreach (var segment in _archive.GetSegments(cameraId))
+            {
+                merged[SegmentNames.ArchiveKey(segment)] = segment;
+            }
+
+            foreach (var segment in local)
+            {
+                var key = SegmentNames.ArchiveKey(segment);
+                merged[key] = merged.ContainsKey(key)
+                    ? new RecordingSegment(segment.CameraId, segment.Path, segment.StartTime, segment.LastWriteTime, segment.Size, segment.IsActive, isLocal: true, isArchived: true)
+                    : segment;
+            }
+
+            return merged.Values
+                .OrderBy(s => s.StartTime)
+                .ThenBy(s => s.CameraId, StringComparer.Ordinal)
+                .ThenBy(SegmentNames.Sequence)
+                .ToList();
+        }
+
+        public async Task<System.IO.Stream> OpenSegmentAsync(RecordingSegment segment, CancellationToken cancellationToken = default)
+        {
+            // Look the segment up rather than trusting its Path: callers (plugins) must not open arbitrary files.
+            var known = Find(segment);
+
+            if (known == null)
+            {
+                return null;
+            }
+
+            if (known.IsLocal)
+            {
+                try
+                {
+                    return new System.IO.FileStream(known.Path, System.IO.FileMode.Open, System.IO.FileAccess.Read, System.IO.FileShare.ReadWrite | System.IO.FileShare.Delete, 64 * 1024, useAsync: true);
+                }
+                catch (Exception ex) when ((ex is System.IO.FileNotFoundException || ex is System.IO.DirectoryNotFoundException) && known.IsArchived)
+                {
+                    // Removed locally after being archived: read the archived copy.
+                }
+            }
+
+            return known.IsArchived ? await _archive.OpenReadAsync(known, cancellationToken).ConfigureAwait(false) : null;
+        }
+
+        public async Task<bool> DeleteSegmentAsync(RecordingSegment segment, CancellationToken cancellationToken = default)
+        {
+            var known = Find(segment);
+
+            if (known == null || known.IsActive)
+            {
+                return false;
+            }
+
+            return await DeleteEverywhereAsync(known, cancellationToken).ConfigureAwait(false);
         }
 
         public StorageInformation GetStorageInformation()
         {
-            return new StorageInformation(Storage.ToString(), Storage.GetAvailableFreeBytes());
+            return new StorageInformation(Storage.ToString(), Storage.GetAvailableFreeBytes(), _archive?.GetInformation());
         }
 
         public async Task<IReadOnlyList<RecordingSegment>> ApplyRetentionAsync(CancellationToken cancellationToken = default)
@@ -269,25 +339,9 @@ namespace Onvif.Open.Recording.Implementation
 
             try
             {
-                return await Task.Run(() =>
-                {
-                    var completed = Storage.GetSegments().Where(s => !s.IsActive).ToList();
-                    var context = new RetentionContext(completed, _timeProvider.GetUtcNow(), Storage.GetAvailableFreeBytes());
-                    var deleted = new List<RecordingSegment>();
-
-                    foreach (var segment in _retentionPolicy.SelectForDeletion(context).Where(s => s != null && !s.IsActive).Distinct().ToList())
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-
-                        if (Storage.Delete(segment))
-                        {
-                            deleted.Add(segment);
-                            _logger.LogInformation("Retention: deleted {Path} ({Size} bytes)", segment.Path, segment.Size);
-                        }
-                    }
-
-                    return (IReadOnlyList<RecordingSegment>)deleted;
-                }, cancellationToken).ConfigureAwait(false);
+                return _archive == null
+                    ? await Task.Run(() => ApplyLocalRetention(cancellationToken), cancellationToken).ConfigureAwait(false)
+                    : await ApplyArchiveRetentionAsync(cancellationToken).ConfigureAwait(false);
             }
             finally
             {
@@ -298,6 +352,12 @@ namespace Onvif.Open.Recording.Implementation
         public async ValueTask DisposeAsync()
         {
             await StopAsync().ConfigureAwait(false);
+
+            if (_archive != null)
+            {
+                await _archive.DisposeAsync().ConfigureAwait(false);
+            }
+
             _retentionLock.Dispose();
         }
 
@@ -309,9 +369,11 @@ namespace Onvif.Open.Recording.Implementation
             TimeSpan retentionInterval,
             RecorderOptions recorderOptions,
             TimeProvider timeProvider,
-            ILoggerFactory loggerFactory)
+            ILoggerFactory loggerFactory,
+            ISegmentStore archiveStore = null,
+            SegmentArchiveOptions archiveOptions = null)
         {
-            return new RecordingManager(storage, format, rotationPolicy, retentionPolicy, retentionInterval, recorderOptions, timeProvider, loggerFactory);
+            return new RecordingManager(storage, format, rotationPolicy, retentionPolicy, retentionInterval, recorderOptions, timeProvider, loggerFactory, archiveStore, archiveOptions);
         }
 
         #endregion
@@ -328,9 +390,136 @@ namespace Onvif.Open.Recording.Implementation
             return recorder;
         }
 
+        private RecordingSegment Find(RecordingSegment segment)
+        {
+            if (segment == null)
+            {
+                throw new ArgumentNullException(nameof(segment));
+            }
+
+            return GetSegments(segment.CameraId).FirstOrDefault(s =>
+                string.Equals(s.CameraId, segment.CameraId, StringComparison.OrdinalIgnoreCase) && string.Equals(s.FileName, segment.FileName, StringComparison.Ordinal));
+        }
+
+        private async Task<bool> DeleteEverywhereAsync(RecordingSegment segment, CancellationToken cancellationToken)
+        {
+            var deleted = false;
+
+            if (segment.IsLocal)
+            {
+                _archive?.Forget(segment);
+                deleted = Storage.Delete(segment);
+            }
+
+            if (segment.IsArchived && _archive != null)
+            {
+                deleted |= await _archive.DeleteAsync(segment, cancellationToken).ConfigureAwait(false);
+            }
+
+            return deleted;
+        }
+
+        private IReadOnlyList<RecordingSegment> ApplyLocalRetention(CancellationToken cancellationToken)
+        {
+            var completed = Storage.GetSegments().Where(s => !s.IsActive).ToList();
+            var context = new RetentionContext(completed, _timeProvider.GetUtcNow(), Storage.GetAvailableFreeBytes());
+            var deleted = new List<RecordingSegment>();
+
+            foreach (var segment in _retentionPolicy.SelectForDeletion(context).Where(s => s != null && !s.IsActive).Distinct().ToList())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (Storage.Delete(segment))
+                {
+                    deleted.Add(segment);
+                    _logger.LogInformation("Retention: deleted {Path} ({Size} bytes)", segment.Path, segment.Size);
+                }
+            }
+
+            return deleted;
+        }
+
+        /// <summary>
+        /// With an archive, the retention policy decides how long recordings are kept in the archive, and the
+        /// local disk is a buffer: uploaded copies are removed after <see cref="SegmentArchiveOptions.KeepLocalCopyFor"/>,
+        /// and anything (oldest first, uploaded copies first) when the disk runs out of space.
+        /// </summary>
+        private async Task<IReadOnlyList<RecordingSegment>> ApplyArchiveRetentionAsync(CancellationToken cancellationToken)
+        {
+            var now = _timeProvider.GetUtcNow();
+            var deleted = new List<RecordingSegment>();
+
+            if (_archive.IsAvailable)
+            {
+                var archived = _archive.GetSegments();
+                var context = new RetentionContext(archived, now, null);
+
+                foreach (var selected in _retentionPolicy.SelectForDeletion(context).Where(s => s != null).Distinct().ToList())
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var segment = Find(selected);
+
+                    if (segment != null && !segment.IsActive && await DeleteEverywhereAsync(segment, cancellationToken).ConfigureAwait(false))
+                    {
+                        deleted.Add(segment);
+                        _logger.LogInformation("Retention: deleted {Path} ({Size} bytes) from the archive", SegmentNames.ArchiveKey(segment), segment.Size);
+                    }
+                }
+            }
+
+            var local = Storage.GetSegments().Where(s => !s.IsActive).ToList();
+            var removed = new HashSet<RecordingSegment>();
+
+            foreach (var segment in local.Where(s => _archive.Contains(s) && now - s.LastWriteTime >= _archive.Options.KeepLocalCopyFor))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (Storage.Delete(segment))
+                {
+                    removed.Add(segment);
+                    _logger.LogDebug("Removed local copy of archived {Path}", segment.Path);
+                }
+            }
+
+            var free = Storage.GetAvailableFreeBytes();
+
+            if (free.HasValue && free.Value < _archive.Options.MinLocalFreeBytes)
+            {
+                foreach (var segment in local.Where(s => !removed.Contains(s)).OrderBy(s => _archive.Contains(s) ? 0 : 1).ThenBy(s => s.StartTime))
+                {
+                    if (free.Value >= _archive.Options.MinLocalFreeBytes)
+                    {
+                        break;
+                    }
+
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var archived = _archive.Contains(segment);
+
+                    if (!archived)
+                    {
+                        _archive.Forget(segment);
+                    }
+
+                    if (Storage.Delete(segment))
+                    {
+                        free += segment.Size;
+
+                        if (!archived)
+                        {
+                            deleted.Add(segment);
+                            _logger.LogWarning("Low disk space: deleted {Path} ({Size} bytes) before it could be archived", segment.Path, segment.Size);
+                        }
+                    }
+                }
+            }
+
+            return deleted;
+        }
+
         private void OnSegmentCompleted(RecordingSegment segment)
         {
             _retentionSignal.Writer.TryWrite(true);
+            _archive?.Enqueue(segment);
 
             var handler = SegmentCompleted;
             if (handler == null)

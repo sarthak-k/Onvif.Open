@@ -447,6 +447,26 @@ namespace Onvif.Open.Test.Plugins.Unit
             }
         }
 
+        [Fact]
+        public async Task PluginsShouldOpenSegmentsOfAssignedCamerasOnly()
+        {
+            var manager = new FakeRecordingManager("room-1", "room-2");
+            var plugin = new TestPlugin("reader");
+
+            await using (var host = Builder(manager).AddPlugin(plugin, new[] { "room-1" }).Build())
+            {
+                await host.StartAsync();
+
+                var now = DateTimeOffset.UtcNow;
+                using (var stream = await plugin.Context.Cameras.OpenSegmentAsync(new RecordingSegment("room-1", "a.ts", now, now, 3, false)))
+                {
+                    Assert.Equal(3, stream.Length);
+                }
+
+                await Assert.ThrowsAsync<UnauthorizedAccessException>(() => plugin.Context.Cameras.OpenSegmentAsync(new RecordingSegment("room-2", "b.ts", now, now, 3, false)));
+            }
+        }
+
         private sealed class NoOpPtz : Onvif.Open.Core.Abstract.Interface.Ptz.ICameraPtz
         {
             public Task MoveAsync(double pan, double tilt, double zoom, TimeSpan? duration = null, CancellationToken cancellationToken = default) => Task.CompletedTask;

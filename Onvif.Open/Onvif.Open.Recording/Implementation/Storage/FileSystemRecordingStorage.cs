@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using Onvif.Open.Core.Recording;
@@ -34,7 +33,6 @@ namespace Onvif.Open.Recording.Implementation.Storage
 
         #region Private Variables
 
-        private const string TimestampFormat = "yyyyMMdd'T'HHmmssfff'Z'";
         private const int FileBufferSize = 256 * 1024;
         private const int MaxCreateAttempts = 5;
 
@@ -55,8 +53,8 @@ namespace Onvif.Open.Recording.Implementation.Storage
             CameraIdentifier.Require(cameraId);
 
             var utc = startTime.ToUniversalTime();
-            var directory = Path.Combine(RootDirectory, cameraId, utc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
-            var baseName = $"{cameraId}_{utc.ToString(TimestampFormat, CultureInfo.InvariantCulture)}";
+            var directory = Path.Combine(RootDirectory, cameraId, SegmentNames.Day(utc));
+            var baseName = SegmentNames.BaseName(cameraId, utc);
             FileStream stream = null;
             path = null;
 
@@ -183,17 +181,8 @@ namespace Onvif.Open.Recording.Implementation.Storage
         private bool TryCreateSegment(string cameraId, string file, out RecordingSegment segment, out int sequence)
         {
             segment = null;
-            sequence = 0;
-            var name = Path.GetFileNameWithoutExtension(file).Substring(cameraId.Length + 1);
-            var dash = name.IndexOf('-');
-            var timestamp = dash < 0 ? name : name.Substring(0, dash);
 
-            if (dash >= 0 && !int.TryParse(name.Substring(dash + 1), NumberStyles.None, CultureInfo.InvariantCulture, out sequence))
-            {
-                return false;
-            }
-
-            if (!DateTimeOffset.TryParseExact(timestamp, TimestampFormat, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var start))
+            if (!SegmentNames.TryParseFileName(cameraId, Path.GetFileName(file), out var start, out sequence))
             {
                 return false;
             }
