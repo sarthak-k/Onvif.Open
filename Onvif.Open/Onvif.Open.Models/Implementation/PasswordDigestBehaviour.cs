@@ -54,7 +54,7 @@ namespace Onvif.Open.Core.Implementation
 
         public void ApplyClientBehavior(ServiceEndpoint endpoint, ClientRuntime clientRuntime)
         {
-            clientRuntime.ClientMessageInspectors.Add(new PasswordDigestMessageInspector(_camera.Username, _camera.Password));
+            clientRuntime.ClientMessageInspectors.Add(new PasswordDigestMessageInspector(_camera));
         }
 
         /// <summary>

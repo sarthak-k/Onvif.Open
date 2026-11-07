@@ -27,6 +27,14 @@ namespace Onvif.Open.Core.Abstract.Interface.Camera
         ICameraInformation GetCameraInformation();
         ICameraMedia InitializeMedia();
 
+        /// <summary>
+        /// Measures the device clock and stamps all further WS-Security tokens in device time.
+        /// Media operations do this automatically (and again when the device rejects a token);
+        /// call it before using device management on a camera whose clock may be off.
+        /// Returns device time minus local time.
+        /// </summary>
+        System.TimeSpan SynchronizeClock();
+
         #endregion
     }
 }

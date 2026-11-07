@@ -30,6 +30,13 @@ namespace Onvif.Open.Core.Abstract.Interface.Device
         /// </summary>
         System.Uri GetMediaServiceUri();
 
+        /// <summary>
+        /// Device clock minus local clock, measured with an unauthenticated GetSystemDateAndTime
+        /// (allowed by the ONVIF Core Specification precisely so clients can synchronize).
+        /// Null when the device does not report its UTC time.
+        /// </summary>
+        System.TimeSpan? GetClockOffset();
+
         #endregion
 
     }

@@ -11,6 +11,7 @@ using Onvif.Open.Core.Abstract.Interface.Camera;
 using Onvif.Open.Core.Abstract.Interface.Device;
 using Onvif.Open.Core.Abstract.Interface.Media;
 using Onvif.Open.Core.Abstract.Interface.Streaming;
+using Onvif.Open.Core.Implementation;
 using Onvif.Open.Core.Operations;
 using Onvif.Open.Media.Implementation.Builder;
 using Onvif.Open.Streaming.Implementation.Builder;
@@ -21,9 +22,10 @@ namespace Onvif.Open.Camera.Implementation
     {
         #region Constructor
 
-        private CameraMedia(ICameraInformation camera, IDeviceManagement deviceManagement)
+        private CameraMedia(ICameraInformation camera, IDeviceManagement deviceManagement, ClockSynchronizer clock)
         {
             _camera = camera;
+            _clock = clock ?? new ClockSynchronizer(camera, deviceManagement);
             _mediaService = new Lazy<IMediaService>(() => MediaServiceBuilder.GetBuilder()
                 .SetCamera(_camera)
                 .SetServiceUri(deviceManagement.GetMediaServiceUri())
@@ -38,6 +40,7 @@ namespace Onvif.Open.Camera.Implementation
         private static readonly TimeSpan SnapshotTimeout = TimeSpan.FromSeconds(10);
 
         private readonly ICameraInformation _camera;
+        private readonly ClockSynchronizer _clock;
         private readonly Lazy<IMediaService> _mediaService;
         private readonly Lazy<HttpClient> _snapshotClient;
 
@@ -47,10 +50,21 @@ namespace Onvif.Open.Camera.Implementation
 
         public IMediaService GetMediaService()
         {
+            _clock.EnsureSynchronized();
             return _mediaService.Value;
         }
 
-        public async Task<byte[]> GetSnapshotAsync(string profileToken = null, CancellationToken cancellationToken = default)
+        public Task<byte[]> GetSnapshotAsync(string profileToken = null, CancellationToken cancellationToken = default)
+        {
+            return WithSynchronizedClockAsync(ct => GetSnapshotCoreAsync(profileToken, ct), cancellationToken);
+        }
+
+        public Task<ILiveVideoStream> StartLiveStreamAsync(string profileToken = null, StreamTransport transport = StreamTransport.Rtsp, CancellationToken cancellationToken = default)
+        {
+            return WithSynchronizedClockAsync(ct => StartLiveStreamCoreAsync(profileToken, transport, ct), cancellationToken);
+        }
+
+        private async Task<byte[]> GetSnapshotCoreAsync(string profileToken, CancellationToken cancellationToken)
         {
             var mediaService = await GetMediaServiceAsync(cancellationToken).ConfigureAwait(false);
             profileToken = await ResolveProfileAsync(mediaService, profileToken, cancellationToken).ConfigureAwait(false);
@@ -68,7 +82,7 @@ namespace Onvif.Open.Camera.Implementation
             }
         }
 
-        public async Task<ILiveVideoStream> StartLiveStreamAsync(string profileToken = null, StreamTransport transport = StreamTransport.Rtsp, CancellationToken cancellationToken = default)
+        private async Task<ILiveVideoStream> StartLiveStreamCoreAsync(string profileToken, StreamTransport transport, CancellationToken cancellationToken)
         {
             var mediaService = await GetMediaServiceAsync(cancellationToken).ConfigureAwait(false);
             profileToken = await ResolveProfileAsync(mediaService, profileToken, cancellationToken).ConfigureAwait(false);
@@ -83,14 +97,37 @@ namespace Onvif.Open.Camera.Implementation
                 .ConfigureAwait(false);
         }
 
-        internal static ICameraMedia CreateInstance(ICameraInformation camera, IDeviceManagement deviceManagement)
+        internal static ICameraMedia CreateInstance(ICameraInformation camera, IDeviceManagement deviceManagement, ClockSynchronizer clock = null)
         {
-            return new CameraMedia(camera, deviceManagement);
+            return new CameraMedia(camera, deviceManagement, clock);
         }
 
         #endregion
 
         #region Private Methods
+
+        /// <summary>
+        /// Runs a secured operation with the device clock synchronized; when the device rejects the token
+        /// because its clock moved, re-synchronizes and retries once.
+        /// </summary>
+        private async Task<T> WithSynchronizedClockAsync<T>(Func<CancellationToken, Task<T>> operation, CancellationToken cancellationToken)
+        {
+            await Task.Run(_clock.EnsureSynchronized, cancellationToken).ConfigureAwait(false);
+
+            try
+            {
+                return await operation(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (OnvifFaults.IsAuthenticationFailure(ex))
+            {
+                if (!await Task.Run(_clock.ResynchronizeAfterAuthenticationFailure, cancellationToken).ConfigureAwait(false))
+                {
+                    throw;
+                }
+
+                return await operation(cancellationToken).ConfigureAwait(false);
+            }
+        }
 
         private async Task<IMediaService> GetMediaServiceAsync(CancellationToken cancellationToken)
         {
