@@ -1,4 +1,4 @@
-﻿// Sarthak Killedar
+// Sarthak Killedar
 // 2016-03-03 @ 10:09 PM
 
 using Onvif.Open.Camera.Implementation;
@@ -20,6 +20,7 @@ namespace Onvif.Open.Camera.Interface
 
         ICamera Build();
         CameraBuilder SetUrl(string url);
+        CameraBuilder SetDeviceServiceUrl(string url);
         CameraBuilder SetUsername(string username);
         CameraBuilder SetPassword(string password);
 

@@ -36,6 +36,7 @@ namespace Onvif.Open.Recording.Implementation.Storage
 
         private const string TimestampFormat = "yyyyMMdd'T'HHmmssfff'Z'";
         private const int FileBufferSize = 256 * 1024;
+        private const int MaxCreateAttempts = 5;
 
         private readonly ConcurrentDictionary<string, byte> _active = new ConcurrentDictionary<string, byte>(StringComparer.Ordinal);
 
@@ -55,18 +56,34 @@ namespace Onvif.Open.Recording.Implementation.Storage
 
             var utc = startTime.ToUniversalTime();
             var directory = Path.Combine(RootDirectory, cameraId, utc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
-            Directory.CreateDirectory(directory);
-
             var baseName = $"{cameraId}_{utc.ToString(TimestampFormat, CultureInfo.InvariantCulture)}";
-            path = Path.Combine(directory, baseName + fileExtension);
+            FileStream stream = null;
+            path = null;
 
-            // Same millisecond (e.g. after a quick reconnect): add a suffix rather than overwrite.
-            for (var suffix = 1; File.Exists(path); suffix++)
+            // Retention removes a day folder once its last file is deleted; if that happens between creating the
+            // folder and creating the file, create the folder again rather than failing the recording.
+            for (var attempt = 1; stream == null; attempt++)
             {
-                path = Path.Combine(directory, $"{baseName}-{suffix}{fileExtension}");
+                try
+                {
+                    Directory.CreateDirectory(directory);
+                    path = Path.Combine(directory, baseName + fileExtension);
+
+                    // Same millisecond (e.g. after a quick reconnect): add a suffix rather than overwrite.
+                    for (var suffix = 1; File.Exists(path); suffix++)
+                    {
+                        path = Path.Combine(directory, $"{baseName}-{suffix}{fileExtension}");
+                    }
+
+                    stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read | FileShare.Delete, FileBufferSize);
+                }
+                catch (IOException) when (attempt < MaxCreateAttempts)
+                {
+                    // The folder vanished (or was being removed) underneath us, or another writer took the same
+                    // name: try again with a fresh folder and name.
+                }
             }
 
-            var stream = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.Read | FileShare.Delete, FileBufferSize);
             _active[path] = 0;
             return new SegmentStream(stream, () => _active.TryRemove(stream.Name, out _));
         }
