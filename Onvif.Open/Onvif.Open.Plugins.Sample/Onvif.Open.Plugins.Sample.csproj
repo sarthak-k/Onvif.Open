@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Template for plugin projects. Build it and copy bin/<Configuration>/net10.0 into the
+    recorder's plugin directory as a folder named after the assembly:
+      plugins/Onvif.Open.Plugins.Sample/Onvif.Open.Plugins.Sample.dll
+  -->
+  <PropertyGroup>
+    <RootNamespace>Onvif.Open.Plugins.Sample</RootNamespace>
+    <AssemblyName>Onvif.Open.Plugins.Sample</AssemblyName>
+    <!-- Produces a self-describing output folder (deps.json) suitable for isolated loading. -->
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The SDK contracts are provided by the host: reference them, but do not copy them into the plugin folder. -->
+    <ProjectReference Include="..\Onvif.Open.Models\Onvif.Open.Core.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+
+</Project>

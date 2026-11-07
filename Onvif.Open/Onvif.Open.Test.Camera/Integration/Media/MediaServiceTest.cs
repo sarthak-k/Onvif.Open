@@ -41,7 +41,7 @@ namespace Onvif.Open.Test.Camera.Integration.Media
                 Assert.Equal(512, profiles[1].BitrateLimit);
 
                 Assert.Equal(device.RtspUri, media.GetStreamUri(profiles[0].Token));
-                Assert.Equal($"http://127.0.0.1:{device.Port}/snapshot.jpg", media.GetSnapshotUri(profiles[0].Token).ToString());
+                Assert.Equal(device.SnapshotUri, media.GetSnapshotUri(profiles[0].Token));
 
                 var streamUriRequest = device.RequestBodies.Single(b => b.Contains("GetStreamUri"));
                 Assert.Contains("RTP-Unicast", streamUriRequest);
@@ -111,6 +111,22 @@ namespace Onvif.Open.Test.Camera.Integration.Media
                 }
 
                 Assert.Contains(device.RequestBodies, b => b.Contains("GetStreamUri") && b.Contains("Profile_2") && b.Contains(">UDP<"));
+            }
+        }
+
+        [Fact]
+        public async Task CameraMediaShouldDownloadSnapshotWithCredentials()
+        {
+            using (var device = new FakeOnvifServer(new Uri("rtsp://192.168.1.3/stream")))
+            {
+                var camera = new TestCameraInformation(device.DeviceServiceUri);
+                var cameraMedia = CameraMedia.CreateInstance(camera, DeviceManagementBuilder.GetBuilder().SetCamera(camera).Build());
+
+                var jpeg = await cameraMedia.GetSnapshotAsync();
+
+                Assert.Equal(FakeOnvifServer.SnapshotJpeg, jpeg);
+                Assert.Equal("Basic YWRtaW46MTIzNDU=", device.LastSnapshotAuthorization);
+                Assert.Contains(device.RequestBodies, b => b.Contains("GetSnapshotUri") && b.Contains("Profile_1"));
             }
         }
 
