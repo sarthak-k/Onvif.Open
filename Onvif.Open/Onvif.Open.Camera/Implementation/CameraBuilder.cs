@@ -1,4 +1,4 @@
-﻿// Sarthak Killedar
+// Sarthak Killedar
 // 2016-03-03 @ 10:11 PM
 
 using System;
@@ -101,6 +101,22 @@ namespace Onvif.Open.Camera.Implementation
             else
             {
                 throw new UriFormatException("Provided Camera URL is incorrect or malfunctioned.");
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        /// Uses <paramref name="url"/> as the exact device service address (keeping its path), e.g. the
+        /// <c>DeviceServiceUri</c> of a device found with WS-Discovery.
+        /// </summary>
+        public CameraBuilder SetDeviceServiceUrl(string url)
+        {
+            SetUrl(url);
+
+            if (!string.IsNullOrEmpty(_cameraUri.AbsolutePath) && _cameraUri.AbsolutePath != "/")
+            {
+                CameraUrl = new Uri(_cameraUri.GetLeftPart(UriPartial.Path));
             }
 
             return this;

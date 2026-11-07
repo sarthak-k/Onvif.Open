@@ -39,6 +39,25 @@ namespace Onvif.Open.Recorder.Configuration
     }
 
     /// <summary>
+    /// The "Discovery" section of appsettings.json.
+    /// </summary>
+    public sealed class DiscoveryOptions
+    {
+        #region Public Variables
+
+        public const string SectionName = "Discovery";
+
+        public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(3);
+
+        public bool Multicast { get; set; } = true;
+
+        /// <summary>Addresses probed directly ("10.0.5.20" or "10.0.5.20:3702"), for cameras multicast cannot reach.</summary>
+        public List<string> Targets { get; set; } = new List<string>();
+
+        #endregion
+    }
+
+    /// <summary>
     /// The "Plugins" section of appsettings.json.
     /// </summary>
     public sealed class PluginsOptions

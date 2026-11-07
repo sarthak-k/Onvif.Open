@@ -144,6 +144,46 @@ namespace Onvif.Open.Test.Recording.Unit
         }
 
         [Fact]
+        public async System.Threading.Tasks.Task CreatingSegmentsShouldSurviveConcurrentRetention()
+        {
+            // Retention deletes the day folder once its last completed file is gone; a segment created in that
+            // same instant must not fail (it would interrupt the recording).
+            using (var temp = new TempDirectory())
+            {
+                var storage = new FileSystemRecordingStorage(temp.Path);
+                var stop = DateTime.UtcNow.AddSeconds(3);
+                var errors = new System.Collections.Concurrent.ConcurrentQueue<Exception>();
+
+                var retention = System.Threading.Tasks.Task.Run(() =>
+                {
+                    while (DateTime.UtcNow < stop)
+                    {
+                        foreach (var segment in storage.GetSegments().Where(s => !s.IsActive))
+                        {
+                            storage.Delete(segment);
+                        }
+                    }
+                });
+
+                var index = 0;
+                while (DateTime.UtcNow < stop)
+                {
+                    try
+                    {
+                        storage.CreateSegment("cam1", Start.AddMilliseconds(index++), ".ts", out _).Dispose();
+                    }
+                    catch (Exception ex)
+                    {
+                        errors.Enqueue(ex);
+                    }
+                }
+
+                await retention;
+                Assert.Empty(errors);
+            }
+        }
+
+        [Fact]
         public void FreeSpaceShouldBeReported()
         {
             using (var temp = new TempDirectory())
