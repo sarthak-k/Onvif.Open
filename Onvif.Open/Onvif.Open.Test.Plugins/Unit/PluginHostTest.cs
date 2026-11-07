@@ -432,6 +432,21 @@ namespace Onvif.Open.Test.Plugins.Unit
             }
         }
 
+        [Fact]
+        public async Task PluginsShouldGetIoForAssignedCamerasOnly()
+        {
+            var manager = new FakeRecordingManager("room-1", "room-2");
+            var plugin = new TestPlugin("siren");
+
+            await using (var host = Builder(manager).AddPlugin(plugin, new[] { "room-1" }).SetIoProvider(id => null).Build())
+            {
+                await host.StartAsync();
+
+                Assert.Null(plugin.Context.Cameras.GetIo("room-1"));
+                Assert.Throws<UnauthorizedAccessException>(() => plugin.Context.Cameras.GetIo("room-2"));
+            }
+        }
+
         private sealed class NoOpPtz : Onvif.Open.Core.Abstract.Interface.Ptz.ICameraPtz
         {
             public Task MoveAsync(double pan, double tilt, double zoom, TimeSpan? duration = null, CancellationToken cancellationToken = default) => Task.CompletedTask;

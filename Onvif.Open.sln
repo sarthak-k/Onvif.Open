@@ -37,6 +37,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Onvif.Open.Ptz", "Onvif.Ope
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Onvif.Open.Imaging", "Onvif.Open\Onvif.Open.Imaging\Onvif.Open.Imaging.csproj", "{D003C597-1A48-49DD-9625-A1E05858A404}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Onvif.Open.DeviceIo", "Onvif.Open\Onvif.Open.DeviceIo\Onvif.Open.DeviceIo.csproj", "{161D5DA3-7A31-4B37-A22B-CB6FF8B3D1BD}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -251,6 +253,18 @@ Global
 		{D003C597-1A48-49DD-9625-A1E05858A404}.Release|x64.Build.0 = Release|Any CPU
 		{D003C597-1A48-49DD-9625-A1E05858A404}.Release|x86.ActiveCfg = Release|Any CPU
 		{D003C597-1A48-49DD-9625-A1E05858A404}.Release|x86.Build.0 = Release|Any CPU
+		{161D5DA3-7A31-4B37-A22B-CB6FF8B3D1BD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{161D5DA3-7A31-4B37-A22B-CB6FF8B3D1BD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{161D5DA3-7A31-4B37-A22B-CB6FF8B3D1BD}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{161D5DA3-7A31-4B37-A22B-CB6FF8B3D1BD}.Debug|x64.Build.0 = Debug|Any CPU
+		{161D5DA3-7A31-4B37-A22B-CB6FF8B3D1BD}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{161D5DA3-7A31-4B37-A22B-CB6FF8B3D1BD}.Debug|x86.Build.0 = Debug|Any CPU
+		{161D5DA3-7A31-4B37-A22B-CB6FF8B3D1BD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{161D5DA3-7A31-4B37-A22B-CB6FF8B3D1BD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{161D5DA3-7A31-4B37-A22B-CB6FF8B3D1BD}.Release|x64.ActiveCfg = Release|Any CPU
+		{161D5DA3-7A31-4B37-A22B-CB6FF8B3D1BD}.Release|x64.Build.0 = Release|Any CPU
+		{161D5DA3-7A31-4B37-A22B-CB6FF8B3D1BD}.Release|x86.ActiveCfg = Release|Any CPU
+		{161D5DA3-7A31-4B37-A22B-CB6FF8B3D1BD}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

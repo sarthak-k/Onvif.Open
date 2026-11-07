@@ -176,12 +176,25 @@ namespace Onvif.Open.Test.Camera.Integration.Events
             var camera = new TestCameraInformation(new Uri("http://127.0.0.1:1/onvif/device_service"));
             var events = CameraEvents.CreateInstance(camera, DeviceManagementBuilder.GetBuilder().SetCamera(camera).Build(), options: FastOptions(errors));
 
-            using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2)))
+            using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20)))
             {
+                // Cancel as soon as a retry is observed: a fixed window is flaky on busy machines.
+                var watcher = Task.Run(async () =>
+                {
+                    while (errors.Count < 2 && !timeout.IsCancellationRequested)
+                    {
+                        await Task.Delay(20);
+                    }
+
+                    timeout.Cancel();
+                });
+
                 await foreach (var unused in events.ReadEventsAsync(timeout.Token))
                 {
                     Assert.Fail("no events expected");
                 }
+
+                await watcher;
             }
 
             Assert.True(errors.Count >= 2, $"{errors.Count} attempts");

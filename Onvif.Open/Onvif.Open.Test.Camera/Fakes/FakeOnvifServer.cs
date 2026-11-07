@@ -56,6 +56,19 @@ namespace Onvif.Open.Test.Camera.Fakes
         public Uri ImagingServiceUri => new Uri($"http://127.0.0.1:{Port}/onvif/imaging_service");
 
         public bool HasImaging { get; set; } = true;
+
+        public Uri DeviceIoServiceUri => new Uri($"http://127.0.0.1:{Port}/onvif/deviceio_service");
+        public bool HasDeviceIo { get; set; } = true;
+
+        /// <summary>Relay token to (mode, delay, idle state, active).</summary>
+        public ConcurrentDictionary<string, (string Mode, string Delay, string Idle, bool Active)> Relays { get; } =
+            new ConcurrentDictionary<string, (string, string, string, bool)>(new[]
+            {
+                new System.Collections.Generic.KeyValuePair<string, (string, string, string, bool)>("Relay_1", ("Bistable", "PT0S", "open", false)),
+                new System.Collections.Generic.KeyValuePair<string, (string, string, string, bool)>("Relay_2", ("Monostable", "PT5S", "closed", false))
+            });
+
+        public ConcurrentQueue<string> RelayOperations { get; } = new ConcurrentQueue<string>();
         public System.Collections.Generic.Dictionary<string, string> Imaging { get; } = new System.Collections.Generic.Dictionary<string, string>
         {
             ["Brightness"] = "50", ["ColorSaturation"] = "50", ["Contrast"] = "50", ["Sharpness"] = "50",
@@ -455,6 +468,49 @@ namespace Onvif.Open.Test.Camera.Fakes
             }
         }
 
+        private string DeviceIoResponse(string request)
+        {
+            string Value(string element) =>
+                System.Text.RegularExpressions.Regex.Match(request, $"<(?:\\w+:)?{element}(?:\\s[^>]*)?>([^<]*)</").Groups[1].Value;
+
+            if (request.Contains("GetDigitalInputs", StringComparison.Ordinal))
+            {
+                return "<tmd:GetDigitalInputsResponse xmlns:tmd=\"http://www.onvif.org/ver10/deviceIO/wsdl\">" +
+                       "<tmd:DigitalInputs token=\"Input_1\" IdleState=\"closed\"/><tmd:DigitalInputs token=\"Input_2\" IdleState=\"open\"/>" +
+                       "</tmd:GetDigitalInputsResponse>";
+            }
+
+            if (request.Contains("GetRelayOutputs", StringComparison.Ordinal))
+            {
+                var relays = new StringBuilder("<tds:GetRelayOutputsResponse>");
+                foreach (var relay in Relays.OrderBy(r => r.Key))
+                {
+                    relays.Append($"<tds:RelayOutputs token=\"{relay.Key}\"><tt:Properties><tt:Mode>{relay.Value.Mode}</tt:Mode><tt:DelayTime>{relay.Value.Delay}</tt:DelayTime><tt:IdleState>{relay.Value.Idle}</tt:IdleState></tt:Properties></tds:RelayOutputs>");
+                }
+
+                return relays.Append("</tds:GetRelayOutputsResponse>").ToString();
+            }
+
+            if (request.Contains("SetRelayOutputState", StringComparison.Ordinal))
+            {
+                var token = Value("RelayOutputToken");
+                var current = Relays[token];
+                Relays[token] = (current.Mode, current.Delay, current.Idle, Value("LogicalState") == "active");
+                RelayOperations.Enqueue($"{token}:{Value("LogicalState")}");
+                return "<tds:SetRelayOutputStateResponse/>";
+            }
+
+            if (request.Contains("SetRelayOutputSettings", StringComparison.Ordinal))
+            {
+                var token = Value("RelayOutputToken");
+                Relays[token] = (Value("Mode"), Value("DelayTime"), Value("IdleState"), Relays[token].Active);
+                RelayOperations.Enqueue($"{token}:settings");
+                return "<tds:SetRelayOutputSettingsResponse/>";
+            }
+
+            return null;
+        }
+
         private string ServicesResponse()
         {
             string Service(string ns, Uri address) =>
@@ -466,6 +522,7 @@ namespace Onvif.Open.Test.Camera.Fakes
                    (HasMedia2 ? Service("http://www.onvif.org/ver20/media/wsdl", Media2ServiceUri) : string.Empty) +
                    Service("http://www.onvif.org/ver10/events/wsdl", EventServiceUri) +
                    (HasPtz ? Service("http://www.onvif.org/ver20/ptz/wsdl", PtzServiceUri) : string.Empty) +
+                   (HasDeviceIo ? Service("http://www.onvif.org/ver10/deviceIO/wsdl", DeviceIoServiceUri) : string.Empty) +
                    "</tds:GetServicesResponse>";
         }
 
@@ -523,6 +580,12 @@ namespace Onvif.Open.Test.Camera.Fakes
                 return SupportsGetServices
                     ? ServicesResponse()
                     : "<s:Fault><s:Code><s:Value>s:Sender</s:Value></s:Code><s:Reason><s:Text xml:lang=\"en\">Action not supported</s:Text></s:Reason></s:Fault>";
+            }
+
+            var deviceIoResponse = DeviceIoResponse(request);
+            if (deviceIoResponse != null)
+            {
+                return deviceIoResponse;
             }
 
             var imagingResponse = ImagingResponse(request);

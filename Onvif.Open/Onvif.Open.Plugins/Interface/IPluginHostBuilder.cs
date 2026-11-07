@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Onvif.Open.Core.Abstract.Interface.Plugin;
+using Onvif.Open.Core.Abstract.Interface.DeviceIo;
 using Onvif.Open.Core.Abstract.Interface.Imaging;
 using Onvif.Open.Core.Abstract.Interface.Ptz;
 using Onvif.Open.Core.Abstract.Interface.Recording;
@@ -24,6 +25,7 @@ namespace Onvif.Open.Plugins.Interface
         PluginHostBuilder SetSnapshotProvider(Func<string, CancellationToken, Task<byte[]>> snapshotProvider);
         PluginHostBuilder SetPtzProvider(Func<string, ICameraPtz> ptzProvider);
         PluginHostBuilder SetImagingProvider(Func<string, ICameraImaging> imagingProvider);
+        PluginHostBuilder SetIoProvider(Func<string, ICameraIo> ioProvider);
         PluginHostBuilder SetFrameQueueCapacity(int capacity);
         PluginHostBuilder SetNotificationQueueCapacity(int capacity);
         PluginHostBuilder SetEventHistoryCapacity(int capacity);

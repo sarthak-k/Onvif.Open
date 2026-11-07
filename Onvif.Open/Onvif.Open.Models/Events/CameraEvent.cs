@@ -75,8 +75,8 @@ namespace Onvif.Open.Core.Events
         #region Public Methods
 
         /// <summary>
-        /// The boolean state of the event, from the first data item that is "true"/"false" (IsMotion, State,
-        /// IsTamper, LogicalState, ...); null when the event carries none.
+        /// The boolean state of the event, from the first data item that is "true"/"false", "1"/"0" or
+        /// "active"/"inactive" (IsMotion, State, IsTamper, LogicalState, ...); null when the event carries none.
         /// </summary>
         public bool? GetState()
         {
@@ -87,12 +87,13 @@ namespace Onvif.Open.Core.Events
                     return state;
                 }
 
-                if (value == "1")
+                // Relay and some input events report "active"/"inactive".
+                if (value == "1" || string.Equals(value, "active", StringComparison.OrdinalIgnoreCase))
                 {
                     return true;
                 }
 
-                if (value == "0")
+                if (value == "0" || string.Equals(value, "inactive", StringComparison.OrdinalIgnoreCase))
                 {
                     return false;
                 }

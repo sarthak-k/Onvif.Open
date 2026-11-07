@@ -48,6 +48,7 @@ app.MapPluginApi();
 app.MapDiscoveryApi();
 app.MapPtzApi();
 app.MapImagingApi();
+app.MapDeviceIoApi();
 app.Run();
 
 public partial class Program

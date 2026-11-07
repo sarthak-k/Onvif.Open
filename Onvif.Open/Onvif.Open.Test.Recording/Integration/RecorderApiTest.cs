@@ -170,6 +170,14 @@ namespace Onvif.Open.Test.Recording.Integration
         }
 
         [Fact]
+        public async Task DeviceIoShouldRequireAnOnvifCamera()
+        {
+            Assert.Equal(HttpStatusCode.NotImplemented, (await _client.GetAsync("/api/cameras/cam1/io")).StatusCode);
+            Assert.Equal(HttpStatusCode.NotImplemented, (await _client.PostAsJsonAsync("/api/cameras/cam1/io/relays/Relay_1", new { durationMs = 1000 })).StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/cameras/nope/io")).StatusCode);
+        }
+
+        [Fact]
         public async Task StorageAndHealthShouldRespond()
         {
             var storage = JsonDocument.Parse(await _client.GetStringAsync("/api/storage")).RootElement;

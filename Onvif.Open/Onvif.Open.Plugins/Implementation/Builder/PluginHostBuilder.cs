@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Onvif.Open.Core.Abstract.Interface.Plugin;
+using Onvif.Open.Core.Abstract.Interface.DeviceIo;
 using Onvif.Open.Core.Abstract.Interface.Imaging;
 using Onvif.Open.Core.Abstract.Interface.Ptz;
 using Onvif.Open.Core.Abstract.Interface.Recording;
@@ -46,6 +47,7 @@ namespace Onvif.Open.Plugins.Implementation.Builder
         private Func<string, CancellationToken, Task<byte[]>> _snapshotProvider;
         private Func<string, ICameraPtz> _ptzProvider;
         private Func<string, ICameraImaging> _imagingProvider;
+        private Func<string, ICameraIo> _ioProvider;
         private int _frameQueueCapacity = 32;
         private int _notificationQueueCapacity = 1024;
         private int _eventHistoryCapacity = 1000;
@@ -64,7 +66,7 @@ namespace Onvif.Open.Plugins.Implementation.Builder
                 throw new InvalidOperationException("Plugin Host Builder must have a recording manager.");
             }
 
-            return PluginHost.CreateInstance(_manager, _registrations.ToList(), _snapshotProvider, _frameQueueCapacity, _notificationQueueCapacity, _eventHistoryCapacity, _stopTimeout, _timeProvider, _loggerFactory, _ptzProvider, _imagingProvider);
+            return PluginHost.CreateInstance(_manager, _registrations.ToList(), _snapshotProvider, _frameQueueCapacity, _notificationQueueCapacity, _eventHistoryCapacity, _stopTimeout, _timeProvider, _loggerFactory, _ptzProvider, _imagingProvider, _ioProvider);
         }
 
         public PluginHostBuilder SetRecordingManager(IRecordingManager manager)
@@ -125,6 +127,13 @@ namespace Onvif.Open.Plugins.Implementation.Builder
         public PluginHostBuilder SetImagingProvider(Func<string, ICameraImaging> imagingProvider)
         {
             _imagingProvider = imagingProvider ?? throw new ArgumentNullException(nameof(imagingProvider));
+            return this;
+        }
+
+        /// <summary>Source of relay/input control for <see cref="IPluginCameras.GetIo"/>.</summary>
+        public PluginHostBuilder SetIoProvider(Func<string, ICameraIo> ioProvider)
+        {
+            _ioProvider = ioProvider ?? throw new ArgumentNullException(nameof(ioProvider));
             return this;
         }
 
