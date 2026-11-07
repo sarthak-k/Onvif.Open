@@ -30,6 +30,7 @@ namespace Onvif.Open.Recorder.Configuration
             var builder = PluginHostBuilder.GetBuilder()
                 .SetRecordingManager(recording.Manager)
                 .SetSnapshotProvider(recording.GetSnapshotAsync)
+                .SetPtzProvider(recording.GetPtz)
                 .SetFrameQueueCapacity(options.FrameQueueCapacity)
                 .SetEventHistoryCapacity(options.EventHistory)
                 .SetStopTimeout(options.StopTimeout)

@@ -3,8 +3,10 @@
 
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using Onvif.Open.Core.Abstract.Interface.Camera;
 using Onvif.Open.Core.Abstract.Interface.Device;
+using Onvif.Open.Core.Implementation;
 using Onvif.Open.Core.Implementation.Security;
 
 namespace Onvif.Open.Camera.Implementation
@@ -97,6 +99,38 @@ namespace Onvif.Open.Camera.Implementation
         {
             var previous = _clock.Offset;
             return TrySynchronize(out var offset) && (offset - previous).Duration() >= SignificantChange;
+        }
+
+        /// <summary>
+        /// Runs a secured operation with the clock synchronized; when the device rejects the token because its
+        /// clock moved, re-synchronizes and retries once.
+        /// </summary>
+        public async Task<T> RunAsync<T>(Func<CancellationToken, Task<T>> operation, CancellationToken cancellationToken)
+        {
+            await Task.Run(EnsureSynchronized, cancellationToken).ConfigureAwait(false);
+
+            try
+            {
+                return await operation(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (OnvifFaults.IsAuthenticationFailure(ex))
+            {
+                if (!await Task.Run(ResynchronizeAfterAuthenticationFailure, cancellationToken).ConfigureAwait(false))
+                {
+                    throw;
+                }
+
+                return await operation(cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        public Task RunAsync(Func<CancellationToken, Task> operation, CancellationToken cancellationToken)
+        {
+            return RunAsync(async ct =>
+            {
+                await operation(ct).ConfigureAwait(false);
+                return true;
+            }, cancellationToken);
         }
 
         #endregion

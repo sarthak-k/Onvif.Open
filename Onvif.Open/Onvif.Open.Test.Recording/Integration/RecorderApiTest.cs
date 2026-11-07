@@ -154,6 +154,14 @@ namespace Onvif.Open.Test.Recording.Integration
         }
 
         [Fact]
+        public async Task PtzShouldRequireAnOnvifCamera()
+        {
+            Assert.Equal(HttpStatusCode.NotImplemented, (await _client.GetAsync("/api/cameras/cam1/ptz")).StatusCode);
+            Assert.Equal(HttpStatusCode.NotImplemented, (await _client.PostAsJsonAsync("/api/cameras/cam1/ptz/move", new { pan = 0.5 })).StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsync("/api/cameras/nope/ptz/stop", null)).StatusCode);
+        }
+
+        [Fact]
         public async Task StorageAndHealthShouldRespond()
         {
             var storage = JsonDocument.Parse(await _client.GetStringAsync("/api/storage")).RootElement;

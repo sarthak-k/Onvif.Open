@@ -46,6 +46,7 @@ var app = builder.Build();
 app.MapRecordingApi();
 app.MapPluginApi();
 app.MapDiscoveryApi();
+app.MapPtzApi();
 app.Run();
 
 public partial class Program

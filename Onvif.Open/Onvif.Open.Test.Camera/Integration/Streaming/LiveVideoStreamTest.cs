@@ -176,10 +176,12 @@ namespace Onvif.Open.Test.Camera.Integration.Streaming
                 using (var output = new MemoryStream())
                 using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
                 {
+                    var expected = 4 + FakeRtspServer.Sps.Length + 4 + FakeRtspServer.Pps.Length + 4 + Idr.Length + 4 + Slice.Length;
                     var copy = stream.CopyToAsync(output, timeout.Token);
 
-                    // The fake server stops sending after its packets: stop once both frames were written.
-                    while (output.Length < Idr.Length + Slice.Length)
+                    // The fake server stops sending after its packets: stop once both frames were written
+                    // (the key frame alone, with SPS/PPS, is larger than Idr + Slice, so wait for the full length).
+                    while (output.Length < expected)
                     {
                         await Task.Delay(20, timeout.Token);
                     }
@@ -187,7 +189,7 @@ namespace Onvif.Open.Test.Camera.Integration.Streaming
                     await stream.DisposeAsync();
                     await copy;
 
-                    Assert.Equal(4 + FakeRtspServer.Sps.Length + 4 + FakeRtspServer.Pps.Length + 4 + Idr.Length + 4 + Slice.Length, output.Length);
+                    Assert.Equal(expected, output.Length);
                 }
             }
         }

@@ -26,6 +26,7 @@ namespace Onvif.Open.Media.Implementation.Client
         public int? Height { get; private set; }
         public int? FrameRateLimit { get; private set; }
         public int? BitrateLimit { get; private set; }
+        public string PtzConfigurationToken { get; private set; }
 
         #endregion
 
@@ -50,7 +51,8 @@ namespace Onvif.Open.Media.Implementation.Client
                 Width = encoder?.Resolution?.Width,
                 Height = encoder?.Resolution?.Height,
                 FrameRateLimit = encoder?.RateControl?.FrameRateLimit,
-                BitrateLimit = encoder?.RateControl?.BitrateLimit
+                BitrateLimit = encoder?.RateControl?.BitrateLimit,
+                PtzConfigurationToken = profile.PTZConfiguration?.Token
             };
         }
 

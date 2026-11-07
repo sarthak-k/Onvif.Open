@@ -28,6 +28,8 @@ namespace Onvif.Open.Camera.Implementation
 
         private Core.Abstract.Interface.Events.ICameraEvents CameraEvents { get; set; }
 
+        private Core.Abstract.Interface.Ptz.ICameraPtz CameraPtz { get; set; }
+
         private ClockSynchronizer _clock;
         private readonly object _clockSync = new object();
         
@@ -58,6 +60,13 @@ namespace Onvif.Open.Camera.Implementation
         {
             return CameraEvents ??
                    (CameraEvents = Implementation.CameraEvents.CreateInstance(this, Initialize().GetDeviceManagement(), GetClock()));
+        }
+
+        public Core.Abstract.Interface.Ptz.ICameraPtz InitializePtz()
+        {
+            var media = (CameraMedia)InitializeMedia();
+            return CameraPtz ??
+                   (CameraPtz = Implementation.CameraPtz.CreateInstance(this, Initialize().GetDeviceManagement(), media.GetMediaServiceAsync, GetClock()));
         }
 
         public TimeSpan SynchronizeClock()

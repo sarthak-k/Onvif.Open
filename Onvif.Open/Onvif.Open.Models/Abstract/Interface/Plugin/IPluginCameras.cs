@@ -37,6 +37,12 @@ namespace Onvif.Open.Core.Abstract.Interface.Plugin
         /// </summary>
         Task<byte[]> GetSnapshotAsync(string cameraId, CancellationToken cancellationToken = default);
 
+        /// <summary>
+        /// Pan/tilt/zoom control of the camera, e.g. to turn to a preset when something happens.
+        /// Throws <see cref="System.NotSupportedException"/> for cameras without ONVIF PTZ.
+        /// </summary>
+        Ptz.ICameraPtz GetPtz(string cameraId);
+
         #endregion
     }
 }

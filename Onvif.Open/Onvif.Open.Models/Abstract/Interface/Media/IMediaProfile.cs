@@ -13,5 +13,8 @@ namespace Onvif.Open.Core.Abstract.Interface.Media
         int? Height { get; }
         int? FrameRateLimit { get; }
         int? BitrateLimit { get; }
+
+        /// <summary>Token of the profile's PTZ configuration; null when the profile has no PTZ.</summary>
+        string PtzConfigurationToken { get; }
     }
 }
