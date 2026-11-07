@@ -21,6 +21,7 @@ namespace Onvif.Open.Camera.Interface
         ICamera Build();
         CameraBuilder SetUrl(string url);
         CameraBuilder SetDeviceServiceUrl(string url);
+        CameraBuilder SetMediaVersion(Onvif.Open.Core.Operations.MediaServiceVersion version);
         CameraBuilder SetUsername(string username);
         CameraBuilder SetPassword(string password);
 

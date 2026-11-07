@@ -41,6 +41,8 @@ namespace Onvif.Open.Media.Implementation.Client
 
         public Uri ServiceUri { get; }
 
+        public MediaServiceVersion Version => MediaServiceVersion.Media1;
+
         #endregion
 
         #region Public Methods
@@ -131,7 +133,12 @@ namespace Onvif.Open.Media.Implementation.Client
 
         private static Uri ParseUri(MediaUri mediaUri)
         {
-            var value = mediaUri?.Uri?.Trim();
+            return ParseUri(mediaUri?.Uri);
+        }
+
+        internal static Uri ParseUri(string mediaUri)
+        {
+            var value = mediaUri?.Trim();
 
             if (string.IsNullOrEmpty(value) || !Uri.TryCreate(value, UriKind.Absolute, out var uri))
             {
@@ -157,56 +164,12 @@ namespace Onvif.Open.Media.Implementation.Client
 
         private T Invoke<T>(Func<IMediaPort, T> call)
         {
-            var client = CreateClient();
-            try
-            {
-                return call(client.Port);
-            }
-            finally
-            {
-                Close(client);
-            }
+            return WcfInvoker.Invoke(CreateClient, client => call(client.Port));
         }
 
-        private async Task<T> InvokeAsync<T>(Func<IMediaPort, Task<T>> call, CancellationToken cancellationToken)
+        private Task<T> InvokeAsync<T>(Func<IMediaPort, Task<T>> call, CancellationToken cancellationToken)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var client = CreateClient();
-            using (cancellationToken.Register(client.Abort))
-            {
-                try
-                {
-                    return await call(client.Port).ConfigureAwait(false);
-                }
-                catch (CommunicationException) when (cancellationToken.IsCancellationRequested)
-                {
-                    throw new OperationCanceledException(cancellationToken);
-                }
-                finally
-                {
-                    Close(client);
-                }
-            }
-        }
-
-        private static void Close(ICommunicationObject client)
-        {
-            try
-            {
-                if (client.State == CommunicationState.Opened)
-                {
-                    client.Close();
-                }
-                else
-                {
-                    client.Abort();
-                }
-            }
-            catch (Exception ex) when (ex is CommunicationException || ex is TimeoutException)
-            {
-                client.Abort();
-            }
+            return WcfInvoker.InvokeAsync(CreateClient, client => call(client.Port), cancellationToken);
         }
 
         #endregion

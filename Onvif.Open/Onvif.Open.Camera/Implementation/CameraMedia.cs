@@ -22,14 +22,11 @@ namespace Onvif.Open.Camera.Implementation
     {
         #region Constructor
 
-        private CameraMedia(ICameraInformation camera, IDeviceManagement deviceManagement, ClockSynchronizer clock)
+        private CameraMedia(ICameraInformation camera, IDeviceManagement deviceManagement, ClockSynchronizer clock, MediaServiceVersion version)
         {
             _camera = camera;
             _clock = clock ?? new ClockSynchronizer(camera, deviceManagement);
-            _mediaService = new Lazy<IMediaService>(() => MediaServiceBuilder.GetBuilder()
-                .SetCamera(_camera)
-                .SetServiceUri(deviceManagement.GetMediaServiceUri())
-                .Build(), LazyThreadSafetyMode.ExecutionAndPublication);
+            _mediaService = new Lazy<IMediaService>(() => ResolveMediaService(camera, deviceManagement, version), LazyThreadSafetyMode.ExecutionAndPublication);
             _snapshotClient = new Lazy<HttpClient>(CreateSnapshotClient, LazyThreadSafetyMode.ExecutionAndPublication);
         }
 
@@ -97,9 +94,34 @@ namespace Onvif.Open.Camera.Implementation
                 .ConfigureAwait(false);
         }
 
-        internal static ICameraMedia CreateInstance(ICameraInformation camera, IDeviceManagement deviceManagement, ClockSynchronizer clock = null)
+        internal static ICameraMedia CreateInstance(ICameraInformation camera, IDeviceManagement deviceManagement, ClockSynchronizer clock = null, MediaServiceVersion version = MediaServiceVersion.Auto)
         {
-            return new CameraMedia(camera, deviceManagement, clock);
+            return new CameraMedia(camera, deviceManagement, clock, version);
+        }
+
+        /// <summary>
+        /// Media2 when the device offers it (and Media1 was not requested), otherwise Media1.
+        /// </summary>
+        internal static IMediaService ResolveMediaService(ICameraInformation camera, IDeviceManagement deviceManagement, MediaServiceVersion version)
+        {
+            var builder = MediaServiceBuilder.GetBuilder().SetCamera(camera);
+
+            if (version != MediaServiceVersion.Media1)
+            {
+                var media2 = deviceManagement.FindServiceUri(OnvifServiceNamespaces.Media2);
+
+                if (media2 != null)
+                {
+                    return builder.SetVersion(MediaServiceVersion.Media2).SetServiceUri(media2).Build();
+                }
+
+                if (version == MediaServiceVersion.Media2)
+                {
+                    throw new NotSupportedException("The device does not offer the Media2 service.");
+                }
+            }
+
+            return builder.SetVersion(MediaServiceVersion.Media1).SetServiceUri(deviceManagement.GetMediaServiceUri()).Build();
         }
 
         #endregion

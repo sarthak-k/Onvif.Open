@@ -14,6 +14,9 @@ namespace Onvif.Open.Core.Abstract.Interface.Media
     {
         Uri ServiceUri { get; }
 
+        /// <summary>Media1 (ver10) or Media2 (ver20).</summary>
+        MediaServiceVersion Version { get; }
+
         IReadOnlyList<IMediaProfile> GetProfiles();
         Task<IReadOnlyList<IMediaProfile>> GetProfilesAsync(CancellationToken cancellationToken = default);
 

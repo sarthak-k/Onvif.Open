@@ -2,6 +2,7 @@
 // 2016-03-06 @ 1:09 AM
 
 using System;
+using System.Linq;
 using System.ServiceModel;
 using Onvif.Open.Core.Abstract.Interface.Camera;
 using Onvif.Open.Core.Abstract.Interface.Device;
@@ -89,6 +90,43 @@ namespace Onvif.Open.Device.Management.Implementation.Client
         {
             // Unlike media and events, PTZ is optional: a device reporting capabilities without PTZ has none.
             return GetServiceUri(CapabilityCategory.PTZ, c => c?.PTZ?.XAddr, noServiceWhenMissing: true);
+        }
+
+        public Uri FindServiceUri(string serviceNamespace)
+        {
+            if (string.IsNullOrWhiteSpace(serviceNamespace))
+            {
+                throw new ArgumentNullException(nameof(serviceNamespace));
+            }
+
+            var authenticator = PasswordDigestBuilder.GetBuilder().SetCamera(_camera).Build();
+
+            var client = DeviceClientBuilder.GetBuilder()
+                .SetHttpTransportBinding()
+                .SetMessageElement()
+                .SetEndpoint(new EndpointAddress(_camera.CameraUri))
+                .SetCustomeBinding()
+                .SetClient()
+                .SetAuthenticator(authenticator)
+                .Build();
+
+            try
+            {
+                var services = client.GetServices(false) ?? Array.Empty<Service>();
+                var xaddr = services.FirstOrDefault(s => string.Equals(s?.Namespace?.Trim(), serviceNamespace, StringComparison.OrdinalIgnoreCase))?.XAddr;
+
+                return !string.IsNullOrWhiteSpace(xaddr) && Uri.TryCreate(xaddr.Trim(), UriKind.Absolute, out var uri) ? uri : null;
+            }
+            catch (Exception ex) when ((ex is FaultException || ex is ProtocolException) && !OnvifFaults.IsAuthenticationFailure(ex))
+            {
+                // GetServices is mandatory since ONVIF 2.0, but older devices may not implement it.
+                // Authentication failures are not "service missing": they propagate.
+                return null;
+            }
+            finally
+            {
+                CloseClient(client);
+            }
         }
 
         private Uri GetServiceUri(CapabilityCategory category, Func<Capabilities, string> selectAddress, bool noServiceWhenMissing = false)

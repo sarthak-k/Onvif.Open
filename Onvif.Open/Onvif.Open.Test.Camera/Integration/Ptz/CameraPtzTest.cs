@@ -171,6 +171,19 @@ namespace Onvif.Open.Test.Camera.Integration.Ptz
         }
 
         [Fact]
+        public async Task PtzShouldUseTheMedia2ProfileWithPtzWhenMedia2IsUsed()
+        {
+            using (var device = Device())
+            {
+                device.HasMedia2 = true;
+
+                await Ptz(device).StopAsync();
+
+                Assert.Contains("M2_Sub", device.LastPtzRequest);
+            }
+        }
+
+        [Fact]
         public async Task CameraWithoutPtzShouldBeNotSupported()
         {
             using (var device = Device())

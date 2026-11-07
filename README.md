@@ -9,7 +9,7 @@ Targets **.NET 10 (LTS)** and runs on Windows, Linux and macOS.
 | --- | --- |
 | `Onvif.Open.Core` | Abstractions (`ICamera`, `IMediaService`, `ILiveVideoStream`, ...), WS-Security UsernameToken authentication, shared SOAP binding |
 | `Onvif.Open.Device.Management` | ONVIF Device service (device information, date & time, media service discovery) |
-| `Onvif.Open.Media` | ONVIF Media service (profiles, stream URI, snapshot URI) |
+| `Onvif.Open.Media` | ONVIF Media (ver10) and Media2 (ver20) services: profiles, stream URI, snapshot URI |
 | `Onvif.Open.Discovery` | WS-Discovery: find ONVIF devices on the network |
 | `Onvif.Open.Events` | ONVIF Events service: PullPoint subscriptions (motion, tampering, inputs, ...) |
 | `Onvif.Open.Ptz` | ONVIF PTZ service: pan/tilt/zoom moves, presets, home position |
@@ -110,10 +110,12 @@ A JPEG snapshot (ONVIF `GetSnapshotUri`, authenticated with the camera credentia
 byte[] jpeg = await camera.InitializeMedia().GetSnapshotAsync();
 ```
 
-Media profiles and URIs are available through the media service:
+Media profiles and URIs are available through the media service. Media2 (ver20, Profile T: describes H.265
+encoders) is used when the camera offers it, otherwise Media1; force one with `CameraBuilder.SetMediaVersion(...)`
+(or `"MediaVersion": "Media1"` per camera in the recorder) for devices with a faulty implementation:
 
 ```csharp
-var media = camera.InitializeMedia().GetMediaService();
+var media = camera.InitializeMedia().GetMediaService();      // media.Version: Media1 or Media2
 var profiles = media.GetProfiles();
 var rtspUri = media.GetStreamUri(profiles[0].Token);
 var snapshotUri = media.GetSnapshotUri(profiles[0].Token);

@@ -42,6 +42,12 @@ namespace Onvif.Open.Core.Abstract.Interface.Device
         System.Uri GetPtzServiceUri();
 
         /// <summary>
+        /// Address of the service with <paramref name="serviceNamespace"/> (see OnvifServiceNamespaces) from GetServices;
+        /// null when the device does not offer it or does not implement GetServices.
+        /// </summary>
+        System.Uri FindServiceUri(string serviceNamespace);
+
+        /// <summary>
         /// Device clock minus local clock, measured with an unauthenticated GetSystemDateAndTime
         /// (allowed by the ONVIF Core Specification precisely so clients can synchronize).
         /// Null when the device does not report its UTC time.

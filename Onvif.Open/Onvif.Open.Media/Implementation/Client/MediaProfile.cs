@@ -56,6 +56,23 @@ namespace Onvif.Open.Media.Implementation.Client
             };
         }
 
+        internal static IMediaProfile CreateInstance(Ver20.MediaProfile2 profile)
+        {
+            var encoder = profile.Configurations?.VideoEncoder;
+
+            return new MediaProfile
+            {
+                Token = profile.Token,
+                Name = profile.Name,
+                VideoEncoding = encoder?.Encoding,
+                Width = encoder?.Resolution?.Width,
+                Height = encoder?.Resolution?.Height,
+                FrameRateLimit = encoder?.RateControl == null ? (int?)null : (int)System.Math.Round(encoder.RateControl.FrameRateLimit),
+                BitrateLimit = encoder?.RateControl?.BitrateLimit,
+                PtzConfigurationToken = profile.Configurations?.Ptz?.Token
+            };
+        }
+
         #endregion
     }
 }

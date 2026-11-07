@@ -11,8 +11,9 @@ namespace Onvif.Open.Camera.Implementation
 
         #region Constructor
 
-        private Camera(Uri cameraUri, string username, string password)
+        private Camera(Uri cameraUri, string username, string password, Core.Operations.MediaServiceVersion mediaVersion)
         {
+            _mediaVersion = mediaVersion;
             CameraUri = cameraUri;
             Username = username;
             Password = password;
@@ -30,6 +31,7 @@ namespace Onvif.Open.Camera.Implementation
 
         private Core.Abstract.Interface.Ptz.ICameraPtz CameraPtz { get; set; }
 
+        private readonly Core.Operations.MediaServiceVersion _mediaVersion;
         private ClockSynchronizer _clock;
         private readonly object _clockSync = new object();
         
@@ -53,7 +55,7 @@ namespace Onvif.Open.Camera.Implementation
         {
             return CameraMedia ??
                    (CameraMedia =
-                       CameraMediaBuilder.GetBuilder().SetCamera(this).SetDeviceManagement(Initialize()).SetClockSynchronizer(GetClock()).Build());
+                       CameraMediaBuilder.GetBuilder().SetCamera(this).SetDeviceManagement(Initialize()).SetClockSynchronizer(GetClock()).SetMediaVersion(_mediaVersion).Build());
         }
 
         public Core.Abstract.Interface.Events.ICameraEvents InitializeEvents()
@@ -94,9 +96,9 @@ namespace Onvif.Open.Camera.Implementation
             }
         }
 
-        internal static ICamera CreateInstance(Uri cameraUri, string username, string password)
+        internal static ICamera CreateInstance(Uri cameraUri, string username, string password, Core.Operations.MediaServiceVersion mediaVersion = Core.Operations.MediaServiceVersion.Auto)
         {
-            return new Camera(cameraUri, username, password);
+            return new Camera(cameraUri, username, password, mediaVersion);
         }
 
 

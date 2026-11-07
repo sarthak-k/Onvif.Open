@@ -4,6 +4,7 @@
 using System;
 using Onvif.Open.Core.Abstract.Interface.Camera;
 using Onvif.Open.Core.Abstract.Interface.Media;
+using Onvif.Open.Core.Operations;
 using Onvif.Open.Media.Implementation.Builder;
 
 namespace Onvif.Open.Media.Interface
@@ -15,6 +16,7 @@ namespace Onvif.Open.Media.Interface
         IMediaService Build();
         MediaServiceBuilder SetCamera(ICameraInformation camera);
         MediaServiceBuilder SetServiceUri(Uri serviceUri);
+        MediaServiceBuilder SetVersion(MediaServiceVersion version);
 
         #endregion
     }
