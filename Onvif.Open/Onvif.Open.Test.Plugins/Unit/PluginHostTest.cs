@@ -410,6 +410,28 @@ namespace Onvif.Open.Test.Plugins.Unit
             }
         }
 
+        [Fact]
+        public async Task PluginsShouldGetImagingForAssignedCamerasOnly()
+        {
+            var manager = new FakeRecordingManager("room-1", "room-2");
+            var plugin = new TestPlugin("night-mode");
+
+            await using (var host = Builder(manager).AddPlugin(plugin, new[] { "room-1" }).SetImagingProvider(id => null).Build())
+            {
+                await host.StartAsync();
+
+                Assert.Null(plugin.Context.Cameras.GetImaging("room-1"));
+                Assert.Throws<UnauthorizedAccessException>(() => plugin.Context.Cameras.GetImaging("room-2"));
+            }
+
+            var withoutProvider = new TestPlugin("no-imaging");
+            await using (var host = Builder(manager).AddPlugin(withoutProvider).Build())
+            {
+                await host.StartAsync();
+                Assert.Throws<NotSupportedException>(() => withoutProvider.Context.Cameras.GetImaging("room-1"));
+            }
+        }
+
         private sealed class NoOpPtz : Onvif.Open.Core.Abstract.Interface.Ptz.ICameraPtz
         {
             public Task MoveAsync(double pan, double tilt, double zoom, TimeSpan? duration = null, CancellationToken cancellationToken = default) => Task.CompletedTask;

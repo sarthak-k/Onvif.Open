@@ -31,6 +31,7 @@ namespace Onvif.Open.Recorder.Configuration
                 .SetRecordingManager(recording.Manager)
                 .SetSnapshotProvider(recording.GetSnapshotAsync)
                 .SetPtzProvider(recording.GetPtz)
+                .SetImagingProvider(recording.GetImaging)
                 .SetFrameQueueCapacity(options.FrameQueueCapacity)
                 .SetEventHistoryCapacity(options.EventHistory)
                 .SetStopTimeout(options.StopTimeout)

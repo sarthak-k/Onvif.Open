@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Onvif.Open.Core.Abstract.Interface.Plugin;
+using Onvif.Open.Core.Abstract.Interface.Imaging;
 using Onvif.Open.Core.Abstract.Interface.Ptz;
 using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Core.Recording;
@@ -20,9 +21,10 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
     {
         #region Constructor
 
-        public PluginCameras(IRecordingManager manager, IReadOnlyList<string> assigned, Func<string, CancellationToken, Task<byte[]>> snapshotProvider, Func<string, ICameraPtz> ptzProvider = null)
+        public PluginCameras(IRecordingManager manager, IReadOnlyList<string> assigned, Func<string, CancellationToken, Task<byte[]>> snapshotProvider, Func<string, ICameraPtz> ptzProvider = null, Func<string, ICameraImaging> imagingProvider = null)
         {
             _ptzProvider = ptzProvider;
+            _imagingProvider = imagingProvider;
             _manager = manager;
             _assigned = assigned == null ? null : new HashSet<string>(assigned, StringComparer.OrdinalIgnoreCase);
             _snapshotProvider = snapshotProvider;
@@ -36,6 +38,7 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
         private readonly HashSet<string> _assigned;
         private readonly Func<string, CancellationToken, Task<byte[]>> _snapshotProvider;
         private readonly Func<string, ICameraPtz> _ptzProvider;
+        private readonly Func<string, ICameraImaging> _imagingProvider;
 
         #endregion
 
@@ -76,6 +79,18 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
             }
 
             return _ptzProvider(cameraId);
+        }
+
+        public ICameraImaging GetImaging(string cameraId)
+        {
+            Require(cameraId);
+
+            if (_imagingProvider == null)
+            {
+                throw new NotSupportedException("Imaging control is not available in this host.");
+            }
+
+            return _imagingProvider(cameraId);
         }
 
         public void TriggerRecording(string cameraId, TimeSpan duration)

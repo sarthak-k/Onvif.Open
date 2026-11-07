@@ -13,6 +13,7 @@ Targets **.NET 10 (LTS)** and runs on Windows, Linux and macOS.
 | `Onvif.Open.Discovery` | WS-Discovery: find ONVIF devices on the network |
 | `Onvif.Open.Events` | ONVIF Events service: PullPoint subscriptions (motion, tampering, inputs, ...) |
 | `Onvif.Open.Ptz` | ONVIF PTZ service: pan/tilt/zoom moves, presets, home position |
+| `Onvif.Open.Imaging` | ONVIF Imaging service: brightness, contrast, day/night (IR cut filter), WDR, focus |
 | `Onvif.Open.Streaming` | Dependency-free RTSP/RTP client: Basic/Digest auth, RTP over TCP (interleaved) or UDP, H.264 and H.265 depacketizing |
 | `Onvif.Open.Camera` | The `Camera` façade tying everything together |
 | `Onvif.Open.Recording` | Multi-camera recording to files: segment rotation, retention, reconnects, MPEG-TS muxer |
@@ -103,6 +104,21 @@ var status = await ptz.GetStatusAsync();                                        
 
 A timed move always sends Stop at the end, even when cancelled or when the camera ignores the move timeout.
 Cameras without PTZ throw `NotSupportedException`.
+
+Image settings and focus (values in the device's own ranges, see `GetOptionsAsync`); updates change only the
+properties you set, so vendor-specific settings are never overwritten:
+
+```csharp
+var imaging = camera.InitializeImaging();
+var settings = await imaging.GetSettingsAsync();                    // Brightness, Contrast, IrCutFilter, WDR, ...
+var options = await imaging.GetOptionsAsync();                      // e.g. options.Brightness.Min / Max
+await imaging.UpdateAsync(new ImagingSettings
+{
+    IrCutFilter = IrCutFilterMode.Auto,                             // day/night switching
+    Brightness = options.Brightness.FromFraction(0.6)               // 60 % of the device's range
+});
+await imaging.MoveFocusAsync(0.3, TimeSpan.FromMilliseconds(500)); // stops afterwards
+```
 
 A JPEG snapshot (ONVIF `GetSnapshotUri`, authenticated with the camera credentials):
 
@@ -225,6 +241,9 @@ Passwords can be supplied through environment variables instead of the file, e.g
 | `GET /api/storage` | Free space and usage per camera |
 | `POST /api/retention` | Apply the retention policy now |
 | `GET /api/cameras/{id}/snapshot` | JPEG snapshot (ONVIF cameras) |
+| `GET /api/cameras/{id}/imaging`, `PATCH .../imaging` `{irCutFilter, brightness, ...}` | Image settings (PATCH changes only what is given) |
+| `GET /api/cameras/{id}/imaging/options` | Supported ranges and modes |
+| `GET/POST /api/cameras/{id}/imaging/focus` `{speed, durationMs}` or `{position}`, `POST .../focus/stop` | Focus |
 | `GET /api/cameras/{id}/ptz` | PTZ status (position, moving) |
 | `POST /api/cameras/{id}/ptz/move` `{pan, tilt, zoom, durationMs}`, `POST .../ptz/stop` | Continuous move / stop |
 | `POST /api/cameras/{id}/ptz/position` `{pan, tilt, zoom}` | Absolute move |
@@ -244,7 +263,7 @@ Domain features such as exam proctoring or "camera went offline during opening h
 against a small SDK in `Onvif.Open.Core`. A plugin implements `IPlugin` plus any of `IFrameProcessor` (video frames),
 `ICameraStateObserver` (online/offline), `ISegmentObserver` (completed files), `ICameraEventObserver` (the cameras'
 own ONVIF events) and `IPluginEventObserver` (events from other plugins). Plugins can also trigger recording and
-control PTZ (e.g. turn to a preset on an alarm). The host gives it settings, a logger, snapshots and recording control for its assigned cameras only,
+control PTZ (e.g. turn to a preset on an alarm) and imaging (e.g. day/night on a schedule). The host gives it settings, a logger, snapshots and recording control for its assigned cameras only,
 and publishes its `PluginEvent`s through the API. Each plugin has its own queues, threads and load context, so a slow or
 crashing plugin never affects recording or other plugins.
 

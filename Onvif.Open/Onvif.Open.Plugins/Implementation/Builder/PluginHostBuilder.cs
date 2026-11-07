@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Onvif.Open.Core.Abstract.Interface.Plugin;
+using Onvif.Open.Core.Abstract.Interface.Imaging;
 using Onvif.Open.Core.Abstract.Interface.Ptz;
 using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Plugins.Implementation.Runtime;
@@ -44,6 +45,7 @@ namespace Onvif.Open.Plugins.Implementation.Builder
         private IRecordingManager _manager;
         private Func<string, CancellationToken, Task<byte[]>> _snapshotProvider;
         private Func<string, ICameraPtz> _ptzProvider;
+        private Func<string, ICameraImaging> _imagingProvider;
         private int _frameQueueCapacity = 32;
         private int _notificationQueueCapacity = 1024;
         private int _eventHistoryCapacity = 1000;
@@ -62,7 +64,7 @@ namespace Onvif.Open.Plugins.Implementation.Builder
                 throw new InvalidOperationException("Plugin Host Builder must have a recording manager.");
             }
 
-            return PluginHost.CreateInstance(_manager, _registrations.ToList(), _snapshotProvider, _frameQueueCapacity, _notificationQueueCapacity, _eventHistoryCapacity, _stopTimeout, _timeProvider, _loggerFactory, _ptzProvider);
+            return PluginHost.CreateInstance(_manager, _registrations.ToList(), _snapshotProvider, _frameQueueCapacity, _notificationQueueCapacity, _eventHistoryCapacity, _stopTimeout, _timeProvider, _loggerFactory, _ptzProvider, _imagingProvider);
         }
 
         public PluginHostBuilder SetRecordingManager(IRecordingManager manager)
@@ -116,6 +118,13 @@ namespace Onvif.Open.Plugins.Implementation.Builder
         public PluginHostBuilder SetPtzProvider(Func<string, ICameraPtz> ptzProvider)
         {
             _ptzProvider = ptzProvider ?? throw new ArgumentNullException(nameof(ptzProvider));
+            return this;
+        }
+
+        /// <summary>Source of imaging control for <see cref="IPluginCameras.GetImaging"/>.</summary>
+        public PluginHostBuilder SetImagingProvider(Func<string, ICameraImaging> imagingProvider)
+        {
+            _imagingProvider = imagingProvider ?? throw new ArgumentNullException(nameof(imagingProvider));
             return this;
         }
 

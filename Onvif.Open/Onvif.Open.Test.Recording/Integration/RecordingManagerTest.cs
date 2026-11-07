@@ -484,6 +484,7 @@ namespace Onvif.Open.Test.Recording.Integration
             public TimeSpan SynchronizeClock() => TimeSpan.Zero;
             public Onvif.Open.Core.Abstract.Interface.Events.ICameraEvents InitializeEvents() => new NoEvents();
             public Onvif.Open.Core.Abstract.Interface.Ptz.ICameraPtz InitializePtz() => throw new NotSupportedException();
+            public Onvif.Open.Core.Abstract.Interface.Imaging.ICameraImaging InitializeImaging() => throw new NotSupportedException();
 
             private sealed class NoEvents : Onvif.Open.Core.Abstract.Interface.Events.ICameraEvents
             {
