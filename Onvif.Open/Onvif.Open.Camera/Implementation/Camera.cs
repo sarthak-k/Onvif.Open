@@ -33,6 +33,8 @@ namespace Onvif.Open.Camera.Implementation
 
         private Core.Abstract.Interface.Imaging.ICameraImaging CameraImaging { get; set; }
 
+        private Core.Abstract.Interface.DeviceIo.ICameraIo CameraIo { get; set; }
+
         private readonly Core.Operations.MediaServiceVersion _mediaVersion;
         private ClockSynchronizer _clock;
         private readonly object _clockSync = new object();
@@ -78,6 +80,12 @@ namespace Onvif.Open.Camera.Implementation
             var media = (CameraMedia)InitializeMedia();
             return CameraImaging ??
                    (CameraImaging = Implementation.CameraImaging.CreateInstance(this, Initialize().GetDeviceManagement(), media.GetMediaServiceAsync, GetClock()));
+        }
+
+        public Core.Abstract.Interface.DeviceIo.ICameraIo InitializeIo()
+        {
+            return CameraIo ??
+                   (CameraIo = Implementation.CameraIo.CreateInstance(this, Initialize().GetDeviceManagement(), InitializeEvents(), GetClock()));
         }
 
         public TimeSpan SynchronizeClock()

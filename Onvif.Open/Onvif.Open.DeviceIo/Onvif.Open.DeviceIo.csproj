@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Onvif.Open.DeviceIo</RootNamespace>
+    <AssemblyName>Onvif.Open.DeviceIo</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Onvif.Open.Models\Onvif.Open.Core.csproj" />
+  </ItemGroup>
+
+</Project>

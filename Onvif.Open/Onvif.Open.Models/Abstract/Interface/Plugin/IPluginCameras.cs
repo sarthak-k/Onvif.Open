@@ -49,6 +49,12 @@ namespace Onvif.Open.Core.Abstract.Interface.Plugin
         /// </summary>
         Imaging.ICameraImaging GetImaging(string cameraId);
 
+        /// <summary>
+        /// Relay outputs and digital inputs of the camera, e.g. to sound a siren on a detection.
+        /// Throws <see cref="System.NotSupportedException"/> for cameras without ONVIF.
+        /// </summary>
+        DeviceIo.ICameraIo GetIo(string cameraId);
+
         #endregion
     }
 }

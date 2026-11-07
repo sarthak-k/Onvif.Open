@@ -50,6 +50,13 @@ namespace Onvif.Open.Core.Abstract.Interface.Device
         /// </summary>
         System.Uri FindServiceUri(string serviceNamespace);
 
+        /// <summary>Relay outputs (device service GetRelayOutputs).</summary>
+        System.Collections.Generic.IReadOnlyList<global::Onvif.Open.Core.DeviceIo.RelayOutput> GetRelayOutputs();
+
+        void SetRelayOutputState(string relayToken, bool active);
+
+        void SetRelayOutputSettings(string relayToken, global::Onvif.Open.Core.DeviceIo.RelayMode mode, System.TimeSpan delayTime, global::Onvif.Open.Core.DeviceIo.IdleState idleState);
+
         /// <summary>
         /// Device clock minus local clock, measured with an unauthenticated GetSystemDateAndTime
         /// (allowed by the ONVIF Core Specification precisely so clients can synchronize).

@@ -97,6 +97,86 @@ namespace Onvif.Open.Device.Management.Implementation.Client
             return GetServiceUri(CapabilityCategory.Imaging, c => c?.Imaging?.XAddr, noServiceWhenMissing: true);
         }
 
+        public System.Collections.Generic.IReadOnlyList<Core.DeviceIo.RelayOutput> GetRelayOutputs()
+        {
+            return WithClient(client => (client.GetRelayOutputs() ?? Array.Empty<RelayOutput>())
+                .Where(r => !string.IsNullOrEmpty(r?.token))
+                .Select(r => new Core.DeviceIo.RelayOutput(
+                    r.token,
+                    r.Properties?.Mode == RelayMode.Bistable ? Core.DeviceIo.RelayMode.Bistable : Core.DeviceIo.RelayMode.Monostable,
+                    TryParseDuration(r.Properties?.DelayTime),
+                    r.Properties?.IdleState == RelayIdleState.open ? Core.DeviceIo.IdleState.Open : Core.DeviceIo.IdleState.Closed))
+                .ToList());
+        }
+
+        public void SetRelayOutputState(string relayToken, bool active)
+        {
+            RequireToken(relayToken);
+            WithClient(client =>
+            {
+                client.SetRelayOutputState(relayToken, active ? RelayLogicalState.active : RelayLogicalState.inactive);
+                return true;
+            });
+        }
+
+        public void SetRelayOutputSettings(string relayToken, Core.DeviceIo.RelayMode mode, TimeSpan delayTime, Core.DeviceIo.IdleState idleState)
+        {
+            RequireToken(relayToken);
+            WithClient(client =>
+            {
+                client.SetRelayOutputSettings(relayToken, new RelayOutputSettings
+                {
+                    Mode = mode == Core.DeviceIo.RelayMode.Bistable ? RelayMode.Bistable : RelayMode.Monostable,
+                    DelayTime = System.Xml.XmlConvert.ToString(delayTime),
+                    IdleState = idleState == Core.DeviceIo.IdleState.Open ? RelayIdleState.open : RelayIdleState.closed
+                });
+                return true;
+            });
+        }
+
+        private T WithClient<T>(Func<DeviceClient, T> call)
+        {
+            var authenticator = PasswordDigestBuilder.GetBuilder().SetCamera(_camera).Build();
+
+            var client = DeviceClientBuilder.GetBuilder()
+                .SetHttpTransportBinding()
+                .SetMessageElement()
+                .SetEndpoint(new EndpointAddress(_camera.CameraUri))
+                .SetCustomeBinding()
+                .SetClient()
+                .SetAuthenticator(authenticator)
+                .Build();
+
+            try
+            {
+                return call(client);
+            }
+            finally
+            {
+                CloseClient(client);
+            }
+        }
+
+        private static void RequireToken(string token)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                throw new ArgumentNullException(nameof(token));
+            }
+        }
+
+        private static TimeSpan? TryParseDuration(string duration)
+        {
+            try
+            {
+                return string.IsNullOrWhiteSpace(duration) ? (TimeSpan?)null : System.Xml.XmlConvert.ToTimeSpan(duration.Trim());
+            }
+            catch (FormatException)
+            {
+                return null;
+            }
+        }
+
         public Uri FindServiceUri(string serviceNamespace)
         {
             if (string.IsNullOrWhiteSpace(serviceNamespace))

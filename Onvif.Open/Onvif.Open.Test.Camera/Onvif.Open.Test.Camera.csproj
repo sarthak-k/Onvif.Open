@@ -19,6 +19,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Onvif.Open.Camera\Onvif.Open.Camera.csproj" />
     <ProjectReference Include="..\Onvif.Open.Device.Management\Onvif.Open.Device.Management.csproj" />
+    <ProjectReference Include="..\Onvif.Open.DeviceIo\Onvif.Open.DeviceIo.csproj" />
     <ProjectReference Include="..\Onvif.Open.Discovery\Onvif.Open.Discovery.csproj" />
     <ProjectReference Include="..\Onvif.Open.Events\Onvif.Open.Events.csproj" />
     <ProjectReference Include="..\Onvif.Open.Imaging\Onvif.Open.Imaging.csproj" />

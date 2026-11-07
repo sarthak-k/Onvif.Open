@@ -14,6 +14,7 @@ Targets **.NET 10 (LTS)** and runs on Windows, Linux and macOS.
 | `Onvif.Open.Events` | ONVIF Events service: PullPoint subscriptions (motion, tampering, inputs, ...) |
 | `Onvif.Open.Ptz` | ONVIF PTZ service: pan/tilt/zoom moves, presets, home position |
 | `Onvif.Open.Imaging` | ONVIF Imaging service: brightness, contrast, day/night (IR cut filter), WDR, focus |
+| `Onvif.Open.DeviceIo` | ONVIF DeviceIO service: digital inputs (relays use the Device service) |
 | `Onvif.Open.Streaming` | Dependency-free RTSP/RTP client: Basic/Digest auth, RTP over TCP (interleaved) or UDP, H.264 and H.265 depacketizing |
 | `Onvif.Open.Camera` | The `Camera` façade tying everything together |
 | `Onvif.Open.Recording` | Multi-camera recording to files: segment rotation, retention, reconnects, MPEG-TS muxer |
@@ -118,6 +119,20 @@ await imaging.UpdateAsync(new ImagingSettings
     Brightness = options.Brightness.FromFraction(0.6)               // 60 % of the device's range
 });
 await imaging.MoveFocusAsync(0.3, TimeSpan.FromMilliseconds(500)); // stops afterwards
+```
+
+Relay outputs (sirens, door openers, lights) and digital inputs (door contacts, buttons):
+
+```csharp
+var io = camera.InitializeIo();
+var relays = await io.GetRelayOutputsAsync();                       // Token, Mode, IdleState, DelayTime
+await io.PulseRelayAsync(relays[0].Token, TimeSpan.FromSeconds(3)); // on, then always off again
+await io.SetRelayAsync(relays[0].Token, active: false);
+var inputs = await io.GetDigitalInputsAsync();                      // needs the DeviceIO service
+await foreach (var change in io.WatchDigitalInputsAsync())          // from the camera's events
+{
+    Console.WriteLine($"{change.Token}: {(change.IsActive ? "active" : "inactive")}");
+}
 ```
 
 A JPEG snapshot (ONVIF `GetSnapshotUri`, authenticated with the camera credentials):
@@ -244,6 +259,8 @@ Passwords can be supplied through environment variables instead of the file, e.g
 | `GET /api/cameras/{id}/imaging`, `PATCH .../imaging` `{irCutFilter, brightness, ...}` | Image settings (PATCH changes only what is given) |
 | `GET /api/cameras/{id}/imaging/options` | Supported ranges and modes |
 | `GET/POST /api/cameras/{id}/imaging/focus` `{speed, durationMs}` or `{position}`, `POST .../focus/stop` | Focus |
+| `GET /api/cameras/{id}/io` | Relay outputs and digital inputs |
+| `POST /api/cameras/{id}/io/relays/{token}` `{active}` or `{durationMs}`, `PUT .../relays/{token}/settings` `{mode, delayMs, idleState}` | Switch / pulse / configure a relay |
 | `GET /api/cameras/{id}/ptz` | PTZ status (position, moving) |
 | `POST /api/cameras/{id}/ptz/move` `{pan, tilt, zoom, durationMs}`, `POST .../ptz/stop` | Continuous move / stop |
 | `POST /api/cameras/{id}/ptz/position` `{pan, tilt, zoom}` | Absolute move |
@@ -263,7 +280,8 @@ Domain features such as exam proctoring or "camera went offline during opening h
 against a small SDK in `Onvif.Open.Core`. A plugin implements `IPlugin` plus any of `IFrameProcessor` (video frames),
 `ICameraStateObserver` (online/offline), `ISegmentObserver` (completed files), `ICameraEventObserver` (the cameras'
 own ONVIF events) and `IPluginEventObserver` (events from other plugins). Plugins can also trigger recording and
-control PTZ (e.g. turn to a preset on an alarm) and imaging (e.g. day/night on a schedule). The host gives it settings, a logger, snapshots and recording control for its assigned cameras only,
+control PTZ (e.g. turn to a preset on an alarm), imaging (e.g. day/night on a schedule) and relays (e.g. sound a
+siren on a detection). The host gives it settings, a logger, snapshots and recording control for its assigned cameras only,
 and publishes its `PluginEvent`s through the API. Each plugin has its own queues, threads and load context, so a slow or
 crashing plugin never affects recording or other plugins.
 

@@ -36,6 +36,9 @@ namespace Onvif.Open.Core.Abstract.Interface.Camera
         /// <summary>Image settings (brightness, day/night, ...) and focus (cameras with an Imaging service).</summary>
         Imaging.ICameraImaging InitializeImaging();
 
+        /// <summary>Relay outputs and digital inputs.</summary>
+        DeviceIo.ICameraIo InitializeIo();
+
         /// <summary>
         /// Measures the device clock and stamps all further WS-Security tokens in device time.
         /// Media operations do this automatically (and again when the device rejects a token);
