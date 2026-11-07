@@ -14,6 +14,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Onvif.Open.Recording" />
     <InternalsVisibleTo Include="Onvif.Open.Plugins" />
+    <InternalsVisibleTo Include="Onvif.Open.Imaging" />
     <InternalsVisibleTo Include="Onvif.Open.Test.Plugins" />
   </ItemGroup>
 

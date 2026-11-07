@@ -286,6 +286,16 @@ namespace Onvif.Open.Recorder.Configuration
             return camera.Camera.InitializePtz();
         }
 
+        public Core.Abstract.Interface.Imaging.ICameraImaging GetImaging(string cameraId)
+        {
+            if (cameraId == null || !_onvifCameras.TryGetValue(cameraId, out var camera))
+            {
+                throw new NotSupportedException($"Camera '{cameraId}' is not an ONVIF camera: imaging is not available.");
+            }
+
+            return camera.Camera.InitializeImaging();
+        }
+
         public Task<byte[]> GetSnapshotAsync(string cameraId, CancellationToken cancellationToken)
         {
             if (cameraId == null || !_onvifCameras.TryGetValue(cameraId, out var camera))

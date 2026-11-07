@@ -31,6 +31,8 @@ namespace Onvif.Open.Camera.Implementation
 
         private Core.Abstract.Interface.Ptz.ICameraPtz CameraPtz { get; set; }
 
+        private Core.Abstract.Interface.Imaging.ICameraImaging CameraImaging { get; set; }
+
         private readonly Core.Operations.MediaServiceVersion _mediaVersion;
         private ClockSynchronizer _clock;
         private readonly object _clockSync = new object();
@@ -69,6 +71,13 @@ namespace Onvif.Open.Camera.Implementation
             var media = (CameraMedia)InitializeMedia();
             return CameraPtz ??
                    (CameraPtz = Implementation.CameraPtz.CreateInstance(this, Initialize().GetDeviceManagement(), media.GetMediaServiceAsync, GetClock()));
+        }
+
+        public Core.Abstract.Interface.Imaging.ICameraImaging InitializeImaging()
+        {
+            var media = (CameraMedia)InitializeMedia();
+            return CameraImaging ??
+                   (CameraImaging = Implementation.CameraImaging.CreateInstance(this, Initialize().GetDeviceManagement(), media.GetMediaServiceAsync, GetClock()));
         }
 
         public TimeSpan SynchronizeClock()

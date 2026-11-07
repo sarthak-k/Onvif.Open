@@ -33,6 +33,9 @@ namespace Onvif.Open.Core.Abstract.Interface.Camera
         /// <summary>Pan/tilt/zoom control (cameras with PTZ only).</summary>
         Ptz.ICameraPtz InitializePtz();
 
+        /// <summary>Image settings (brightness, day/night, ...) and focus (cameras with an Imaging service).</summary>
+        Imaging.ICameraImaging InitializeImaging();
+
         /// <summary>
         /// Measures the device clock and stamps all further WS-Security tokens in device time.
         /// Media operations do this automatically (and again when the device rejects a token);

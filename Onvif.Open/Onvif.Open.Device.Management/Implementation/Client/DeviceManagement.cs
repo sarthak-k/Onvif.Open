@@ -92,6 +92,11 @@ namespace Onvif.Open.Device.Management.Implementation.Client
             return GetServiceUri(CapabilityCategory.PTZ, c => c?.PTZ?.XAddr, noServiceWhenMissing: true);
         }
 
+        public Uri GetImagingServiceUri()
+        {
+            return GetServiceUri(CapabilityCategory.Imaging, c => c?.Imaging?.XAddr, noServiceWhenMissing: true);
+        }
+
         public Uri FindServiceUri(string serviceNamespace)
         {
             if (string.IsNullOrWhiteSpace(serviceNamespace))

@@ -43,6 +43,12 @@ namespace Onvif.Open.Core.Abstract.Interface.Plugin
         /// </summary>
         Ptz.ICameraPtz GetPtz(string cameraId);
 
+        /// <summary>
+        /// Image settings (brightness, day/night, ...) and focus of the camera.
+        /// Throws <see cref="System.NotSupportedException"/> for cameras without ONVIF Imaging.
+        /// </summary>
+        Imaging.ICameraImaging GetImaging(string cameraId);
+
         #endregion
     }
 }

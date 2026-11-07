@@ -47,6 +47,7 @@ app.MapRecordingApi();
 app.MapPluginApi();
 app.MapDiscoveryApi();
 app.MapPtzApi();
+app.MapImagingApi();
 app.Run();
 
 public partial class Program

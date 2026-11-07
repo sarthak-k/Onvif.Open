@@ -16,5 +16,8 @@ namespace Onvif.Open.Core.Abstract.Interface.Media
 
         /// <summary>Token of the profile's PTZ configuration; null when the profile has no PTZ.</summary>
         string PtzConfigurationToken { get; }
+
+        /// <summary>Token of the physical video source (used by the Imaging service).</summary>
+        string VideoSourceToken { get; }
     }
 }

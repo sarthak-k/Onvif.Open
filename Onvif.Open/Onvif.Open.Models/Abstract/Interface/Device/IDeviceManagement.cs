@@ -41,6 +41,9 @@ namespace Onvif.Open.Core.Abstract.Interface.Device
         /// </summary>
         System.Uri GetPtzServiceUri();
 
+        /// <summary>Address of the device's Imaging service (from GetCapabilities); null when the device reports none.</summary>
+        System.Uri GetImagingServiceUri();
+
         /// <summary>
         /// Address of the service with <paramref name="serviceNamespace"/> (see OnvifServiceNamespaces) from GetServices;
         /// null when the device does not offer it or does not implement GetServices.

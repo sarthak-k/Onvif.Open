@@ -53,6 +53,20 @@ namespace Onvif.Open.Test.Camera.Fakes
 
         public Uri PtzServiceUri => new Uri($"http://127.0.0.1:{Port}/onvif/ptz_service");
         public Uri Media2ServiceUri => new Uri($"http://127.0.0.1:{Port}/onvif/media2_service");
+        public Uri ImagingServiceUri => new Uri($"http://127.0.0.1:{Port}/onvif/imaging_service");
+
+        public bool HasImaging { get; set; } = true;
+        public System.Collections.Generic.Dictionary<string, string> Imaging { get; } = new System.Collections.Generic.Dictionary<string, string>
+        {
+            ["Brightness"] = "50", ["ColorSaturation"] = "50", ["Contrast"] = "50", ["Sharpness"] = "50",
+            ["IrCutFilter"] = "ON", ["Backlight"] = "OFF", ["Wdr"] = "OFF", ["WdrLevel"] = "50",
+            ["Exposure"] = "AUTO", ["Focus"] = "AUTO", ["WhiteBalance"] = "AUTO"
+        };
+
+        public string LastImagingRequest { get; private set; }
+        public ConcurrentQueue<string> ImagingOperations { get; } = new ConcurrentQueue<string>();
+        public double FocusPosition { get; private set; } = 0.5;
+        public bool FocusMoving { get; private set; }
 
         /// <summary>When true the device lists and implements Media2 (ver20).</summary>
         public bool HasMedia2 { get; set; }
@@ -343,6 +357,104 @@ namespace Onvif.Open.Test.Camera.Fakes
             }
         }
 
+        private string ImagingResponse(string request)
+        {
+            if (!request.Contains("http://www.onvif.org/ver20/imaging/wsdl", StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            var operation = System.Text.RegularExpressions.Regex.Match(request, "<(?:\\w+:)?(GetImagingSettings|SetImagingSettings|GetOptions|Move|Stop|GetStatus)[ >/]").Groups[1].Value;
+            LastImagingRequest = request;
+            ImagingOperations.Enqueue(operation);
+
+            string Value(string element) =>
+                System.Text.RegularExpressions.Regex.Match(request, $"<(?:\\w+:)?{element}(?:\\s[^>]*)?>([^<]*)</").Groups[1].Value;
+
+            string Inside(string element) =>
+                System.Text.RegularExpressions.Regex.Match(request, $"<(?:\\w+:)?{element}(?:\\s[^>]*)?>(.*?)</(?:\\w+:)?{element}>", System.Text.RegularExpressions.RegexOptions.Singleline).Groups[1].Value;
+
+            string Response(string name, string body = "") =>
+                $"<timg:{name}Response xmlns:timg=\"http://www.onvif.org/ver20/imaging/wsdl\">{body}</timg:{name}Response>";
+
+            switch (operation)
+            {
+                case "GetImagingSettings":
+                    return Response(operation,
+                        "<timg:ImagingSettings>" +
+                        $"<tt:BacklightCompensation><tt:Mode>{Imaging["Backlight"]}</tt:Mode></tt:BacklightCompensation>" +
+                        $"<tt:Brightness>{Imaging["Brightness"]}</tt:Brightness><tt:ColorSaturation>{Imaging["ColorSaturation"]}</tt:ColorSaturation><tt:Contrast>{Imaging["Contrast"]}</tt:Contrast>" +
+                        $"<tt:Exposure><tt:Mode>{Imaging["Exposure"]}</tt:Mode><tt:MinExposureTime>33</tt:MinExposureTime></tt:Exposure>" +
+                        $"<tt:Focus><tt:AutoFocusMode>{Imaging["Focus"]}</tt:AutoFocusMode></tt:Focus>" +
+                        $"<tt:IrCutFilter>{Imaging["IrCutFilter"]}</tt:IrCutFilter><tt:Sharpness>{Imaging["Sharpness"]}</tt:Sharpness>" +
+                        $"<tt:WideDynamicRange><tt:Mode>{Imaging["Wdr"]}</tt:Mode><tt:Level>{Imaging["WdrLevel"]}</tt:Level></tt:WideDynamicRange>" +
+                        $"<tt:WhiteBalance><tt:Mode>{Imaging["WhiteBalance"]}</tt:Mode></tt:WhiteBalance>" +
+                        "<tt:Extension><tt:ImageStabilization><tt:Mode>OFF</tt:Mode></tt:ImageStabilization></tt:Extension>" +
+                        "</timg:ImagingSettings>");
+                case "SetImagingSettings":
+                    foreach (var name in new[] { "Brightness", "ColorSaturation", "Contrast", "Sharpness", "IrCutFilter" })
+                    {
+                        var value = Value(name);
+                        if (value.Length > 0)
+                        {
+                            Imaging[name] = value;
+                        }
+                    }
+
+                    void Mode(string element, string key, string child = "Mode")
+                    {
+                        var inner = Inside(element);
+                        var match = System.Text.RegularExpressions.Regex.Match(inner, $"<(?:\\w+:)?{child}(?:\\s[^>]*)?>([^<]*)<");
+                        if (match.Success)
+                        {
+                            Imaging[key] = match.Groups[1].Value;
+                        }
+                    }
+
+                    Mode("BacklightCompensation", "Backlight");
+                    Mode("WideDynamicRange", "Wdr");
+                    Mode("WideDynamicRange", "WdrLevel", "Level");
+                    Mode("Exposure", "Exposure");
+                    Mode("Focus", "Focus", "AutoFocusMode");
+                    Mode("WhiteBalance", "WhiteBalance");
+                    return Response(operation);
+                case "GetOptions":
+                    return Response(operation,
+                        "<timg:ImagingOptions>" +
+                        "<tt:BacklightCompensation><tt:Mode>OFF</tt:Mode><tt:Mode>ON</tt:Mode></tt:BacklightCompensation>" +
+                        "<tt:Brightness><tt:Min>0</tt:Min><tt:Max>100</tt:Max></tt:Brightness>" +
+                        "<tt:ColorSaturation><tt:Min>0</tt:Min><tt:Max>100</tt:Max></tt:ColorSaturation>" +
+                        "<tt:Contrast><tt:Min>-50</tt:Min><tt:Max>50</tt:Max></tt:Contrast>" +
+                        "<tt:Exposure><tt:Mode>AUTO</tt:Mode><tt:Mode>MANUAL</tt:Mode></tt:Exposure>" +
+                        "<tt:Focus><tt:AutoFocusModes>AUTO</tt:AutoFocusModes><tt:AutoFocusModes>MANUAL</tt:AutoFocusModes></tt:Focus>" +
+                        "<tt:IrCutFilterModes>ON</tt:IrCutFilterModes><tt:IrCutFilterModes>OFF</tt:IrCutFilterModes><tt:IrCutFilterModes>AUTO</tt:IrCutFilterModes>" +
+                        "<tt:Sharpness><tt:Min>0</tt:Min><tt:Max>15</tt:Max></tt:Sharpness>" +
+                        "<tt:WideDynamicRange><tt:Mode>OFF</tt:Mode><tt:Mode>ON</tt:Mode><tt:Level><tt:Min>0</tt:Min><tt:Max>100</tt:Max></tt:Level></tt:WideDynamicRange>" +
+                        "<tt:WhiteBalance><tt:Mode>AUTO</tt:Mode></tt:WhiteBalance>" +
+                        "</timg:ImagingOptions>");
+                case "Move":
+                    if (request.Contains("Continuous", StringComparison.Ordinal))
+                    {
+                        FocusMoving = true;
+                    }
+                    else if (request.Contains("Absolute", StringComparison.Ordinal))
+                    {
+                        FocusPosition = double.Parse(Value("Position"), System.Globalization.CultureInfo.InvariantCulture);
+                    }
+
+                    return Response(operation);
+                case "Stop":
+                    FocusMoving = false;
+                    return Response(operation);
+                case "GetStatus":
+                    return Response(operation, string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                        "<timg:Status><tt:FocusStatus20><tt:Position>{0}</tt:Position><tt:MoveStatus>{1}</tt:MoveStatus></tt:FocusStatus20></timg:Status>",
+                        FocusPosition, FocusMoving ? "MOVING" : "IDLE"));
+                default:
+                    return null;
+            }
+        }
+
         private string ServicesResponse()
         {
             string Service(string ns, Uri address) =>
@@ -413,6 +525,12 @@ namespace Onvif.Open.Test.Camera.Fakes
                     : "<s:Fault><s:Code><s:Value>s:Sender</s:Value></s:Code><s:Reason><s:Text xml:lang=\"en\">Action not supported</s:Text></s:Reason></s:Fault>";
             }
 
+            var imagingResponse = ImagingResponse(request);
+            if (imagingResponse != null)
+            {
+                return imagingResponse;
+            }
+
             var media2Response = Media2Response(request);
             if (media2Response != null)
             {
@@ -439,6 +557,7 @@ namespace Onvif.Open.Test.Camera.Fakes
             if (request.Contains("GetCapabilities", StringComparison.Ordinal))
             {
                 return $"<tds:GetCapabilitiesResponse><tds:Capabilities><tt:Events><tt:XAddr>{EventServiceUri}</tt:XAddr><tt:WSSubscriptionPolicySupport>false</tt:WSSubscriptionPolicySupport><tt:WSPullPointSupport>true</tt:WSPullPointSupport><tt:WSPausableSubscriptionManagerInterfaceSupport>false</tt:WSPausableSubscriptionManagerInterfaceSupport></tt:Events>" +
+                       (HasImaging ? $"<tt:Imaging><tt:XAddr>{ImagingServiceUri}</tt:XAddr></tt:Imaging>" : string.Empty) +
                        $"<tt:Media><tt:XAddr>{MediaServiceUri}</tt:XAddr>" +
                        "<tt:StreamingCapabilities><tt:RTPMulticast>false</tt:RTPMulticast><tt:RTP_TCP>true</tt:RTP_TCP><tt:RTP_RTSP_TCP>true</tt:RTP_RTSP_TCP></tt:StreamingCapabilities>" +
                        "</tt:Media>" + (HasPtz ? $"<tt:PTZ><tt:XAddr>{PtzServiceUri}</tt:XAddr></tt:PTZ>" : string.Empty) +

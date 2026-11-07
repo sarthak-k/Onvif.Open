@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Onvif.Open.Core.Abstract.Interface.Plugin;
+using Onvif.Open.Core.Abstract.Interface.Imaging;
 using Onvif.Open.Core.Abstract.Interface.Ptz;
 using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Core.Events;
@@ -34,7 +35,8 @@ namespace Onvif.Open.Plugins.Implementation
             TimeSpan stopTimeout,
             TimeProvider timeProvider,
             ILoggerFactory loggerFactory,
-            Func<string, ICameraPtz> ptzProvider)
+            Func<string, ICameraPtz> ptzProvider,
+            Func<string, ICameraImaging> imagingProvider)
         {
             _manager = manager;
             _timeProvider = timeProvider;
@@ -44,7 +46,7 @@ namespace Onvif.Open.Plugins.Implementation
 
             _runners = registrations.Select(r =>
             {
-                var cameras = new PluginCameras(manager, r.Cameras, snapshotProvider, ptzProvider);
+                var cameras = new PluginCameras(manager, r.Cameras, snapshotProvider, ptzProvider, imagingProvider);
                 var context = new PluginContext(r.Plugin.Name, r.Settings, loggerFactory.CreateLogger($"Plugin.{r.Plugin.Name}"), timeProvider, cameras, PublishAsync);
                 return new PluginRunner(r, context, frameQueueCapacity, notificationQueueCapacity, timeProvider, loggerFactory.CreateLogger<PluginRunner>());
             }).ToList();
@@ -140,9 +142,10 @@ namespace Onvif.Open.Plugins.Implementation
             TimeSpan stopTimeout,
             TimeProvider timeProvider,
             ILoggerFactory loggerFactory,
-            Func<string, ICameraPtz> ptzProvider = null)
+            Func<string, ICameraPtz> ptzProvider = null,
+            Func<string, ICameraImaging> imagingProvider = null)
         {
-            return new PluginHost(manager, registrations, snapshotProvider, frameQueueCapacity, notificationQueueCapacity, eventHistoryCapacity, stopTimeout, timeProvider, loggerFactory, ptzProvider);
+            return new PluginHost(manager, registrations, snapshotProvider, frameQueueCapacity, notificationQueueCapacity, eventHistoryCapacity, stopTimeout, timeProvider, loggerFactory, ptzProvider, imagingProvider);
         }
 
         #endregion
