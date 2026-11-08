@@ -7,6 +7,9 @@ import type { RecorderApi } from '../api/recorder';
 import { ApiProvider } from '../data/ApiContext';
 import { AuthProvider } from '../features/auth/AuthContext';
 import { RequireAuth, RequirePermission } from '../features/auth/RequireAuth';
+import { PlayerProvider } from '../features/live/player/PlayerContext';
+import { createHlsPlayer } from '../features/live/player/hlsPlayer';
+import type { PlayerFactory } from '../features/live/player/types';
 import { Layout } from './Layout';
 import { appRoutes } from './routes';
 
@@ -31,48 +34,52 @@ interface Props {
   queryClient: QueryClient;
   /** Replaces the HTTP implementation of the recorder's API (tests, other back ends). */
   api?: RecorderApi;
+  /** Replaces how live video is played (hls.js by default). */
+  player?: PlayerFactory;
 }
 
 /** The composition root: API, cache, session, then the routes. */
-export function App({ client, queryClient, api }: Props) {
+export function App({ client, queryClient, api, player = createHlsPlayer }: Props) {
   return (
     <QueryClientProvider client={queryClient}>
       <ApiProvider client={client} api={api}>
-        <AuthProvider>
-          <Suspense fallback={<p className="loading">Loading…</p>}>
-            <Routes>
-              <Route path="/login" element={<LoginPage />} />
-              <Route
-                path="/change-password"
-                element={
-                  <RequireAuth>
-                    <ChangePasswordPage />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                element={
-                  <RequireAuth>
-                    <Layout />
-                  </RequireAuth>
-                }
-              >
-                {appRoutes.map(({ path, page: Page, permission }) => (
-                  <Route
-                    key={path}
-                    path={path}
-                    element={
-                      <RequirePermission permission={permission}>
-                        <Page />
-                      </RequirePermission>
-                    }
-                  />
-                ))}
-              </Route>
-              <Route path="*" element={<Navigate to="/cameras" replace />} />
-            </Routes>
-          </Suspense>
-        </AuthProvider>
+        <PlayerProvider factory={player}>
+          <AuthProvider>
+            <Suspense fallback={<p className="loading">Loading…</p>}>
+              <Routes>
+                <Route path="/login" element={<LoginPage />} />
+                <Route
+                  path="/change-password"
+                  element={
+                    <RequireAuth>
+                      <ChangePasswordPage />
+                    </RequireAuth>
+                  }
+                />
+                <Route
+                  element={
+                    <RequireAuth>
+                      <Layout />
+                    </RequireAuth>
+                  }
+                >
+                  {appRoutes.map(({ path, page: Page, permission }) => (
+                    <Route
+                      key={path}
+                      path={path}
+                      element={
+                        <RequirePermission permission={permission}>
+                          <Page />
+                        </RequirePermission>
+                      }
+                    />
+                  ))}
+                </Route>
+                <Route path="*" element={<Navigate to="/cameras" replace />} />
+              </Routes>
+            </Suspense>
+          </AuthProvider>
+        </PlayerProvider>
       </ApiProvider>
     </QueryClientProvider>
   );

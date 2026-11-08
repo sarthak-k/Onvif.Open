@@ -7,10 +7,13 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   build: {
+    // hls.js alone is about 590 kB; it is loaded only by the live view.
+    chunkSizeWarningLimit: 700,
     rollupOptions: {
       output: {
         // Libraries change less often than the app: their own chunk stays cached across app releases.
-        manualChunks: (id) => (id.includes('node_modules') ? 'vendor' : undefined),
+        // hls.js (about 600 kB) is only fetched by the live view.
+        manualChunks: (id) => (id.includes('node_modules/hls.js') ? 'hls' : id.includes('node_modules') ? 'vendor' : undefined),
       },
     },
   },

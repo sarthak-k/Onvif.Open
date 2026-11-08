@@ -2,6 +2,7 @@ import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
 import type { Permission } from '../features/auth/permissions';
 
 // Pages load on first use (code splitting): signing in does not download the camera editor.
+const LivePage = lazy(() => import('../features/live/LivePage'));
 const CamerasPage = lazy(() => import('../features/cameras/CamerasPage'));
 const CameraEditorPage = lazy(() => import('../features/cameras/editor/CameraEditorPage'));
 const UsersPage = lazy(() => import('../features/users/UsersPage'));
@@ -17,6 +18,7 @@ export interface AppRoute {
 
 /** The signed-in pages; a new page is one entry here (navigation and access follow from it). */
 export const appRoutes: readonly AppRoute[] = [
+  { path: '/live', page: LivePage, permission: 'cameras.view', nav: 'Live' },
   { path: '/cameras', page: CamerasPage, permission: 'cameras.view', nav: 'Cameras' },
   { path: '/cameras/new', page: CameraEditorPage, permission: 'cameras.manage' },
   { path: '/cameras/:id', page: CameraEditorPage, permission: 'cameras.manage' },

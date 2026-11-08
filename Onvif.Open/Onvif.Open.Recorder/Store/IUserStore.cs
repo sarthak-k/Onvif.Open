@@ -103,6 +103,8 @@ namespace Onvif.Open.Recorder.Store
         {
             await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
             {
+                // The user's own layouts go with the user.
+                await db.Layouts.Where(l => l.OwnerId == id).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
                 return await db.Users.Where(u => u.Id == id).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false) > 0;
             }
         }

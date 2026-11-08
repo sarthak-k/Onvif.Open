@@ -1,5 +1,5 @@
 import type { ApiClient } from './client';
-import type { CameraConfig, CameraStatus, DiscoveredDevice, ProbeResult, User, UserRequest } from './types';
+import type { CameraConfig, CameraStatus, DiscoveredDevice, Layout, LayoutRequest, ProbeResult, User, UserRequest } from './types';
 
 // The recorder's API by area. Pages depend on these interfaces, not on HTTP, so tests and later back ends can
 // provide their own implementation (dependency inversion, interface segregation).
@@ -32,11 +32,28 @@ export interface UsersApi {
   remove(userId: string): Promise<void>;
 }
 
+export interface LayoutsApi {
+  list(): Promise<Layout[]>;
+  create(layout: LayoutRequest): Promise<Layout>;
+  update(layoutId: string, layout: LayoutRequest): Promise<Layout>;
+  remove(layoutId: string): Promise<void>;
+}
+
+/** Where players fetch media, and the credentials they send. */
+export interface MediaApi {
+  /** Live HLS playlist of a camera (absolute URL). */
+  liveUrl(cameraId: string): string;
+  /** The current access token, read at each request so renewals are picked up. */
+  token(): string | null;
+}
+
 export interface RecorderApi {
   auth: AuthApi;
   cameras: CamerasApi;
   recording: RecordingApi;
   users: UsersApi;
+  layouts: LayoutsApi;
+  media: MediaApi;
 }
 
 const segment = encodeURIComponent;
@@ -59,6 +76,16 @@ export function createRecorderApi(client: ApiClient): RecorderApi {
       status: () => client.get('/api/cameras'),
       start: (id) => client.post(`/api/cameras/${segment(id)}/start`),
       stop: (id) => client.post(`/api/cameras/${segment(id)}/stop`),
+    },
+    layouts: {
+      list: () => client.get('/api/layouts'),
+      create: (layout) => client.post('/api/layouts', layout),
+      update: (id, layout) => client.put(`/api/layouts/${segment(id)}`, layout),
+      remove: (id) => client.delete(`/api/layouts/${segment(id)}`),
+    },
+    media: {
+      liveUrl: (id) => new URL(`${client.baseUrl}/api/cameras/${segment(id)}/live.m3u8`, window.location.origin).toString(),
+      token: () => client.token,
     },
     users: {
       list: () => client.get('/api/users'),

@@ -2,6 +2,8 @@
 // 2026-11-08
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Data.Common;
 using System.IO;
 using System.Threading;
@@ -9,6 +11,9 @@ using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations.Operations;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -67,7 +72,7 @@ namespace Onvif.Open.Recorder.Store
 
         /// <summary>
         /// Creates the database (when allowed and missing) and the recorder's tables (when missing), also inside an
-        /// existing database that holds other tables.
+        /// existing database that holds other tables. A database from an earlier version gets the tables added since.
         /// </summary>
         public static async Task EnsureCreatedAsync(IDbContextFactory<RecorderDbContext> contexts, CancellationToken cancellationToken = default)
         {
@@ -80,9 +85,15 @@ namespace Onvif.Open.Recorder.Store
                     await creator.CreateAsync(cancellationToken).ConfigureAwait(false);
                 }
 
-                if (!await TablesExistAsync(db, cancellationToken).ConfigureAwait(false))
+                var missing = await MissingTablesAsync(db, cancellationToken).ConfigureAwait(false);
+
+                if (missing.Count == db.Model.GetEntityTypes().Count())
                 {
                     await creator.CreateTablesAsync(cancellationToken).ConfigureAwait(false);
+                }
+                else if (missing.Count > 0)
+                {
+                    await CreateTablesAsync(db, missing, cancellationToken).ConfigureAwait(false);
                 }
             }
         }
@@ -91,19 +102,54 @@ namespace Onvif.Open.Recorder.Store
 
         #region Private Methods
 
-        private static async Task<bool> TablesExistAsync(RecorderDbContext db, CancellationToken cancellationToken)
+        /// <summary>The recorder's tables the database does not have (a query on each tells).</summary>
+        private static async Task<List<string>> MissingTablesAsync(RecorderDbContext db, CancellationToken cancellationToken)
         {
-            try
+            var probes = new (string Table, Func<CancellationToken, Task<bool>> Probe)[]
             {
-                await db.Cameras.AnyAsync(cancellationToken).ConfigureAwait(false);
-                await db.Plugins.AnyAsync(cancellationToken).ConfigureAwait(false);
-                await db.Users.AnyAsync(cancellationToken).ConfigureAwait(false);
-                return true;
-            }
-            catch (DbException)
+                ("onvif_cameras", ct => db.Cameras.AnyAsync(ct)),
+                ("onvif_plugins", ct => db.Plugins.AnyAsync(ct)),
+                ("onvif_users", ct => db.Users.AnyAsync(ct)),
+                ("onvif_layouts", ct => db.Layouts.AnyAsync(ct))
+            };
+            var missing = new List<string>();
+
+            foreach (var (table, probe) in probes)
             {
-                return false;
+                try
+                {
+                    await probe(cancellationToken).ConfigureAwait(false);
+                }
+                catch (DbException)
+                {
+                    missing.Add(table);
+                }
             }
+
+            return missing;
+        }
+
+        /// <summary>
+        /// Creates only the given tables (and their indexes) with the provider's own SQL: what CreateTables does for
+        /// them, without touching the tables that exist.
+        /// </summary>
+        private static async Task CreateTablesAsync(RecorderDbContext db, IReadOnlyCollection<string> tables, CancellationToken cancellationToken)
+        {
+            var model = db.GetService<IDesignTimeModel>().Model.GetRelationalModel();
+            var operations = db.GetService<IMigrationsModelDiffer>()
+                .GetDifferences(null, model)
+                .Where(o => o switch
+                {
+                    CreateTableOperation create => tables.Contains(create.Name),
+                    CreateIndexOperation index => tables.Contains(index.Table),
+                    _ => false
+                })
+                .ToList();
+
+            var commands = db.GetService<IMigrationsSqlGenerator>().Generate(operations, db.Model);
+            await db.GetService<IMigrationCommandExecutor>()
+                .ExecuteNonQueryAsync(commands, db.GetService<IRelationalConnection>(), cancellationToken)
+                .ConfigureAwait(false);
         }
 
         /// <summary>A relative SQLite file is resolved against the content root, and its folder created.</summary>

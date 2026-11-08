@@ -36,6 +36,8 @@ export default defineConfig({
         Security__InitialAdmin__Password: e2e.adminPassword,
         Security__AllowedOrigins__0: 'http://localhost:4173',
         Security__SignInsPerMinute: '100',
+        // A camera without video answers the live playlist with 503 after this long.
+        LiveView__StartTimeout: '00:00:02',
       },
     },
     {
