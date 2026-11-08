@@ -77,7 +77,7 @@ namespace Onvif.Open.Recording.Implementation
         private readonly ConcurrentDictionary<string, CameraRecorder> _recorders = new ConcurrentDictionary<string, CameraRecorder>(StringComparer.OrdinalIgnoreCase);
         private readonly SemaphoreSlim _retentionLock = new SemaphoreSlim(1, 1);
         private readonly Channel<bool> _retentionSignal = Channel.CreateBounded<bool>(new BoundedChannelOptions(1) { FullMode = BoundedChannelFullMode.DropWrite });
-        private readonly object _sync = new object();
+        private readonly System.Threading.Lock _sync = new System.Threading.Lock();
 
         private CancellationTokenSource _stop;
         private Task _retentionLoop = Task.CompletedTask;

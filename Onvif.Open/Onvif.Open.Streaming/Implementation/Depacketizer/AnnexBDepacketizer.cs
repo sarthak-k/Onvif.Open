@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using Onvif.Open.Core.Streaming;
 using Onvif.Open.Streaming.Implementation.Rtp;
 
@@ -14,6 +13,10 @@ namespace Onvif.Open.Streaming.Implementation.Depacketizer
     /// Collects the NAL units of an access unit and emits it in Annex-B format, injecting the
     /// out-of-band parameter sets (from SDP) in front of key frames that do not carry them.
     /// </summary>
+    /// <remarks>
+    /// The access unit is assembled in place in one reused buffer (start codes, NAL units and FU fragments are
+    /// appended as they arrive), so a frame costs one allocation of its own size and one copy.
+    /// </remarks>
     internal abstract class AnnexBDepacketizer : IRtpDepacketizer
     {
         #region Constructor
@@ -26,7 +29,7 @@ namespace Onvif.Open.Streaming.Implementation.Depacketizer
             {
                 if (parameterSet != null && parameterSet.Length > 0)
                 {
-                    _parameterSets[GetNalType(parameterSet)] = parameterSet;
+                    _parameterSets[GetNalType(parameterSet) & MaxNalType] = parameterSet;
                 }
             }
         }
@@ -35,12 +38,24 @@ namespace Onvif.Open.Streaming.Implementation.Depacketizer
 
         #region Private Variables
 
-        private static readonly byte[] StartCode = { 0, 0, 0, 1 };
+        // NAL unit types are 5 bits (H.264) or 6 bits (H.265): a 64 bit mask holds the types present.
+        private const int MaxNalType = 63;
+        private const int StartCodeLength = 4;
+        private const int InitialCapacity = 64 * 1024;
 
         private readonly RtpTimestampClock _clock;
-        private readonly SortedDictionary<int, byte[]> _parameterSets = new SortedDictionary<int, byte[]>();
-        private readonly List<byte[]> _nalUnits = new List<byte[]>();
-        private MemoryStream _fragment;
+
+        /// <summary>The latest parameter set of each type, in type order (as decoders expect: VPS, SPS, PPS).</summary>
+        private readonly byte[][] _parameterSets = new byte[MaxNalType + 1][];
+
+        private byte[] _buffer = new byte[InitialCapacity];
+        private int _length;
+        private bool _isKeyFrame;
+        private ulong _parameterSetsPresent;
+
+        /// <summary>Where the fragmented NAL unit being assembled starts in the buffer; -1: none.</summary>
+        private int _fragmentStart = -1;
+
         private bool _hasTimestamp;
         private uint _timestamp;
         private bool _hasSequence;
@@ -61,7 +76,7 @@ namespace Onvif.Open.Streaming.Implementation.Depacketizer
             if (_hasSequence && packet.SequenceNumber != _expectedSequence)
             {
                 // Packet loss: whatever fragment was being assembled is unusable.
-                _fragment = null;
+                DropFragment();
             }
 
             _hasSequence = true;
@@ -88,7 +103,6 @@ namespace Onvif.Open.Streaming.Implementation.Depacketizer
 
         #region Protected Methods
 
-        /// <summary>Parses one RTP payload; implementations call <see cref="AddNalUnit"/> / the fragment helpers.</summary>
         protected abstract void ProcessPayload(ReadOnlySpan<byte> payload);
 
         protected abstract int GetNalType(ReadOnlySpan<byte> nalUnit);
@@ -104,39 +118,36 @@ namespace Onvif.Open.Streaming.Implementation.Depacketizer
                 return;
             }
 
-            var copy = nalUnit.ToArray();
-            var type = GetNalType(copy);
-
-            if (IsParameterSet(type))
-            {
-                // Keep the latest in-band parameter sets for later key frames.
-                _parameterSets[type] = copy;
-            }
-
-            _nalUnits.Add(copy);
+            var start = _length;
+            AppendStartCode();
+            Append(nalUnit);
+            Classify(start + StartCodeLength);
         }
 
         protected void StartFragment(ReadOnlySpan<byte> reconstructedHeader, ReadOnlySpan<byte> data)
         {
-            _fragment = new MemoryStream();
-            _fragment.Write(reconstructedHeader);
-            _fragment.Write(data);
+            DropFragment();
+            _fragmentStart = _length;
+            AppendStartCode();
+            Append(reconstructedHeader);
+            Append(data);
         }
 
         protected void ContinueFragment(ReadOnlySpan<byte> data, bool isLast)
         {
-            if (_fragment == null)
+            if (_fragmentStart < 0)
             {
                 // Start fragment was lost.
                 return;
             }
 
-            _fragment.Write(data);
+            Append(data);
 
             if (isLast)
             {
-                AddNalUnit(_fragment.ToArray());
-                _fragment = null;
+                var nalStart = _fragmentStart + StartCodeLength;
+                _fragmentStart = -1;
+                Classify(nalStart);
             }
         }
 
@@ -144,57 +155,110 @@ namespace Onvif.Open.Streaming.Implementation.Depacketizer
 
         #region Private Methods
 
+        /// <summary>Notes the type of the NAL unit just completed at <paramref name="nalStart"/>.</summary>
+        private void Classify(int nalStart)
+        {
+            var nalUnit = _buffer.AsSpan(nalStart, _length - nalStart);
+            var type = GetNalType(nalUnit) & MaxNalType;
+
+            _isKeyFrame |= IsKeyFrame(type);
+
+            if (IsParameterSet(type))
+            {
+                // Keep the latest in-band parameter sets for later key frames.
+                _parameterSets[type] = nalUnit.ToArray();
+                _parameterSetsPresent |= 1UL << type;
+            }
+        }
+
+        private void DropFragment()
+        {
+            if (_fragmentStart >= 0)
+            {
+                _length = _fragmentStart;
+                _fragmentStart = -1;
+            }
+        }
+
         private void Flush(ICollection<VideoFrame> frames)
         {
-            _fragment = null;
+            DropFragment();
 
-            if (_nalUnits.Count == 0)
+            if (_length == 0)
             {
                 return;
             }
 
-            var isKeyFrame = false;
-            var parameterSetsPresent = new HashSet<int>();
-
-            foreach (var nal in _nalUnits)
+            // Key frames get the parameter sets they do not carry in front, so every segment can start with them.
+            var prefix = 0;
+            if (_isKeyFrame)
             {
-                var type = GetNalType(nal);
-                isKeyFrame |= IsKeyFrame(type);
-                if (IsParameterSet(type))
+                for (var type = 0; type <= MaxNalType; type++)
                 {
-                    parameterSetsPresent.Add(type);
-                }
-            }
-
-            using (var output = new MemoryStream())
-            {
-                if (isKeyFrame)
-                {
-                    foreach (var parameterSet in _parameterSets)
+                    if (_parameterSets[type] != null && (_parameterSetsPresent & (1UL << type)) == 0)
                     {
-                        if (!parameterSetsPresent.Contains(parameterSet.Key))
-                        {
-                            Write(output, parameterSet.Value);
-                        }
+                        prefix += StartCodeLength + _parameterSets[type].Length;
                     }
                 }
-
-                foreach (var nal in _nalUnits)
-                {
-                    Write(output, nal);
-                }
-
-                // A damaged non key frame is still delivered: decoders conceal the error until the next key frame.
-                frames.Add(new VideoFrame(Codec, output.ToArray(), isKeyFrame, _timestamp, _clock.ToTime(_timestamp)));
             }
 
-            _nalUnits.Clear();
+            // Every byte is written below, so the array need not be zeroed first.
+            var data = GC.AllocateUninitializedArray<byte>(prefix + _length);
+            var output = data.AsSpan();
+
+            if (prefix > 0)
+            {
+                for (var type = 0; type <= MaxNalType; type++)
+                {
+                    if (_parameterSets[type] != null && (_parameterSetsPresent & (1UL << type)) == 0)
+                    {
+                        WriteStartCode(output);
+                        _parameterSets[type].CopyTo(output.Slice(StartCodeLength));
+                        output = output.Slice(StartCodeLength + _parameterSets[type].Length);
+                    }
+                }
+            }
+
+            _buffer.AsSpan(0, _length).CopyTo(output);
+
+            // A damaged non key frame is still delivered: decoders conceal the error until the next key frame.
+            frames.Add(new VideoFrame(Codec, data, _isKeyFrame, _timestamp, _clock.ToTime(_timestamp)));
+
+            _length = 0;
+            _isKeyFrame = false;
+            _parameterSetsPresent = 0;
         }
 
-        private static void Write(Stream output, byte[] nalUnit)
+        private void AppendStartCode()
         {
-            output.Write(StartCode, 0, StartCode.Length);
-            output.Write(nalUnit, 0, nalUnit.Length);
+            EnsureCapacity(StartCodeLength);
+            WriteStartCode(_buffer.AsSpan(_length));
+            _length += StartCodeLength;
+        }
+
+        private void Append(ReadOnlySpan<byte> data)
+        {
+            EnsureCapacity(data.Length);
+            data.CopyTo(_buffer.AsSpan(_length));
+            _length += data.Length;
+        }
+
+        private void EnsureCapacity(int additional)
+        {
+            if (_length + additional > _buffer.Length)
+            {
+                var grown = new byte[Math.Max(_buffer.Length * 2, _length + additional)];
+                _buffer.AsSpan(0, _length).CopyTo(grown);
+                _buffer = grown;
+            }
+        }
+
+        private static void WriteStartCode(Span<byte> destination)
+        {
+            destination[0] = 0;
+            destination[1] = 0;
+            destination[2] = 0;
+            destination[3] = 1;
         }
 
         #endregion

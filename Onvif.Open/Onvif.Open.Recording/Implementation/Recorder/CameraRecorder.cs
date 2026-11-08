@@ -107,7 +107,7 @@ namespace Onvif.Open.Recording.Implementation.Recorder
         private readonly Action<RecordingSegment> _onSegmentCompleted;
         private readonly Action<CameraFrame> _onFrame;
         private readonly Action<CameraStateChange> _onStateChanged;
-        private readonly object _sync = new object();
+        private readonly System.Threading.Lock _sync = new System.Threading.Lock();
         private readonly CameraRecordingStatus _status;
         private readonly SegmentProgress _progress = new SegmentProgress();
 
@@ -433,7 +433,11 @@ namespace Onvif.Open.Recording.Implementation.Recorder
                 var before = _segmentStream.Position;
                 _muxer.Write(frame);
                 var written = _segmentStream.Position - before;
-                Update(s => s.BytesRecorded += written);
+
+                lock (_sync)
+                {
+                    _status.BytesRecorded += written;
+                }
             }
 
             Notify(_onAudio, new CameraAudio(CameraId, frame, now), "audio");
@@ -474,12 +478,14 @@ namespace Onvif.Open.Recording.Implementation.Recorder
             var written = _segmentStream.Position - before;
 
             _progress.FrameCount++;
-            Update(s =>
+
+            // Per frame: a plain lock, no closure allocation.
+            lock (_sync)
             {
-                s.FramesRecorded++;
-                s.BytesRecorded += written;
-                s.LastFrameAt = now;
-            });
+                _status.FramesRecorded++;
+                _status.BytesRecorded += written;
+                _status.LastFrameAt = now;
+            }
 
             return true;
         }

@@ -165,6 +165,65 @@ namespace Onvif.Open.Test.Camera.Unit.Streaming
             Assert.Equal(AnnexB(nal), frame.Data.ToArray());
         }
 
+        [Fact]
+        public void LargeAccessUnitsShouldBeReassembledIntact()
+        {
+            // 300 KB: larger than the depacketizer's initial buffer, so it has to grow mid-frame.
+            var depacketizer = CreateH264();
+            var nal = new byte[300_000];
+            new Random(3).NextBytes(nal);
+            nal[0] = 0x41;
+            var fragments = RtpPacketFactory.FragmentH264(nal, 1400);
+            var frames = new List<VideoFrame>();
+
+            for (var i = 0; i < fragments.Count; i++)
+            {
+                depacketizer.Process(Packet((ushort)i, 0, i == fragments.Count - 1, fragments[i]), frames);
+            }
+
+            Assert.Equal(AnnexB(nal), Assert.Single(frames).Data.ToArray());
+        }
+
+        [Fact]
+        public void LostFragmentShouldNotCorruptTheRestOfTheAccessUnit()
+        {
+            var depacketizer = CreateH264();
+            var first = new byte[] { 0x41, 1, 1, 1 };
+            var broken = new byte[] { 0x41 }.Concat(Enumerable.Repeat((byte)2, 30)).ToArray();
+            var last = new byte[] { 0x41, 3, 3, 3 };
+            var fragments = RtpPacketFactory.FragmentH264(broken, 10);
+            var frames = new List<VideoFrame>();
+
+            depacketizer.Process(Packet(1, 0, false, first), frames);
+            depacketizer.Process(Packet(2, 0, false, fragments[0]), frames);
+            // fragments[1] (sequence 3) lost: the partial NAL unit is dropped, the units around it are kept.
+            depacketizer.Process(Packet(4, 0, false, fragments[2]), frames);
+            depacketizer.Process(Packet(5, 0, true, last), frames);
+
+            Assert.Equal(AnnexB(first, last), Assert.Single(frames).Data.ToArray());
+        }
+
+        [Fact]
+        public void InBandParameterSetsShouldReplaceTheSdpOnesAndNotBeDuplicated()
+        {
+            var depacketizer = CreateH264();
+            var sps = new byte[] { 0x67, 0x64, 0x00, 0x28 };
+            var idr = new byte[] { 0x65, 0x88, 0x84 };
+            var frames = new List<VideoFrame>();
+
+            // A key frame carrying its own SPS: only the PPS from the SDP is added, in front.
+            depacketizer.Process(Packet(1, 0, false, sps), frames);
+            depacketizer.Process(Packet(2, 0, true, idr), frames);
+
+            // The next key frame without parameter sets gets the new SPS.
+            depacketizer.Process(Packet(3, 3600, true, idr), frames);
+
+            Assert.Equal(2, frames.Count);
+            Assert.Equal(AnnexB(FakeRtspServer.Pps, sps, idr), frames[0].Data.ToArray());
+            Assert.Equal(AnnexB(sps, FakeRtspServer.Pps, idr), frames[1].Data.ToArray());
+            Assert.All(frames, f => Assert.True(f.IsKeyFrame));
+        }
+
         #endregion
     }
 }

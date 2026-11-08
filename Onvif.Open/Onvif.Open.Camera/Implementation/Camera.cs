@@ -38,7 +38,7 @@ namespace Onvif.Open.Camera.Implementation
 
         private readonly Core.Operations.MediaServiceVersion _mediaVersion;
         private ClockSynchronizer _clock;
-        private readonly object _clockSync = new object();
+        private readonly System.Threading.Lock _clockSync = new System.Threading.Lock();
         
         #endregion
 

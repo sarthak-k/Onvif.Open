@@ -43,7 +43,7 @@ namespace Onvif.Open.Recording.Implementation.Hls
 
         private readonly TimeSpan _targetDuration;
         private readonly int _windowSize;
-        private readonly object _sync = new object();
+        private readonly System.Threading.Lock _sync = new System.Threading.Lock();
         private readonly LinkedList<Segment> _segments = new LinkedList<Segment>();
         private TaskCompletionSource<bool> _segmentAdded = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 

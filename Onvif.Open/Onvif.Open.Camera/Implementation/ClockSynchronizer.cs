@@ -42,7 +42,7 @@ namespace Onvif.Open.Camera.Implementation
         private readonly DeviceClock _clock;
         private readonly IDeviceManagement _deviceManagement;
         private readonly TimeProvider _timeProvider;
-        private readonly object _sync = new object();
+        private readonly System.Threading.Lock _sync = new System.Threading.Lock();
         private DateTimeOffset? _lastAttempt;
 
         #endregion

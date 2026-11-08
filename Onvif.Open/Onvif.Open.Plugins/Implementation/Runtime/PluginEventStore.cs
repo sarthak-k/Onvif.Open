@@ -26,7 +26,7 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
 
         private readonly int _capacity;
         private readonly LinkedList<PluginEvent> _events = new LinkedList<PluginEvent>();
-        private readonly object _sync = new object();
+        private readonly System.Threading.Lock _sync = new System.Threading.Lock();
 
         #endregion
 

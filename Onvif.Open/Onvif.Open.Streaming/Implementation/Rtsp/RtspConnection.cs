@@ -60,6 +60,12 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
 
         #region Public Methods
 
+        /// <summary>A connection over an already open stream (tests and benchmarks).</summary>
+        internal static RtspConnection FromStream(Stream stream)
+        {
+            return new RtspConnection(new TcpClient(), stream);
+        }
+
         public static async Task<RtspConnection> ConnectAsync(string host, int port, TimeSpan timeout, CancellationToken cancellationToken)
         {
             var client = new TcpClient { NoDelay = true };
@@ -123,7 +129,7 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
         /// Reads the next message: either an RTSP response/request or an interleaved binary packet.
         /// Returns <c>null</c> when the server closed the connection.
         /// </summary>
-        public async Task<RtspIncoming> ReadAsync(CancellationToken cancellationToken)
+        public async ValueTask<RtspIncoming> ReadAsync(CancellationToken cancellationToken)
         {
             if (!await FillAsync(1, cancellationToken).ConfigureAwait(false))
             {
@@ -219,7 +225,7 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
             return new RtspResponse(startLine, headers, body);
         }
 
-        private async Task<string> ReadLineAsync(CancellationToken cancellationToken)
+        private async ValueTask<string> ReadLineAsync(CancellationToken cancellationToken)
         {
             var line = new StringBuilder();
 
@@ -247,7 +253,7 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
             }
         }
 
-        private async Task<bool> ReadExactAsync(byte[] destination, CancellationToken cancellationToken)
+        private async ValueTask<bool> ReadExactAsync(byte[] destination, CancellationToken cancellationToken)
         {
             var written = 0;
 
@@ -267,7 +273,7 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
             return true;
         }
 
-        private async Task<bool> FillAsync(int required, CancellationToken cancellationToken)
+        private async ValueTask<bool> FillAsync(int required, CancellationToken cancellationToken)
         {
             while (_bufferCount < required)
             {

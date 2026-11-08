@@ -30,7 +30,7 @@ namespace Onvif.Open.Recorder.Hosting
         private readonly IRecordingManager _manager;
         private readonly int _capacity;
         private readonly LinkedList<CameraEvent> _events = new LinkedList<CameraEvent>();
-        private readonly object _sync = new object();
+        private readonly System.Threading.Lock _sync = new System.Threading.Lock();
 
         #endregion
 

@@ -27,7 +27,7 @@ namespace Onvif.Open.Core.Implementation.Security
 
         private static readonly ConditionalWeakTable<ICameraInformation, DeviceClock> Clocks = new ConditionalWeakTable<ICameraInformation, DeviceClock>();
 
-        private readonly object _sync = new object();
+        private readonly System.Threading.Lock _sync = new System.Threading.Lock();
         private TimeSpan _offset;
         private DateTimeOffset? _lastSynchronized;
 

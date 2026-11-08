@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Onvif.Open.Benchmarks</RootNamespace>
+    <AssemblyName>Onvif.Open.Benchmarks</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Onvif.Open.Models\Onvif.Open.Core.csproj" />
+    <ProjectReference Include="..\Onvif.Open.Streaming\Onvif.Open.Streaming.csproj" />
+    <ProjectReference Include="..\Onvif.Open.Recording\Onvif.Open.Recording.csproj" />
+  </ItemGroup>
+
+</Project>
