@@ -372,7 +372,15 @@ namespace Onvif.Open.Recording.Implementation.Recorder
             return recorded;
         }
 
+        /// <summary>Records the frame when the mode says so, and raises it either way (live view, analytics plugins).</summary>
         private bool WriteFrame(VideoFrame frame)
+        {
+            var recorded = RecordFrame(frame);
+            Notify(_onFrame, new CameraFrame(CameraId, frame, _timeProvider.GetUtcNow(), recorded), "frame");
+            return recorded;
+        }
+
+        private bool RecordFrame(VideoFrame frame)
         {
             if (_mode == RecordingMode.Continuous)
             {
@@ -473,7 +481,6 @@ namespace Onvif.Open.Recording.Implementation.Recorder
                 s.LastFrameAt = now;
             });
 
-            Notify(_onFrame, new CameraFrame(CameraId, frame, now), "frame");
             return true;
         }
 

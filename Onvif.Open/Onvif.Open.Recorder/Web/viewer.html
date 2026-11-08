@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Onvif.Open viewer</title>
+<style>
+  :root { --bg: #f6f7f9; --fg: #1d2330; --muted: #677085; --card: #fff; --line: #dfe3ea; --accent: #2457d6; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #12151b; --fg: #e7eaf0; --muted: #98a1b3; --card: #1b2029; --line: #2c3340; --accent: #6f97ff; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+  header { padding: 14px 20px; border-bottom: 1px solid var(--line); display: flex; gap: 12px; align-items: baseline; }
+  header h1 { font-size: 17px; margin: 0; }
+  header span { color: var(--muted); }
+  main { display: grid; grid-template-columns: 260px 1fr; gap: 16px; padding: 16px 20px; }
+  @media (max-width: 760px) { main { grid-template-columns: 1fr; padding: 12px 16px; } }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li button { width: 100%; text-align: left; padding: 10px 12px; margin-bottom: 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: inherit; cursor: pointer; }
+  li button[aria-pressed="true"] { border-color: var(--accent); }
+  li small { display: block; color: var(--muted); }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; min-width: 0; }
+  video { width: 100%; max-height: 70vh; background: #000; border-radius: 6px; }
+  .tabs, .range { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .tabs button, .range button { padding: 7px 12px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: inherit; cursor: pointer; }
+  .tabs button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  input { padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: transparent; color: inherit; }
+  #status { color: var(--muted); margin-top: 8px; min-height: 1.4em; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<header><h1>Onvif.Open</h1><span id="title">Select a camera</span></header>
+<main>
+  <nav><ul id="cameras"></ul></nav>
+  <section>
+    <div class="tabs" role="tablist">
+      <button id="tab-live" role="tab" aria-selected="true">Live</button>
+      <button id="tab-playback" role="tab" aria-selected="false">Recordings</button>
+    </div>
+    <div id="range" class="range hidden">
+      <label>From <input id="from" type="datetime-local" step="1"></label>
+      <label>To <input id="to" type="datetime-local" step="1"></label>
+      <button id="play">Play</button>
+      <button id="download">Download clip</button>
+    </div>
+    <video id="video" controls muted playsinline></video>
+    <div id="status"></div>
+  </section>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
+<script>
+(() => {
+  const video = document.getElementById('video');
+  const status = document.getElementById('status');
+  const list = document.getElementById('cameras');
+  let camera = null, mode = 'live', hls = null;
+
+  const pad = n => String(n).padStart(2, '0');
+  const local = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  const iso = value => new Date(value).toISOString();
+  const base = () => `/api/cameras/${encodeURIComponent(camera)}`;
+
+  function play(url, live) {
+    if (hls) { hls.destroy(); hls = null; }
+    status.textContent = live ? 'Connecting to the camera…' : 'Loading recordings…';
+    if (window.Hls && Hls.isSupported()) {
+      hls = new Hls(live ? { liveSyncDurationCount: 2 } : {});
+      hls.on(Hls.Events.MANIFEST_PARSED, () => { status.textContent = live ? 'Live' : 'Playing recordings'; video.play().catch(() => {}); });
+      hls.on(Hls.Events.ERROR, (_, data) => { if (data.fatal) status.textContent = data.response && data.response.code === 503 ? 'No video from the camera yet.' : `Playback failed (${data.details}).`; });
+      hls.loadSource(url);
+      hls.attachMedia(video);
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = url;
+      video.play().then(() => status.textContent = live ? 'Live' : 'Playing recordings').catch(() => {});
+    } else {
+      status.textContent = 'This browser cannot play HLS.';
+    }
+  }
+
+  function show() {
+    if (!camera) return;
+    document.getElementById('range').classList.toggle('hidden', mode !== 'playback');
+    if (mode === 'live') {
+      play(`${base()}/live.m3u8`, true);
+    } else {
+      play(`${base()}/recordings.m3u8?from=${encodeURIComponent(iso(from.value))}&to=${encodeURIComponent(iso(to.value))}`, false);
+    }
+  }
+
+  function select(id, button) {
+    camera = id;
+    document.getElementById('title').textContent = id;
+    list.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b === button)));
+    show();
+  }
+
+  function tab(name) {
+    mode = name;
+    document.getElementById('tab-live').setAttribute('aria-selected', String(name === 'live'));
+    document.getElementById('tab-playback').setAttribute('aria-selected', String(name === 'playback'));
+    show();
+  }
+
+  const from = document.getElementById('from'), to = document.getElementById('to');
+  const now = new Date();
+  to.value = local(now);
+  from.value = local(new Date(now.getTime() - 3600 * 1000));
+
+  document.getElementById('tab-live').onclick = () => tab('live');
+  document.getElementById('tab-playback').onclick = () => tab('playback');
+  document.getElementById('play').onclick = show;
+  document.getElementById('download').onclick = () => {
+    if (camera) window.location = `${base()}/clip?from=${encodeURIComponent(iso(from.value))}&to=${encodeURIComponent(iso(to.value))}`;
+  };
+
+  fetch('/api/cameras').then(r => r.json()).then(cameras => {
+    if (!cameras.length) { status.textContent = 'No cameras are configured.'; return; }
+    for (const c of cameras) {
+      const item = document.createElement('li');
+      const button = document.createElement('button');
+      const name = document.createElement('span');
+      const state = document.createElement('small');
+      name.textContent = c.cameraId;
+      state.textContent = `${c.state}${c.mode === 'Triggered' ? ' · triggered' : ''}`;
+      button.append(name, state);
+      button.onclick = () => select(c.cameraId, button);
+      item.append(button);
+      list.append(item);
+    }
+  }).catch(() => status.textContent = 'Could not load the cameras.');
+})();
+</script>
+</body>
+</html>

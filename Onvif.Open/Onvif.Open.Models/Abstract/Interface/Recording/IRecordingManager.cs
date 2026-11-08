@@ -27,7 +27,8 @@ namespace Onvif.Open.Core.Abstract.Interface.Recording
         event EventHandler<RecordingSegment> SegmentCompleted;
 
         /// <summary>
-        /// Raised for every recorded frame, on the camera's recording thread: handlers must return quickly.
+        /// Raised for every received video frame, also while a triggered camera is not recording
+        /// (<see cref="CameraFrame.IsRecorded"/>), on the camera's recording thread: handlers must return quickly.
         /// </summary>
         event EventHandler<CameraFrame> FrameReceived;
 

@@ -292,6 +292,18 @@ var manager = RecordingManagerBuilder.GetBuilder()
     .Build();
 ```
 
+Clips and browser playback of recordings, in the library:
+
+```csharp
+await using (var file = File.Create("clip.ts"))
+{
+    await ClipExport.WriteAsync(manager, "front-door", from, to, file);   // starts at the key frame before 'from'
+}
+
+var playlist = await new RecordingPlaylist(manager).GetPlaylistAsync("front-door", from, to, s => $"segments/{s.FileName}");
+var live = new HlsLiveStream();                                           // feed with FrameReceived / AudioReceived
+```
+
 ### Recorder service
 
 `Onvif.Open.Recorder` runs the recording manager as a service. Configure cameras and policies in
@@ -345,6 +357,10 @@ Passwords can be supplied through environment variables instead of the file, e.g
 | `GET /api/cameras/{id}/imaging`, `PATCH .../imaging` `{irCutFilter, brightness, ...}` | Image settings (PATCH changes only what is given) |
 | `GET /api/cameras/{id}/imaging/options` | Supported ranges and modes |
 | `GET/POST /api/cameras/{id}/imaging/focus` `{speed, durationMs}` or `{position}`, `POST .../focus/stop` | Focus |
+| `GET /viewer` | Web viewer: live view, playback of recordings, clip download (any modern browser) |
+| `GET /api/cameras/{id}/live.m3u8` | Live HLS (2 s segments, packaged only while watched) |
+| `GET /api/cameras/{id}/recordings.m3u8?from=...&to=...` | HLS playback of the recordings (default: the last hour), split at key frames for a fast start |
+| `GET /api/cameras/{id}/clip?from=...&to=...` | Download a clip cut from the recordings (MPEG-TS, across files, local or archived, up to 6 hours) |
 | `GET /api/cameras/{id}/device-recordings` | Recordings stored on the camera (Profile G) and their time span |
 | `GET /api/cameras/{id}/device-recordings/{token}/export?from=...&to=...` | Download a clip from the camera's own storage as MPEG-TS (up to 6 hours) |
 | `GET /api/cameras/{id}/io` | Relay outputs and digital inputs |
@@ -392,6 +408,7 @@ dotnet test Onvif.Open.sln
 ```
 
 The tests run against in-process fake ONVIF (SOAP) and RTSP servers and fake streams, so no camera is needed.
+Where ffmpeg is installed, recordings, live HLS, playlists and clips made from real H.264/AAC are decoded with it.
 The cloud storage tests run against emulators when `ONVIF_OPEN_TEST_S3_URL`, `ONVIF_OPEN_TEST_AZURE_CONNECTION` and
 `ONVIF_OPEN_TEST_GCS_URL` are set (CI starts moto, Azurite and fake-gcs-server) and are skipped otherwise.
 

@@ -33,7 +33,7 @@ Every plugin implements `IPlugin` (`Name`, `StartAsync`, `StopAsync`) and any of
 
 | Interface | You receive | Typical use |
 | --- | --- | --- |
-| `IFrameProcessor` | Every frame (or only key frames, `FrameFilter.KeyFramesOnly`) of your cameras, H.264/H.265 Annex-B | Video analytics |
+| `IFrameProcessor` | Every frame (or only key frames, `FrameFilter.KeyFramesOnly`) of your cameras, H.264/H.265 Annex-B, also while a triggered camera is not recording (`CameraFrame.IsRecorded`) | Video analytics, e.g. deciding when to `TriggerRecording` |
 | `ICameraStateObserver` | `CameraStateChange`: `Connecting`, `Recording`, `Reconnecting`, `Stopped`, with the error; `IsConnectionLost` / `IsConnectionEstablished` | Offline/tampering alerts |
 | `ISegmentObserver` | Each completed recording file | Upload, indexing, transcoding |
 | `ICameraEventObserver` | The cameras' own ONVIF events (`CameraEvent`: topic, state, source, data) | React to camera motion/tamper/input detections |
