@@ -50,7 +50,7 @@ namespace Onvif.Open.Recording.Implementation.Archive
         // Keys without prefix.
         private readonly ConcurrentDictionary<string, StoredObject> _index = new ConcurrentDictionary<string, StoredObject>(StringComparer.Ordinal);
         private readonly ConcurrentDictionary<string, RecordingSegment> _pending = new ConcurrentDictionary<string, RecordingSegment>(StringComparer.Ordinal);
-        private readonly object _sync = new object();
+        private readonly System.Threading.Lock _sync = new System.Threading.Lock();
 
         private Channel<string> _queue;
         private CancellationTokenSource _stop;

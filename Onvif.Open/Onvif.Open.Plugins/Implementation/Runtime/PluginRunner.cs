@@ -75,7 +75,7 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
         private readonly Channel<CameraFrame> _frames;
         private readonly Channel<Func<CancellationToken, Task>> _notifications;
         private readonly CancellationTokenSource _abort = new CancellationTokenSource();
-        private readonly object _sync = new object();
+        private readonly System.Threading.Lock _sync = new System.Threading.Lock();
 
         private FrameFilter _frameFilter;
         private Task _frameLoop = Task.CompletedTask;
@@ -306,7 +306,7 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
             {
                 await foreach (var frame in _frames.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
                 {
-                    if (await Invoke(ct => _frameProcessor.ProcessFrameAsync(frame, ct).AsTask(), cancellationToken, "frame").ConfigureAwait(false))
+                    if (await Complete(StartFrame(frame, cancellationToken), cancellationToken, "frame").ConfigureAwait(false))
                     {
                         Interlocked.Increment(ref _framesDelivered);
                     }
@@ -328,7 +328,7 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
             {
                 await foreach (var audio in _audio.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
                 {
-                    if (await Invoke(ct => _audioProcessor.ProcessAudioAsync(audio, ct).AsTask(), cancellationToken, "audio").ConfigureAwait(false))
+                    if (await Complete(StartAudio(audio, cancellationToken), cancellationToken, "audio").ConfigureAwait(false))
                     {
                         Interlocked.Increment(ref _audioDelivered);
                     }
@@ -353,6 +353,62 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
+            }
+        }
+
+        // Frames and audio arrive many times a second per camera and plugin: no closures or delegates, and a plugin
+        // that finishes synchronously costs no Task and no async state machine.
+
+        private ValueTask StartFrame(CameraFrame frame, CancellationToken cancellationToken)
+        {
+            try
+            {
+                return _frameProcessor.ProcessFrameAsync(frame, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                return ValueTask.FromException(ex);
+            }
+        }
+
+        private ValueTask StartAudio(CameraAudio audio, CancellationToken cancellationToken)
+        {
+            try
+            {
+                return _audioProcessor.ProcessAudioAsync(audio, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                return ValueTask.FromException(ex);
+            }
+        }
+
+        private ValueTask<bool> Complete(ValueTask work, CancellationToken cancellationToken, string what)
+        {
+            if (work.IsCompletedSuccessfully)
+            {
+                work.GetAwaiter().GetResult();
+                return new ValueTask<bool>(true);
+            }
+
+            return AwaitAsync(work, cancellationToken, what);
+        }
+
+        private async ValueTask<bool> AwaitAsync(ValueTask work, CancellationToken cancellationToken, string what)
+        {
+            try
+            {
+                await work.ConfigureAwait(false);
+                return true;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return false;
+            }
+            catch (Exception ex)
+            {
+                RecordError(ex, what);
+                return false;
             }
         }
 

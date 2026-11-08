@@ -489,6 +489,25 @@ Where ffmpeg is installed, recordings, live HLS, playlists and clips made from r
 The cloud storage tests run against emulators when `ONVIF_OPEN_TEST_S3_URL`, `ONVIF_OPEN_TEST_AZURE_CONNECTION` and
 `ONVIF_OPEN_TEST_GCS_URL` are set (CI starts moto, Azurite and fake-gcs-server) and are skipped otherwise.
 
+## Performance
+
+Every camera runs the same path many times a second: RTSP read → RTP depacketizing → MPEG-TS muxing (→ plugins, live
+view). `Onvif.Open.Benchmarks` measures it on one second of synthetic 1080p25 H.264 (about 510 KB):
+
+```
+dotnet run -c Release --project Onvif.Open/Onvif.Open.Benchmarks -- --filter '*'
+```
+
+| Stage | Time | Allocated |
+| --- | --- | --- |
+| RTSP: read interleaved RTP | 129 µs | 592 KB (the packets themselves) |
+| RTP: depacketize H.264 | 202 µs | 950 KB (the frames, plus the reused buffer's first growth) |
+| MPEG-TS: mux video + audio | 27 µs | 12 KB |
+
+Access units are assembled in place in one reused buffer and copied once into an uninitialized array; the muxer writes
+PES headers from the stack straight into batched TS packets; plugin delivery completes synchronously finished
+`ValueTask`s without a `Task`; locks use `System.Threading.Lock`; regular expressions are source generated.
+
 ## Notes
 
 * Transports: `StreamTransport.Rtsp` (default) receives RTP interleaved in the RTSP TCP connection and works through firewalls and NAT.

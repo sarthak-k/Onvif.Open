@@ -26,7 +26,7 @@ namespace Onvif.Open.Recording.Implementation.Recorder
 
         private readonly TimeSpan _postRoll;
         private readonly HashSet<string> _activeSources = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        private readonly object _sync = new object();
+        private readonly System.Threading.Lock _sync = new System.Threading.Lock();
         private DateTimeOffset _activeUntil = DateTimeOffset.MinValue;
 
         #endregion

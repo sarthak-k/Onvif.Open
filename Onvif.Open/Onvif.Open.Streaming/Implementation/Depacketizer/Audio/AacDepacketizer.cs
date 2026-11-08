@@ -2,6 +2,7 @@
 // 2026-11-07
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
@@ -40,6 +41,7 @@ namespace Onvif.Open.Streaming.Implementation.Depacketizer.Audio
         private readonly int _indexLength;
         private readonly int _indexDeltaLength;
         private readonly RtpTimestampClock _clock;
+        private const int StackFrames = 32;
         private readonly MemoryStream _fragment = new MemoryStream();
         private uint? _fragmentTimestamp;
         private int _fragmentSize;
@@ -71,33 +73,48 @@ namespace Onvif.Open.Streaming.Implementation.Depacketizer.Audio
                 return;
             }
 
-            var reader = new BitReader(payload.Slice(2, headerBytes));
-            var sizes = new List<int>();
+            // The AU sizes go on the stack (a packet rarely holds more than a few frames); pooled beyond that.
+            var maxFrames = (headerBits / _sizeLength) + 1;
+            int[] rented = null;
+            var sizes = maxFrames <= StackFrames ? stackalloc int[StackFrames] : (rented = ArrayPool<int>.Shared.Rent(maxFrames));
+            var count = 0;
 
-            for (var consumed = 0; consumed + _sizeLength <= headerBits;)
+            try
             {
-                sizes.Add((int)reader.Read(_sizeLength));
-                var indexBits = sizes.Count == 1 ? _indexLength : _indexDeltaLength;
-                reader.Read(indexBits);
-                consumed += _sizeLength + indexBits;
+                var reader = new BitReader(payload.Slice(2, headerBytes));
+
+                for (var consumed = 0; consumed + _sizeLength <= headerBits;)
+                {
+                    sizes[count++] = (int)reader.Read(_sizeLength);
+                    var indexBits = count == 1 ? _indexLength : _indexDeltaLength;
+                    reader.Read(indexBits);
+                    consumed += _sizeLength + indexBits;
+                }
+
+                var data = payload.Slice(2 + headerBytes);
+
+                if (count == 1 && sizes[0] > data.Length)
+                {
+                    AddFragment(packet, sizes[0], data, frames);
+                    return;
+                }
+
+                _fragment.SetLength(0);
+                _fragmentTimestamp = null;
+
+                for (var i = 0; i < count && sizes[i] <= data.Length; i++)
+                {
+                    var timestamp = unchecked(packet.Timestamp + (uint)(i * SamplesPerFrame));
+                    frames.Add(new AudioFrame(Format, data.Slice(0, sizes[i]).ToArray(), timestamp, _clock.ToTime(timestamp)));
+                    data = data.Slice(sizes[i]);
+                }
             }
-
-            var data = payload.Slice(2 + headerBytes);
-
-            if (sizes.Count == 1 && sizes[0] > data.Length)
+            finally
             {
-                AddFragment(packet, sizes[0], data, frames);
-                return;
-            }
-
-            _fragment.SetLength(0);
-            _fragmentTimestamp = null;
-
-            for (var i = 0; i < sizes.Count && sizes[i] <= data.Length; i++)
-            {
-                var timestamp = unchecked(packet.Timestamp + (uint)(i * SamplesPerFrame));
-                frames.Add(new AudioFrame(Format, data.Slice(0, sizes[i]).ToArray(), timestamp, _clock.ToTime(timestamp)));
-                data = data.Slice(sizes[i]);
+                if (rented != null)
+                {
+                    ArrayPool<int>.Shared.Return(rented);
+                }
             }
         }
 

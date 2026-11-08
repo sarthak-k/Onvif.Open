@@ -9,11 +9,13 @@ namespace Onvif.Open.Recording.Implementation.Storage
     /// <summary>
     /// Camera ids become directory and file names, so they are restricted to a safe character set.
     /// </summary>
-    public static class CameraIdentifier
+    public static partial class CameraIdentifier
     {
         #region Private Variables
 
-        private static readonly Regex Valid = new Regex("^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        /// <summary>Source generated: matched without compiling the pattern at run time.</summary>
+        [GeneratedRegex("^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$", RegexOptions.CultureInvariant)]
+        private static partial Regex Valid();
 
         #endregion
 
@@ -21,7 +23,7 @@ namespace Onvif.Open.Recording.Implementation.Storage
 
         public static bool IsValid(string cameraId)
         {
-            return cameraId != null && Valid.IsMatch(cameraId);
+            return cameraId != null && Valid().IsMatch(cameraId);
         }
 
         public static string Require(string cameraId)

@@ -25,6 +25,10 @@ namespace Onvif.Open.Recording.Implementation.Format
             {
                 _adts = adts;
             }
+
+            // The program tables never change within a segment: built once, repeated before every key frame.
+            _pat = BuildPat();
+            _pmt = BuildPmt();
         }
 
         #endregion
@@ -32,6 +36,8 @@ namespace Onvif.Open.Recording.Implementation.Format
         #region Private Variables
 
         internal const int PacketSize = 188;
+        private const int PacketsPerWrite = 64;
+        private const int PesHeaderSize = 14;
         internal const int VideoPid = 0x0100;
         internal const int AudioPid = 0x0101;
         private const byte AacStreamType = 0x0F;
@@ -48,7 +54,11 @@ namespace Onvif.Open.Recording.Implementation.Format
         private readonly Stream _output;
         private readonly VideoCodec _codec;
         private readonly byte _streamType;
-        private readonly byte[] _packet = new byte[PacketSize];
+        /// <summary>TS packets are collected here and written in batches (fewer, larger writes to the file).</summary>
+        private readonly byte[] _packets = new byte[PacketSize * PacketsPerWrite];
+        private int _buffered;
+        private readonly byte[] _pat;
+        private readonly byte[] _pmt;
         private int _patCounter;
         private int _pmtCounter;
         private int _videoCounter;
@@ -71,14 +81,15 @@ namespace Onvif.Open.Recording.Implementation.Format
 
             if (frame.IsKeyFrame || _patCounter == 0)
             {
-                WritePsi(0, ref _patCounter, BuildPat());
-                WritePsi(PmtPid, ref _pmtCounter, BuildPmt());
+                WritePsi(0, ref _patCounter, _pat);
+                WritePsi(PmtPid, ref _pmtCounter, _pmt);
             }
 
             var elapsed = frame.Timestamp - _firstTimestamp;
             var pts = PtsOffset + Math.Max(0, elapsed.Ticks * 90000 / TimeSpan.TicksPerSecond);
 
             WritePes(frame.Data.Span, pts, frame.IsKeyFrame);
+            FlushPackets();
         }
 
         public void Write(AudioFrame frame)
@@ -96,19 +107,20 @@ namespace Onvif.Open.Recording.Implementation.Format
             }
 
             var pts = PtsOffset + (elapsed.Ticks * 90000 / TimeSpan.TicksPerSecond);
-            var payload = new byte[AdtsHeader.Size + frame.Data.Length];
+            Span<byte> adts = stackalloc byte[AdtsHeader.Size];
 
-            if (!_adts.TryWrite(payload, frame.Data.Length))
+            if (!_adts.TryWrite(adts, frame.Data.Length))
             {
                 return;
             }
 
-            frame.Data.Span.CopyTo(payload.AsSpan(AdtsHeader.Size));
-            WriteAudioPes(payload, pts);
+            WriteAudioPes(adts, frame.Data.Span, pts);
+            FlushPackets();
         }
 
         public void Dispose()
         {
+            FlushPackets();
             _output.Flush();
         }
 
@@ -189,15 +201,15 @@ namespace Onvif.Open.Recording.Implementation.Format
 
         private void WritePsi(int pid, ref int counter, byte[] section)
         {
-            Array.Fill(_packet, (byte)0xFF);
-            _packet[0] = 0x47;
-            _packet[1] = (byte)(0x40 | (pid >> 8));
-            _packet[2] = (byte)pid;
-            _packet[3] = (byte)(0x10 | (counter & 0x0F));
-            _packet[4] = 0x00; // pointer_field
-            Buffer.BlockCopy(section, 0, _packet, 5, section.Length);
+            var packet = NextPacket();
+            packet.Fill(0xFF);
+            packet[0] = 0x47;
+            packet[1] = (byte)(0x40 | (pid >> 8));
+            packet[2] = (byte)pid;
+            packet[3] = (byte)(0x10 | (counter & 0x0F));
+            packet[4] = 0x00; // pointer_field
+            section.CopyTo(packet.Slice(5));
             counter++;
-            _output.Write(_packet, 0, PacketSize);
         }
 
         private void WritePes(ReadOnlySpan<byte> accessUnit, long pts, bool isKeyFrame)
@@ -205,13 +217,45 @@ namespace Onvif.Open.Recording.Implementation.Format
             var delimiter = _codec == VideoCodec.H265 ? H265AccessUnitDelimiter : H264AccessUnitDelimiter;
             var needsDelimiter = !StartsWith(accessUnit, delimiter.AsSpan(0, delimiter.Length - 1));
 
-            var header = new byte[14];
+            // The PES header (and the access unit delimiter) go on the stack; the access unit is copied once,
+            // straight into the TS packets.
+            Span<byte> head = stackalloc byte[PesHeaderSize + 8];
+            WritePesHeader(head, 0xE0, 0, pts);          // stream_id: video; PES_packet_length 0: unbounded (allowed for video)
+            var headLength = PesHeaderSize;
+
+            if (needsDelimiter)
+            {
+                delimiter.CopyTo(head.Slice(headLength));
+                headLength += delimiter.Length;
+            }
+
+            WritePayload(VideoPid, ref _videoCounter, head.Slice(0, headLength), accessUnit, pts - PcrDelay, isKeyFrame);
+        }
+
+        private void WriteAudioPes(ReadOnlySpan<byte> adtsHeader, ReadOnlySpan<byte> accessUnit, long pts)
+        {
+            // Audio PES packets have an exact length: the 8 header bytes after the length field plus the data.
+            var pesLength = 8 + adtsHeader.Length + accessUnit.Length;
+            if (pesLength > MaxPesLength)
+            {
+                return;
+            }
+
+            Span<byte> head = stackalloc byte[PesHeaderSize + AdtsHeader.Size];
+            WritePesHeader(head, 0xC0, pesLength, pts);  // stream_id: audio stream 0
+            adtsHeader.CopyTo(head.Slice(PesHeaderSize));
+
+            WritePayload(AudioPid, ref _audioCounter, head.Slice(0, PesHeaderSize + adtsHeader.Length), accessUnit, null, false);
+        }
+
+        private static void WritePesHeader(Span<byte> header, byte streamId, int pesLength, long pts)
+        {
             header[0] = 0x00;
             header[1] = 0x00;
             header[2] = 0x01;
-            header[3] = 0xE0;                          // stream_id: video
-            header[4] = 0x00;                          // PES_packet_length 0: unbounded (allowed for video)
-            header[5] = 0x00;
+            header[3] = streamId;
+            header[4] = (byte)(pesLength >> 8);
+            header[5] = (byte)pesLength;
             header[6] = 0x80;                          // marker bits
             header[7] = 0x80;                          // PTS only
             header[8] = 0x05;                          // PES_header_data_length
@@ -220,81 +264,26 @@ namespace Onvif.Open.Recording.Implementation.Format
             header[11] = (byte)(((pts >> 14) & 0xFE) | 0x01);
             header[12] = (byte)(pts >> 7);
             header[13] = (byte)(((pts << 1) & 0xFE) | 0x01);
+        }
 
-            var length = header.Length + (needsDelimiter ? delimiter.Length : 0) + accessUnit.Length;
-            var pes = new byte[length];
-            header.CopyTo(pes, 0);
-            var offset = header.Length;
-
-            if (needsDelimiter)
-            {
-                delimiter.CopyTo(pes, offset);
-                offset += delimiter.Length;
-            }
-
-            accessUnit.CopyTo(pes.AsSpan(offset));
-
-            var remaining = pes.AsSpan();
+        /// <summary>Splits a PES packet (head followed by body) into TS packets; the first carries the PCR.</summary>
+        private void WritePayload(int pid, ref int counter, ReadOnlySpan<byte> head, ReadOnlySpan<byte> body, long? pcr, bool randomAccess)
+        {
             var first = true;
 
-            while (!remaining.IsEmpty)
+            while (!head.IsEmpty || !body.IsEmpty)
             {
-                var consumed = WriteVideoPacket(remaining, first, first ? pts - PcrDelay : (long?)null, first && isKeyFrame);
-                remaining = remaining.Slice(consumed);
+                WritePacket(pid, ref counter, ref head, ref body, first, first ? pcr : null, first && randomAccess);
                 first = false;
             }
         }
 
-        private void WriteAudioPes(ReadOnlySpan<byte> adtsFrame, long pts)
-        {
-            var header = new byte[14];
-            header[2] = 0x01;
-            header[3] = 0xC0;                          // stream_id: audio stream 0
-
-            // Audio PES packets have an exact length: the 8 header bytes after the length field plus the data.
-            var pesLength = 8 + adtsFrame.Length;
-            if (pesLength > MaxPesLength)
-            {
-                return;
-            }
-
-            header[4] = (byte)(pesLength >> 8);
-            header[5] = (byte)pesLength;
-            header[6] = 0x80;
-            header[7] = 0x80;                          // PTS only
-            header[8] = 0x05;
-            header[9] = (byte)(0x21 | ((pts >> 29) & 0x0E));
-            header[10] = (byte)(pts >> 22);
-            header[11] = (byte)(((pts >> 14) & 0xFE) | 0x01);
-            header[12] = (byte)(pts >> 7);
-            header[13] = (byte)(((pts << 1) & 0xFE) | 0x01);
-
-            var pes = new byte[header.Length + adtsFrame.Length];
-            header.CopyTo(pes, 0);
-            adtsFrame.CopyTo(pes.AsSpan(header.Length));
-
-            var remaining = pes.AsSpan();
-            var first = true;
-
-            while (!remaining.IsEmpty)
-            {
-                var consumed = WritePacket(AudioPid, ref _audioCounter, remaining, first, null, false);
-                remaining = remaining.Slice(consumed);
-                first = false;
-            }
-        }
-
-        private int WriteVideoPacket(ReadOnlySpan<byte> payload, bool payloadUnitStart, long? pcr, bool randomAccess)
-        {
-            return WritePacket(VideoPid, ref _videoCounter, payload, payloadUnitStart, pcr, randomAccess);
-        }
-
-        private int WritePacket(int pid, ref int counter, ReadOnlySpan<byte> payload, bool payloadUnitStart, long? pcr, bool randomAccess)
+        private void WritePacket(int pid, ref int counter, ref ReadOnlySpan<byte> head, ref ReadOnlySpan<byte> body, bool payloadUnitStart, long? pcr, bool randomAccess)
         {
             var adaptationBody = pcr.HasValue || randomAccess ? 1 + (pcr.HasValue ? 6 : 0) : 0;
             var hasAdaptation = adaptationBody > 0;
             var space = PacketSize - 4 - (hasAdaptation ? 1 + adaptationBody : 0);
-            var take = Math.Min(space, payload.Length);
+            var take = Math.Min(space, head.Length + body.Length);
             var stuffing = space - take;
 
             if (stuffing > 0 && !hasAdaptation)
@@ -309,43 +298,68 @@ namespace Onvif.Open.Recording.Implementation.Format
                 }
             }
 
-            _packet[0] = 0x47;
-            _packet[1] = (byte)((payloadUnitStart ? 0x40 : 0x00) | (pid >> 8));
-            _packet[2] = (byte)(pid & 0xFF);
-            _packet[3] = (byte)((hasAdaptation ? 0x30 : 0x10) | (counter & 0x0F));
+            var packet = NextPacket();
+            packet[0] = 0x47;
+            packet[1] = (byte)((payloadUnitStart ? 0x40 : 0x00) | (pid >> 8));
+            packet[2] = (byte)(pid & 0xFF);
+            packet[3] = (byte)((hasAdaptation ? 0x30 : 0x10) | (counter & 0x0F));
             counter++;
 
             var index = 4;
 
             if (hasAdaptation)
             {
-                _packet[index++] = (byte)(adaptationBody + stuffing);
+                packet[index++] = (byte)(adaptationBody + stuffing);
 
                 if (adaptationBody > 0)
                 {
-                    _packet[index++] = (byte)((randomAccess ? 0x40 : 0x00) | (pcr.HasValue ? 0x10 : 0x00));
+                    packet[index++] = (byte)((randomAccess ? 0x40 : 0x00) | (pcr.HasValue ? 0x10 : 0x00));
 
                     if (pcr.HasValue)
                     {
                         var pcrBase = pcr.Value;
-                        _packet[index++] = (byte)(pcrBase >> 25);
-                        _packet[index++] = (byte)(pcrBase >> 17);
-                        _packet[index++] = (byte)(pcrBase >> 9);
-                        _packet[index++] = (byte)(pcrBase >> 1);
-                        _packet[index++] = (byte)(((pcrBase & 1) << 7) | 0x7E);
-                        _packet[index++] = 0x00;
+                        packet[index++] = (byte)(pcrBase >> 25);
+                        packet[index++] = (byte)(pcrBase >> 17);
+                        packet[index++] = (byte)(pcrBase >> 9);
+                        packet[index++] = (byte)(pcrBase >> 1);
+                        packet[index++] = (byte)(((pcrBase & 1) << 7) | 0x7E);
+                        packet[index++] = 0x00;
                     }
                 }
 
-                for (var i = 0; i < stuffing; i++)
-                {
-                    _packet[index++] = 0xFF;
-                }
+                packet.Slice(index, stuffing).Fill(0xFF);
+                index += stuffing;
             }
 
-            payload.Slice(0, take).CopyTo(_packet.AsSpan(index));
-            _output.Write(_packet, 0, PacketSize);
-            return take;
+            var fromHead = Math.Min(take, head.Length);
+            head.Slice(0, fromHead).CopyTo(packet.Slice(index));
+            head = head.Slice(fromHead);
+
+            var fromBody = take - fromHead;
+            body.Slice(0, fromBody).CopyTo(packet.Slice(index + fromHead));
+            body = body.Slice(fromBody);
+        }
+
+        /// <summary>The next 188 bytes of the batch, writing the batch out first when it is full.</summary>
+        private Span<byte> NextPacket()
+        {
+            if (_buffered == _packets.Length)
+            {
+                FlushPackets();
+            }
+
+            var packet = _packets.AsSpan(_buffered, PacketSize);
+            _buffered += PacketSize;
+            return packet;
+        }
+
+        private void FlushPackets()
+        {
+            if (_buffered > 0)
+            {
+                _output.Write(_packets, 0, _buffered);
+                _buffered = 0;
+            }
         }
 
         private static bool StartsWith(ReadOnlySpan<byte> data, ReadOnlySpan<byte> prefix)

@@ -67,7 +67,7 @@ namespace Onvif.Open.Plugins.Implementation
         private readonly PluginEventStore _events;
         private readonly ILogger _logger;
         private readonly IReadOnlyList<PluginRunner> _runners;
-        private readonly object _sync = new object();
+        private readonly System.Threading.Lock _sync = new System.Threading.Lock();
         private bool _started;
 
         #endregion

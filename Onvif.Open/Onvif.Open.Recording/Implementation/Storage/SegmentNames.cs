@@ -13,14 +13,16 @@ namespace Onvif.Open.Recording.Implementation.Storage
     /// <c>{cameraId}/{yyyy-MM-dd}/{cameraId}_{yyyyMMddTHHmmssfffZ}[-n]{extension}</c> (UTC).
     /// Everything about a segment is derived from its name, so nothing else has to be persisted.
     /// </summary>
-    internal static class SegmentNames
+    internal static partial class SegmentNames
     {
         #region Private Variables
 
         private const string TimestampFormat = "yyyyMMdd'T'HHmmssfff'Z'";
         private const string DayFormat = "yyyy-MM-dd";
 
-        private static readonly Regex SafeKey = new Regex("^[A-Za-z0-9_-][A-Za-z0-9_./-]*$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        /// <summary>Source generated: matched without compiling the pattern at run time.</summary>
+        [GeneratedRegex("^[A-Za-z0-9_-][A-Za-z0-9_./-]*$", RegexOptions.CultureInvariant)]
+        private static partial Regex SafeKey();
 
         #endregion
 
@@ -87,7 +89,7 @@ namespace Onvif.Open.Recording.Implementation.Storage
         /// <summary>True for keys an <see cref="Core.Abstract.Interface.Storage.ISegmentStore"/> is promised: no "..", no leading '/'.</summary>
         public static bool IsSafeKey(string key)
         {
-            return key != null && SafeKey.IsMatch(key) && !key.Contains("..", StringComparison.Ordinal) && !key.Contains("//", StringComparison.Ordinal);
+            return key != null && SafeKey().IsMatch(key) && !key.Contains("..", StringComparison.Ordinal) && !key.Contains("//", StringComparison.Ordinal);
         }
 
         /// <summary>Sequence number of a segment ("-n" suffix) for ordering segments started in the same millisecond.</summary>

@@ -19,7 +19,7 @@ namespace Onvif.Open.Recorder.Security
     /// Users: sign-in with lockout, password rules, roles, and the guarantee that an enabled admin always remains.
     /// Every change to a user's access rotates its security stamp, which ends its sessions.
     /// </summary>
-    public sealed class UserService
+    public sealed partial class UserService
     {
         #region Constructor
 
@@ -37,7 +37,9 @@ namespace Onvif.Open.Recorder.Security
 
         public const int MinPasswordLength = 10;
         private const int MaxPasswordLength = 256;
-        private static readonly Regex ValidUserName = new Regex(@"^[A-Za-z0-9][A-Za-z0-9._@-]{0,63}$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        /// <summary>Source generated: matched without compiling the pattern at run time.</summary>
+        [GeneratedRegex(@"^[A-Za-z0-9][A-Za-z0-9._@-]{0,63}$", RegexOptions.CultureInvariant)]
+        private static partial Regex ValidUserName();
 
         private readonly IUserStore _store;
         private readonly SecurityOptions _options;
@@ -110,7 +112,7 @@ namespace Onvif.Open.Recorder.Security
                 var errors = new List<string>();
                 var canonicalRole = Roles.Normalize(role);
 
-                if (userName == null || !ValidUserName.IsMatch(userName.Trim()))
+                if (userName == null || !ValidUserName().IsMatch(userName.Trim()))
                 {
                     errors.Add("User names are 1-64 letters, digits, '.', '_', '@' or '-', starting with a letter or digit.");
                 }
