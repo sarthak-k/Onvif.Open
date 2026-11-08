@@ -50,6 +50,24 @@ namespace Onvif.Open.Recorder.Api
             cameras.MapPut("/{id}", async (string id, CameraOptions camera, CameraConfigurationService service, CancellationToken ct) =>
                 ToResult(await service.UpdateAsync(id, camera ?? new CameraOptions(), ct), created: false));
 
+            // Tests settings before they are saved; with "id" of a saved camera, its stored password is used when none is given.
+            cameras.MapPost("/test", async (CameraOptions camera, CameraConfigurationService service, CancellationToken ct) =>
+            {
+                camera = camera ?? new CameraOptions();
+
+                if (string.IsNullOrWhiteSpace(camera.OnvifUrl) == string.IsNullOrWhiteSpace(camera.RtspUrl))
+                {
+                    return Results.BadRequest(new { errors = new[] { "Give exactly one of onvifUrl or rtspUrl." } });
+                }
+
+                if (camera.Password == null && !string.IsNullOrWhiteSpace(camera.Id))
+                {
+                    camera.Password = (await service.GetCameraAsync(camera.Id, ct))?.Password;
+                }
+
+                return Results.Ok(await CameraProbe.ProbeAsync(camera, ct));
+            });
+
             cameras.MapDelete("/{id}", async (string id, CameraConfigurationService service, CancellationToken ct) =>
             {
                 var result = await service.RemoveAsync(id, ct);
