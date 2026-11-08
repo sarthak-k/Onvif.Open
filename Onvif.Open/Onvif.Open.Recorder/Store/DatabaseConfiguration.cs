@@ -97,6 +97,7 @@ namespace Onvif.Open.Recorder.Store
             {
                 await db.Cameras.AnyAsync(cancellationToken).ConfigureAwait(false);
                 await db.Plugins.AnyAsync(cancellationToken).ConfigureAwait(false);
+                await db.Users.AnyAsync(cancellationToken).ConfigureAwait(false);
                 return true;
             }
             catch (DbException)

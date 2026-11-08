@@ -328,6 +328,35 @@ Camera passwords and plugin settings are encrypted by the recorder (ASP.NET Core
 see `DataProtection:KeysDirectory`) before they reach the database: back up the keys with the database, and protect
 both. Keep connection strings with passwords out of the file, e.g. `Database__ConnectionString` as an environment variable.
 
+#### Users and sign-in
+
+Every endpoint needs a signed-in user, except `/health` and sign-in. Users have one of three roles, each including the
+ones before it:
+
+| Role | Can |
+| --- | --- |
+| `Viewer` | Live view, recordings, clips, snapshots, camera status and events |
+| `Operator` | Also start/stop/trigger recording, PTZ (also presets), focus, relays |
+| `Admin` | Also cameras, plugins, users, imaging settings, relay settings, deleting recordings, retention, discovery |
+
+```
+POST /api/auth/login    { "userName": "admin", "password": "..." }
+→ { "tokenType": "Bearer", "accessToken": "...", "expiresIn": 900, "refreshToken": "..." }
+GET  /api/cameras        Authorization: Bearer <accessToken>
+POST /api/auth/refresh  { "refreshToken": "..." }   → new tokens
+```
+
+* The first admin is created on the first start: with `Security:InitialAdmin:Password`, or with a generated password
+  that is logged once and must be changed at the first sign-in. Users created by an admin also choose their own
+  password first; until then only `/api/auth/me` and `/api/auth/password` work.
+* Changing a user's password, role or state, or the user's own password change, ends its sessions (within 30 s).
+* After 5 wrong passwords an account is locked for 5 minutes; sign-ins are limited to 10 per minute and address.
+* Video players and downloads that cannot send a header may pass the token as `?access_token=` on video requests only
+  (playlists, segments, clips, snapshots, exports); playlists then carry it to their segments. Prefer the header
+  (hls.js: `xhrSetup`).
+* A web application on another origin must be listed in `Security:AllowedOrigins` (CORS).
+* Serve the recorder over HTTPS (e.g. behind a reverse proxy): tokens and passwords travel in every request.
+
 ```json
 "Recording": {
   "StorageDirectory": "/var/recordings",
@@ -378,6 +407,9 @@ dotnet run --project Onvif.Open/Onvif.Open.Recorder
 | `GET /api/cameras/{id}/recordings.m3u8?from=...&to=...` | HLS playback of the recordings (default: the last hour), split at key frames for a fast start |
 | `GET /api/cameras/{id}/clip?from=...&to=...` | Download a clip cut from the recordings (MPEG-TS, across files, local or archived, up to 6 hours) |
 | `GET /api/config/cameras`, `GET .../{id}` | Camera configuration (also disabled cameras); passwords are never returned (`hasPassword`) |
+| `POST /api/auth/login`, `POST /api/auth/refresh` | Sign in (access + refresh token), renew the access token |
+| `GET /api/auth/me`, `POST /api/auth/password` `{currentPassword, newPassword}` | The own account; a password change returns new tokens |
+| `GET /api/users`, `POST /api/users` `{userName, password, role}`, `PUT .../{id}` `{role, enabled, password}`, `DELETE .../{id}` | Users (admins); an enabled admin always remains |
 | `GET /api/config/plugins`, `PUT .../{folder}` `{enabled, cameras, settings}`, `DELETE .../{folder}` | Plugin assignments (applied at the next start); setting values are write-only |
 | `POST /api/config/cameras`, `PUT .../{id}`, `DELETE .../{id}` | Add, change (password omitted: kept, `""`: removed) or remove a camera; applied immediately. Removing a camera assigned to a plugin is refused |
 | `GET /api/cameras/{id}/device-recordings` | Recordings stored on the camera (Profile G) and their time span |

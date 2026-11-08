@@ -13,6 +13,8 @@ using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Core.Plugin;
 using Onvif.Open.Recorder.Configuration;
 
+using Onvif.Open.Recorder.Security;
+
 namespace Onvif.Open.Recorder.Api
 {
     /// <summary>
@@ -24,9 +26,9 @@ namespace Onvif.Open.Recorder.Api
 
         public static IEndpointRouteBuilder MapPluginApi(this IEndpointRouteBuilder app)
         {
-            var api = app.MapGroup("/api");
+            var api = app.MapGroup("/api").RequireAuthorization(Policies.Viewer);
 
-            api.MapGet("/plugins", (IPluginHost host) => host.GetStatus());
+            api.MapGet("/plugins", (IPluginHost host) => host.GetStatus()).RequireAuthorization(Policies.Admin);
 
             api.MapGet("/events", (IPluginHost host, IRecordingManager manager, string cameraId, string type, string source, DateTimeOffset? since, PluginEventSeverity? severity, int? limit) =>
             {

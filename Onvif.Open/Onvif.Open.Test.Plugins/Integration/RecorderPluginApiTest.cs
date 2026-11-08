@@ -49,7 +49,7 @@ namespace Onvif.Open.Test.Plugins.Integration
             using (var settings = new TestSettings())
             using (var factory = Factory(settings, Path.Combine(folders.Root, "recordings"), folders.Root,
                 new StoredPlugin { Folder = PluginFolders.SampleFolder, Cameras = { "room-1" }, Settings = { ["ReportEveryFrames"] = "10" } }))
-            using (var client = factory.CreateClient())
+            using (var client = TestSettings.Authenticate(factory.CreateClient()))
             {
                 var plugins = JsonDocument.Parse(await client.GetStringAsync("/api/plugins")).RootElement;
 
@@ -74,7 +74,7 @@ namespace Onvif.Open.Test.Plugins.Integration
             using (var settings = new TestSettings())
             using (var factory = Factory(settings, Path.Combine(folders.Root, "recordings"), folders.Root,
                 new StoredPlugin { Folder = PluginFolders.SampleFolder, Enabled = false }))
-            using (var client = factory.CreateClient())
+            using (var client = TestSettings.Authenticate(factory.CreateClient()))
             {
                 var plugins = JsonDocument.Parse(await client.GetStringAsync("/api/plugins")).RootElement;
                 Assert.Equal(0, plugins.GetArrayLength());

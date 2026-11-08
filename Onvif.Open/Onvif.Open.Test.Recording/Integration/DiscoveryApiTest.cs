@@ -72,7 +72,7 @@ namespace Onvif.Open.Test.Recording.Integration
                     builder.UseSetting("Discovery:Timeout", "00:00:00.500");
                     builder.UseSetting("Discovery:Targets:0", $"127.0.0.1:{port}");
                 }))
-                using (var client = factory.CreateClient())
+                using (var client = TestSettings.Authenticate(factory.CreateClient()))
                 {
                     var devices = JsonDocument.Parse(await client.GetStringAsync("/api/discovery")).RootElement;
 

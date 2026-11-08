@@ -11,6 +11,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Onvif.Open.Recorder.Store;
 
+using Onvif.Open.Recorder.Security;
+
 namespace Onvif.Open.Recorder.Api
 {
     /// <summary>
@@ -38,7 +40,7 @@ namespace Onvif.Open.Recorder.Api
 
         public static IEndpointRouteBuilder MapPluginConfigurationApi(this IEndpointRouteBuilder app)
         {
-            var plugins = app.MapGroup("/api/config/plugins");
+            var plugins = app.MapGroup("/api/config/plugins").RequireAuthorization(Policies.Admin);
 
             plugins.MapGet("", async (ISettingsStore store, CancellationToken ct) => (await store.GetPluginsAsync(ct)).Select(ToDto));
 

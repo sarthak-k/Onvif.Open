@@ -26,6 +26,7 @@ namespace Onvif.Open.Recorder.Store
 
         public DbSet<CameraRecord> Cameras => Set<CameraRecord>();
         public DbSet<PluginRecord> Plugins => Set<PluginRecord>();
+        public DbSet<UserRecord> Users => Set<UserRecord>();
 
         #endregion
 
@@ -51,6 +52,19 @@ namespace Onvif.Open.Recorder.Store
                 plugin.Property(p => p.Folder).HasMaxLength(255).IsRequired();
                 plugin.Property(p => p.Cameras).IsRequired();
             });
+
+            modelBuilder.Entity<UserRecord>(user =>
+            {
+                user.ToTable("onvif_users");
+                user.HasKey(u => u.Id);
+                user.Property(u => u.Id).HasMaxLength(36);
+                user.Property(u => u.UserName).HasMaxLength(64).IsRequired();
+                user.Property(u => u.NormalizedUserName).HasMaxLength(64).IsRequired();
+                user.HasIndex(u => u.NormalizedUserName).IsUnique();
+                user.Property(u => u.PasswordHash).IsRequired();
+                user.Property(u => u.Role).HasMaxLength(16).IsRequired();
+                user.Property(u => u.SecurityStamp).HasMaxLength(36).IsRequired();
+            });
         }
 
         #endregion
@@ -69,6 +83,34 @@ namespace Onvif.Open.Recorder.Store
         /// <summary>The password, encrypted (Data Protection); null without one.</summary>
         public string Password { get; set; }
 
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
+    }
+
+    /// <summary>A user of the recorder (see <see cref="Security.Roles"/>).</summary>
+    public sealed class UserRecord
+    {
+        public string Id { get; set; }
+        public string UserName { get; set; }
+
+        /// <summary>Upper-cased user name: user names are case-insensitive.</summary>
+        public string NormalizedUserName { get; set; }
+
+        /// <summary>PBKDF2 hash (ASP.NET Core Identity password hasher).</summary>
+        public string PasswordHash { get; set; }
+
+        public string Role { get; set; }
+        public bool Enabled { get; set; }
+
+        /// <summary>Set for generated passwords: the user must choose a new one before doing anything else.</summary>
+        public bool MustChangePassword { get; set; }
+
+        /// <summary>Changes when the password, role or state changes: tokens issued before become invalid.</summary>
+        public string SecurityStamp { get; set; }
+
+        public int FailedLogins { get; set; }
+        public DateTime? LockedUntil { get; set; }
+        public DateTime? LastLoginAt { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
     }

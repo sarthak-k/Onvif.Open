@@ -14,6 +14,8 @@ using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Core.Imaging;
 using Onvif.Open.Recorder.Configuration;
 
+using Onvif.Open.Recorder.Security;
+
 namespace Onvif.Open.Recorder.Api
 {
     /// <summary>
@@ -41,7 +43,7 @@ namespace Onvif.Open.Recorder.Api
 
         public static IEndpointRouteBuilder MapImagingApi(this IEndpointRouteBuilder app)
         {
-            var imaging = app.MapGroup("/api/cameras/{id}/imaging");
+            var imaging = app.MapGroup("/api/cameras/{id}/imaging").RequireAuthorization(Policies.Viewer);
 
             imaging.MapGet("", (string id, IRecordingManager manager, ConfiguredRecording recording, CancellationToken ct) =>
                 Run(id, manager, recording, async i => Results.Ok(await i.GetSettingsAsync(ct))));
@@ -52,7 +54,7 @@ namespace Onvif.Open.Recorder.Api
                 {
                     await i.UpdateAsync(changes ?? new ImagingSettings(), ct);
                     return Results.Ok(await i.GetSettingsAsync(ct));
-                }));
+                })).RequireAuthorization(Policies.Admin);
 
             imaging.MapGet("/options", (string id, IRecordingManager manager, ConfiguredRecording recording, CancellationToken ct) =>
                 Run(id, manager, recording, async i => Results.Ok(await i.GetOptionsAsync(ct))));
@@ -78,14 +80,14 @@ namespace Onvif.Open.Recorder.Api
                     }
 
                     return Results.NoContent();
-                }));
+                })).RequireAuthorization(Policies.Operator);
 
             imaging.MapPost("/focus/stop", (string id, IRecordingManager manager, ConfiguredRecording recording, CancellationToken ct) =>
                 Run(id, manager, recording, async i =>
                 {
                     await i.StopFocusAsync(ct);
                     return Results.NoContent();
-                }));
+                })).RequireAuthorization(Policies.Operator);
 
             return app;
         }

@@ -11,6 +11,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Onvif.Open.Recorder.Configuration;
 
+using Onvif.Open.Recorder.Security;
+
 namespace Onvif.Open.Recorder.Api
 {
     /// <summary>
@@ -32,7 +34,7 @@ namespace Onvif.Open.Recorder.Api
 
         public static IEndpointRouteBuilder MapCameraConfigurationApi(this IEndpointRouteBuilder app)
         {
-            var cameras = app.MapGroup("/api/config/cameras");
+            var cameras = app.MapGroup("/api/config/cameras").RequireAuthorization(Policies.Admin);
 
             cameras.MapGet("", async (CameraConfigurationService service, CancellationToken ct) => (await service.GetCamerasAsync(ct)).Select(ToDto));
 

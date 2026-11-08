@@ -43,7 +43,7 @@ namespace Onvif.Open.Test.Recording.Integration
                 builder.UseSetting("Recording:Archive:Settings:Path", _archive.Path);
             });
 
-            _client = _factory.CreateClient();
+            _client = TestSettings.Authenticate(_factory.CreateClient());
         }
 
         #endregion
