@@ -357,7 +357,6 @@ Passwords can be supplied through environment variables instead of the file, e.g
 | `GET /api/cameras/{id}/imaging`, `PATCH .../imaging` `{irCutFilter, brightness, ...}` | Image settings (PATCH changes only what is given) |
 | `GET /api/cameras/{id}/imaging/options` | Supported ranges and modes |
 | `GET/POST /api/cameras/{id}/imaging/focus` `{speed, durationMs}` or `{position}`, `POST .../focus/stop` | Focus |
-| `GET /viewer` | Web viewer: live view, playback of recordings, clip download (any modern browser) |
 | `GET /api/cameras/{id}/live.m3u8` | Live HLS (2 s segments, packaged only while watched) |
 | `GET /api/cameras/{id}/recordings.m3u8?from=...&to=...` | HLS playback of the recordings (default: the last hour), split at key frames for a fast start |
 | `GET /api/cameras/{id}/clip?from=...&to=...` | Download a clip cut from the recordings (MPEG-TS, across files, local or archived, up to 6 hours) |

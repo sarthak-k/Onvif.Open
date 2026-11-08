@@ -16,7 +16,7 @@ using Onvif.Open.Recording.Implementation.Hls;
 namespace Onvif.Open.Recorder.Api
 {
     /// <summary>
-    /// REST API for browsers: live HLS, HLS playback of recordings, clip download, and the web viewer at /viewer.
+    /// REST API for browsers: live HLS, HLS playback of recordings and clip download.
     /// </summary>
     internal static class PlaybackEndpoints
     {
@@ -116,8 +116,6 @@ namespace Onvif.Open.Recorder.Api
 
                 return Results.Empty;
             });
-
-            app.MapGet("/viewer", () => Results.Content(ViewerPage.Html, "text/html; charset=utf-8"));
 
             return app;
         }

@@ -220,18 +220,6 @@ namespace Onvif.Open.Test.Recording.Integration
         }
 
         [Fact]
-        public async Task ViewerShouldBeServed()
-        {
-            var response = await _client.GetAsync("/viewer");
-            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-            Assert.Equal("text/html", response.Content.Headers.ContentType.MediaType);
-
-            var html = await response.Content.ReadAsStringAsync();
-            Assert.Contains("hls.js@1.5.17", html);
-            Assert.Contains("live.m3u8", html);
-        }
-
-        [Fact]
         public async Task StorageAndHealthShouldRespond()
         {
             var storage = JsonDocument.Parse(await _client.GetStringAsync("/api/storage")).RootElement;

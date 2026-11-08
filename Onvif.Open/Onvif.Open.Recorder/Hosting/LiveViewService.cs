@@ -12,7 +12,7 @@ using Onvif.Open.Recording.Implementation.Hls;
 namespace Onvif.Open.Recorder.Hosting
 {
     /// <summary>
-    /// Live HLS for the web viewer: a camera is packaged only while someone watches it (its playlist or segments
+    /// Live HLS for browsers: a camera is packaged only while someone watches it (its playlist or segments
     /// were requested within <see cref="LiveViewOptions.IdleTimeout"/>), so idle cameras cost nothing.
     /// </summary>
     public sealed class LiveViewService : IDisposable

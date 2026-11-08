@@ -22,8 +22,4 @@
     <InternalsVisibleTo Include="Onvif.Open.Test.Recording" />
   </ItemGroup>
 
-  <ItemGroup>
-    <EmbeddedResource Include="Web\viewer.html" LogicalName="Onvif.Open.Recorder.Web.viewer.html" />
-  </ItemGroup>
-
 </Project>
