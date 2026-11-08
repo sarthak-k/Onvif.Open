@@ -30,7 +30,7 @@ namespace Onvif.Open.Recorder.Api
 
             api.MapGet("/plugins", (IPluginHost host) => host.GetStatus()).RequireAuthorization(Policies.Admin);
 
-            api.MapGet("/events", (IPluginHost host, IRecordingManager manager, string cameraId, string type, string source, DateTimeOffset? since, PluginEventSeverity? severity, int? limit) =>
+            api.MapGet("/events", (IPluginHost host, IRecordingManager manager, string cameraId, string type, string source, DateTimeOffset? since, DateTimeOffset? until, PluginEventSeverity? severity, int? limit) =>
             {
                 var events = host.GetEvents(new PluginEventQuery
                 {
@@ -38,6 +38,7 @@ namespace Onvif.Open.Recorder.Api
                     Type = type,
                     Source = source,
                     Since = since,
+                    Until = until,
                     MinimumSeverity = severity,
                     Limit = Math.Clamp(limit ?? 100, 1, 1000)
                 });

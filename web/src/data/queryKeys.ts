@@ -5,6 +5,8 @@ export const queryKeys = {
     configs: () => [...queryKeys.cameras.all, 'configs'] as const,
     config: (id: string) => [...queryKeys.cameras.all, 'configs', id] as const,
     status: () => [...queryKeys.cameras.all, 'status'] as const,
+    segments: (id: string, from: number, to: number) => [...queryKeys.cameras.all, 'segments', id, from, to] as const,
+    events: (id: string, from: number, to: number) => [...queryKeys.cameras.all, 'events', id, from, to] as const,
   },
   users: {
     all: ['users'] as const,

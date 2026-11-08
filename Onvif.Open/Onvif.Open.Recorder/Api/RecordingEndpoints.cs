@@ -73,8 +73,8 @@ namespace Onvif.Open.Recorder.Api
                 return Results.Accepted($"/api/cameras/{status.CameraId}", ToDto(Find(manager, id)));
             }).RequireAuthorization(Policies.Operator);
 
-            api.MapGet("/camera-events", (Onvif.Open.Recorder.Hosting.CameraEventStore store, string cameraId, string topic, int? limit) =>
-                store.Query(cameraId, topic, Math.Clamp(limit ?? 100, 1, 1000)).Select(e => new
+            api.MapGet("/camera-events", (Onvif.Open.Recorder.Hosting.CameraEventStore store, string cameraId, string topic, DateTimeOffset? from, DateTimeOffset? to, int? limit) =>
+                store.Query(cameraId, topic, Math.Clamp(limit ?? 100, 1, 1000), from, to).Select(e => new
                 {
                     e.CameraId,
                     e.Topic,

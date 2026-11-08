@@ -226,6 +226,11 @@ namespace Onvif.Open.Test.Plugins.Unit
                 Assert.Single(host.GetEvents(new PluginEventQuery { MinimumSeverity = PluginEventSeverity.Warning }));
                 Assert.Empty(host.GetEvents(new PluginEventQuery { CameraId = "room-2" }));
                 Assert.Empty(host.GetEvents(new PluginEventQuery { Type = "other" }));
+
+                // A time window: [Since, Until).
+                Assert.Single(host.GetEvents(new PluginEventQuery { Since = received.Timestamp, Until = received.Timestamp.AddTicks(1) }));
+                Assert.Empty(host.GetEvents(new PluginEventQuery { Until = received.Timestamp }));
+                Assert.Empty(host.GetEvents(new PluginEventQuery { Since = received.Timestamp.AddTicks(1) }));
             }
         }
 

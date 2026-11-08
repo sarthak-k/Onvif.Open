@@ -56,6 +56,7 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
                     .Where(e => query.Type == null || string.Equals(e.Type, query.Type, StringComparison.OrdinalIgnoreCase))
                     .Where(e => query.Source == null || string.Equals(e.Source, query.Source, StringComparison.OrdinalIgnoreCase))
                     .Where(e => !query.Since.HasValue || e.Timestamp >= query.Since.Value)
+                    .Where(e => !query.Until.HasValue || e.Timestamp < query.Until.Value)
                     .Where(e => !query.MinimumSeverity.HasValue || e.Severity >= query.MinimumSeverity.Value)
                     .Take(Math.Max(0, query.Limit))
                     .ToList();

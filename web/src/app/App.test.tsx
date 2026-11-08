@@ -11,10 +11,11 @@ describe('App', () => {
     const api: RecorderApi = {
       auth: { me: async () => admin },
       cameras: { list: async () => [], get: fail, create: fail, update: fail, remove: fail, test: fail, discover: fail },
-      recording: { status: async () => [{ cameraId: 'in-memory', state: 'Recording', mode: 'Continuous', isTriggered: false, codec: 'H265', recordsAudio: false, framesRecorded: 0, bytesRecorded: 0, segmentsCompleted: 0 }], start: fail, stop: fail },
+      recording: { segments: fail, status: async () => [{ cameraId: 'in-memory', state: 'Recording', mode: 'Continuous', isTriggered: false, codec: 'H265', recordsAudio: false, framesRecorded: 0, bytesRecorded: 0, segmentsCompleted: 0 }], start: fail, stop: fail },
       users: { list: fail, create: fail, update: fail, remove: fail },
       layouts: { list: async () => [], create: fail, update: fail, remove: fail },
-      media: { liveUrl: (id) => `memory://${id}`, token: () => null },
+      events: { camera: fail, plugin: fail },
+      media: { liveUrl: (id) => `memory://${id}`, recordingsUrl: (id) => `memory://${id}`, clipDownloadUrl: (id) => `memory://${id}`, token: () => null },
     };
     const client = new ApiClient('', memoryStorage('refresh-0'), (async () => new Response(JSON.stringify(tokens(1)))) as typeof fetch);
 

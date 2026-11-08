@@ -20,7 +20,10 @@ namespace Onvif.Open.Recorder.Hosting
         {
             _manager = manager;
             _capacity = capacity;
-            _manager.CameraEventReceived += OnEvent;
+            if (_manager != null)
+            {
+                _manager.CameraEventReceived += OnEvent;
+            }
         }
 
         #endregion
@@ -36,14 +39,16 @@ namespace Onvif.Open.Recorder.Hosting
 
         #region Public Methods
 
-        /// <summary>Newest first.</summary>
-        public IReadOnlyList<CameraEvent> Query(string cameraId, string topic, int limit)
+        /// <summary>The newest events first; <paramref name="from"/> (inclusive) and <paramref name="to"/> (exclusive) bound the camera time.</summary>
+        public IReadOnlyList<CameraEvent> Query(string cameraId, string topic, int limit, DateTimeOffset? from = null, DateTimeOffset? to = null)
         {
             lock (_sync)
             {
                 return _events
                     .Where(e => cameraId == null || string.Equals(e.CameraId, cameraId, StringComparison.OrdinalIgnoreCase))
                     .Where(e => topic == null || e.MatchesTopic(topic))
+                    .Where(e => !from.HasValue || e.UtcTime >= from.Value)
+                    .Where(e => !to.HasValue || e.UtcTime < to.Value)
                     .Take(limit)
                     .ToList();
             }
@@ -51,14 +56,13 @@ namespace Onvif.Open.Recorder.Hosting
 
         public void Dispose()
         {
-            _manager.CameraEventReceived -= OnEvent;
+            if (_manager != null)
+            {
+                _manager.CameraEventReceived -= OnEvent;
+            }
         }
 
-        #endregion
-
-        #region Private Methods
-
-        private void OnEvent(object sender, CameraEvent cameraEvent)
+        internal void Add(CameraEvent cameraEvent)
         {
             lock (_sync)
             {
@@ -69,6 +73,12 @@ namespace Onvif.Open.Recorder.Hosting
                 }
             }
         }
+
+        #endregion
+
+        #region Private Methods
+
+        private void OnEvent(object sender, CameraEvent cameraEvent) => Add(cameraEvent);
 
         #endregion
     }

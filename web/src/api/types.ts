@@ -124,3 +124,36 @@ export interface LayoutRequest {
   /** Only read when creating; administrators only. */
   shared?: boolean;
 }
+
+export interface RecordingSegment {
+  cameraId: string;
+  fileName: string;
+  startTime: string;
+  lastWriteTime: string;
+  size: number;
+  isActive: boolean;
+  isLocal: boolean;
+  isArchived: boolean;
+}
+
+/** An ONVIF event from a camera (motion, tampering, inputs, ...). */
+export interface CameraEvent {
+  cameraId: string;
+  topic: string;
+  topicPath: string;
+  utcTime: string;
+  state?: boolean | null;
+}
+
+export type PluginEventSeverity = 'Info' | 'Warning' | 'Critical';
+
+/** An event a plugin published (e.g. "person detected"). */
+export interface PluginEvent {
+  id: string;
+  source: string;
+  type: string;
+  cameraId?: string | null;
+  severity: PluginEventSeverity;
+  message?: string | null;
+  timestamp: string;
+}
