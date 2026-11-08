@@ -34,6 +34,7 @@ namespace Onvif.Open.Test.Recording.Integration
             _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             {
                 builder.UseSetting("Recording:StorageDirectory", _storage.Path);
+                builder.UseSetting("Settings:Database", System.IO.Path.Combine(System.IO.Path.GetTempPath(), "onvif-open-settings", System.Guid.NewGuid().ToString("N"), "settings.db"));
                 builder.UseSetting("Recording:Retention:MinFreeSpaceGB", "0");
                 builder.UseSetting("Recording:RetentionInterval", "00:00:00.200");
                 builder.UseSetting("Recording:Archive:Provider", "FileSystem");

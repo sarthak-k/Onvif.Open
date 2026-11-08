@@ -4,7 +4,10 @@
 // Onvif.Open.Recorder: records every camera configured in appsettings.json ("Recording" section)
 // and exposes a REST API for status, recordings and storage.
 
+using System.IO;
+using System.Linq;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http.Json;
 using Microsoft.Extensions.Configuration;
@@ -16,12 +19,29 @@ using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Recorder.Api;
 using Onvif.Open.Recorder.Configuration;
 using Onvif.Open.Recorder.Hosting;
+using Onvif.Open.Recorder.Store;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<JsonOptions>(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+
+// Camera passwords and plugin settings are encrypted with keys stored next to the settings database.
+builder.Services.AddDataProtection()
+    .SetApplicationName("Onvif.Open.Recorder")
+    .PersistKeysToFileSystem(new DirectoryInfo(SettingsStoreConfiguration.GetKeysDirectory(builder.Configuration, builder.Environment.ContentRootPath)));
+builder.Services.AddSingleton(sp => SettingsStoreConfiguration.Open(
+    sp.GetRequiredService<IConfiguration>(),
+    sp.GetRequiredService<IHostEnvironment>().ContentRootPath,
+    sp.GetRequiredService<IDataProtectionProvider>(),
+    sp.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(SettingsStoreConfiguration).FullName)));
+
+// Cameras come from the settings store (the configuration file is imported into it on the first start).
 builder.Services.AddSingleton(sp =>
-    sp.GetRequiredService<IConfiguration>().GetSection(RecorderOptions.SectionName).Get<RecorderOptions>() ?? new RecorderOptions());
+{
+    var options = sp.GetRequiredService<IConfiguration>().GetSection(RecorderOptions.SectionName).Get<RecorderOptions>() ?? new RecorderOptions();
+    options.Cameras = sp.GetRequiredService<ISettingsStore>().GetCameras().ToList();
+    return options;
+});
 builder.Services.AddSingleton(sp =>
     RecordingConfiguration.Create(
         sp.GetRequiredService<RecorderOptions>(),
@@ -31,6 +51,7 @@ builder.Services.AddSingleton(sp =>
             sp.GetRequiredService<IHostEnvironment>().ContentRootPath,
             sp.GetRequiredService<ILoggerFactory>())));
 builder.Services.AddSingleton<IRecordingManager>(sp => sp.GetRequiredService<ConfiguredRecording>().Manager);
+builder.Services.AddSingleton<CameraConfigurationService>();
 builder.Services.AddSingleton(sp => new CameraEventStore(sp.GetRequiredService<IRecordingManager>()));
 builder.Services.AddSingleton(sp => new LiveViewService(
     sp.GetRequiredService<IRecordingManager>(),
@@ -41,7 +62,8 @@ builder.Services.AddSingleton(sp => DiscoveryConfiguration.CreateDiscovery(
 builder.Services.AddSingleton<IPluginHost>(sp => PluginConfiguration.CreateHost(
     sp.GetRequiredService<IConfiguration>(),
     sp.GetRequiredService<IHostEnvironment>().ContentRootPath,
-    sp.GetRequiredService<RecorderOptions>(),
+    sp.GetRequiredService<ISettingsStore>().GetPlugins(),
+    sp.GetRequiredService<RecorderOptions>().Cameras.Select(c => c.Id),
     sp.GetRequiredService<ConfiguredRecording>(),
     sp.GetRequiredService<ILoggerFactory>()));
 
@@ -54,6 +76,7 @@ builder.Services.AddHostedService<RecordingHostedService>();
 
 var app = builder.Build();
 app.MapRecordingApi();
+app.MapCameraConfigurationApi();
 app.MapPluginApi();
 app.MapDiscoveryApi();
 app.MapPtzApi();

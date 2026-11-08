@@ -22,6 +22,7 @@ namespace Onvif.Open.Test.Plugins.Integration
             return new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             {
                 builder.UseSetting("Recording:StorageDirectory", storage);
+                builder.UseSetting("Settings:Database", System.IO.Path.Combine(System.IO.Path.GetTempPath(), "onvif-open-settings", System.Guid.NewGuid().ToString("N"), "settings.db"));
                 builder.UseSetting("Recording:Retention:MinFreeSpaceGB", "0");
                 builder.UseSetting("Recording:Cameras:0:Id", "room-1");
                 builder.UseSetting("Recording:Cameras:0:RtspUrl", "rtsp://127.0.0.1:1/stream");

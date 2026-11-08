@@ -65,6 +65,7 @@ namespace Onvif.Open.Test.Recording.Integration
                 using (var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
                 {
                     builder.UseSetting("Recording:StorageDirectory", storage.Path);
+                builder.UseSetting("Settings:Database", System.IO.Path.Combine(System.IO.Path.GetTempPath(), "onvif-open-settings", System.Guid.NewGuid().ToString("N"), "settings.db"));
                     builder.UseSetting("Recording:Retention:MinFreeSpaceGB", "0");
                     builder.UseSetting("Recording:Cameras:0:Id", "front");
                     builder.UseSetting("Recording:Cameras:0:Enabled", "false");

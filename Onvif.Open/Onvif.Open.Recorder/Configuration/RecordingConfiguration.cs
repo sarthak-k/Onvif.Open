@@ -78,6 +78,59 @@ namespace Onvif.Open.Recorder.Configuration
             return new ConfiguredRecording(manager, onvifCameras);
         }
 
+        /// <summary>Problems with one camera's configuration (empty when it is valid).</summary>
+        public static IReadOnlyList<string> ValidateCamera(CameraOptions camera)
+        {
+            var errors = new List<string>();
+
+            if (camera == null)
+            {
+                errors.Add("A camera is required.");
+                return errors;
+            }
+
+            if (!CameraIdentifier.IsValid(camera.Id))
+            {
+                errors.Add($"Camera id '{camera.Id}' is invalid: use 1-64 letters, digits, '-' or '_'.");
+            }
+
+            if (string.IsNullOrWhiteSpace(camera.OnvifUrl) == string.IsNullOrWhiteSpace(camera.RtspUrl))
+            {
+                errors.Add($"Camera '{camera.Id}' needs exactly one of OnvifUrl or RtspUrl.");
+            }
+
+            if (camera.Audio?.Enabled == true && camera.Transport != StreamTransport.Rtsp)
+            {
+                errors.Add($"Camera '{camera.Id}': Audio needs Transport Rtsp (RTP over UDP carries one track).");
+            }
+
+            var cameraAnalytics = camera.Analytics;
+            if (cameraAnalytics != null && (cameraAnalytics.Enabled || cameraAnalytics.TriggerClasses?.Count > 0))
+            {
+                if (string.IsNullOrWhiteSpace(camera.OnvifUrl))
+                {
+                    errors.Add($"Camera '{camera.Id}': Analytics need an ONVIF camera (OnvifUrl).");
+                }
+
+                if (cameraAnalytics.MinLikelihood < 0 || cameraAnalytics.MinLikelihood > 1)
+                {
+                    errors.Add($"Camera '{camera.Id}': Analytics:MinLikelihood must be between 0 and 1.");
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(camera.RtspUrl) && (!Uri.TryCreate(camera.RtspUrl, UriKind.Absolute, out var rtsp) || !string.Equals(rtsp.Scheme, "rtsp", StringComparison.OrdinalIgnoreCase)))
+            {
+                errors.Add($"Camera '{camera.Id}': RtspUrl must be an absolute rtsp:// URL.");
+            }
+
+            if (camera.PreRoll < TimeSpan.Zero || camera.PostRoll < TimeSpan.Zero)
+            {
+                errors.Add($"Camera '{camera.Id}': PreRoll and PostRoll must not be negative.");
+            }
+
+            return errors;
+        }
+
         public static void Validate(RecorderOptions options)
         {
             if (options == null)
@@ -94,34 +147,7 @@ namespace Onvif.Open.Recorder.Configuration
 
             foreach (var camera in options.Cameras ?? new List<CameraOptions>())
             {
-                if (!CameraIdentifier.IsValid(camera.Id))
-                {
-                    errors.Add($"Camera id '{camera.Id}' is invalid: use 1-64 letters, digits, '-' or '_'.");
-                }
-
-                if (string.IsNullOrWhiteSpace(camera.OnvifUrl) == string.IsNullOrWhiteSpace(camera.RtspUrl))
-                {
-                    errors.Add($"Camera '{camera.Id}' needs exactly one of OnvifUrl or RtspUrl.");
-                }
-
-                if (camera.Audio?.Enabled == true && camera.Transport != StreamTransport.Rtsp)
-                {
-                    errors.Add($"Camera '{camera.Id}': Audio needs Transport Rtsp (RTP over UDP carries one track).");
-                }
-
-                var cameraAnalytics = camera.Analytics;
-                if (cameraAnalytics != null && (cameraAnalytics.Enabled || cameraAnalytics.TriggerClasses?.Count > 0))
-                {
-                    if (string.IsNullOrWhiteSpace(camera.OnvifUrl))
-                    {
-                        errors.Add($"Camera '{camera.Id}': Analytics need an ONVIF camera (OnvifUrl).");
-                    }
-
-                    if (cameraAnalytics.MinLikelihood < 0 || cameraAnalytics.MinLikelihood > 1)
-                    {
-                        errors.Add($"Camera '{camera.Id}': Analytics:MinLikelihood must be between 0 and 1.");
-                    }
-                }
+                errors.AddRange(ValidateCamera(camera));
             }
 
             if (options.Archive != null && options.Archive.IsEnabled
@@ -235,7 +261,7 @@ namespace Onvif.Open.Recorder.Configuration
             return options;
         }
 
-        private static ICamera AddCamera(IRecordingManager manager, CameraOptions camera)
+        internal static ICamera AddCamera(IRecordingManager manager, CameraOptions camera)
         {
             var options = ToRecordingOptions(camera);
 
@@ -313,14 +339,14 @@ namespace Onvif.Open.Recorder.Configuration
         internal ConfiguredRecording(IRecordingManager manager, IReadOnlyDictionary<string, (ICamera Camera, string ProfileToken)> onvifCameras)
         {
             Manager = manager;
-            _onvifCameras = onvifCameras;
+            _onvifCameras = new System.Collections.Concurrent.ConcurrentDictionary<string, (ICamera Camera, string ProfileToken)>(onvifCameras, StringComparer.OrdinalIgnoreCase);
         }
 
         #endregion
 
         #region Private Variables
 
-        private readonly IReadOnlyDictionary<string, (ICamera Camera, string ProfileToken)> _onvifCameras;
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (ICamera Camera, string ProfileToken)> _onvifCameras;
 
         #endregion
 
@@ -331,6 +357,28 @@ namespace Onvif.Open.Recorder.Configuration
         #endregion
 
         #region Public Methods
+
+        /// <summary>Starts recording a camera (validated by the caller); disabled cameras are not added.</summary>
+        public void AddCamera(CameraOptions camera)
+        {
+            if (camera == null || !camera.Enabled)
+            {
+                return;
+            }
+
+            var onvifCamera = RecordingConfiguration.AddCamera(Manager, camera);
+            if (onvifCamera != null)
+            {
+                _onvifCameras[camera.Id] = (onvifCamera, string.IsNullOrWhiteSpace(camera.ProfileToken) ? null : camera.ProfileToken);
+            }
+        }
+
+        /// <summary>Stops recording a camera (closing its open segment); false when it was not recorded.</summary>
+        public Task<bool> RemoveCameraAsync(string cameraId, CancellationToken cancellationToken = default)
+        {
+            _onvifCameras.TryRemove(cameraId ?? string.Empty, out _);
+            return Manager.RemoveCameraAsync(cameraId, cancellationToken);
+        }
 
         public Core.Abstract.Interface.Ptz.ICameraPtz GetPtz(string cameraId)
         {

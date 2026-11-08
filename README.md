@@ -306,8 +306,14 @@ var live = new HlsLiveStream();                                           // fee
 
 ### Recorder service
 
-`Onvif.Open.Recorder` runs the recording manager as a service. Configure cameras and policies in
-`Onvif.Open/Onvif.Open.Recorder/appsettings.json` (see `appsettings.Example.json`):
+`Onvif.Open.Recorder` runs the recording manager as a service. Configure policies in
+`Onvif.Open/Onvif.Open.Recorder/appsettings.json` (see `appsettings.Example.json`).
+
+Cameras and plugin assignments live in a settings database (SQLite, `data/onvif-open.db`, see `"Settings"`): on the
+first start, the `Recording:Cameras` and `Plugins:Items` of the configuration file are imported into it, and from then
+on cameras are added, changed and removed through `/api/config/cameras` while the recorder runs. Camera passwords and
+plugin settings are encrypted with ASP.NET Core Data Protection (keys in `data/keys`): back up and protect the whole
+`data` folder.
 
 ```json
 "Recording": {
@@ -360,6 +366,8 @@ Passwords can be supplied through environment variables instead of the file, e.g
 | `GET /api/cameras/{id}/live.m3u8` | Live HLS (2 s segments, packaged only while watched) |
 | `GET /api/cameras/{id}/recordings.m3u8?from=...&to=...` | HLS playback of the recordings (default: the last hour), split at key frames for a fast start |
 | `GET /api/cameras/{id}/clip?from=...&to=...` | Download a clip cut from the recordings (MPEG-TS, across files, local or archived, up to 6 hours) |
+| `GET /api/config/cameras`, `GET .../{id}` | Camera configuration (also disabled cameras); passwords are never returned (`hasPassword`) |
+| `POST /api/config/cameras`, `PUT .../{id}`, `DELETE .../{id}` | Add, change (password omitted: kept, `""`: removed) or remove a camera; applied immediately. Removing a camera assigned to a plugin is refused |
 | `GET /api/cameras/{id}/device-recordings` | Recordings stored on the camera (Profile G) and their time span |
 | `GET /api/cameras/{id}/device-recordings/{token}/export?from=...&to=...` | Download a clip from the camera's own storage as MPEG-TS (up to 6 hours) |
 | `GET /api/cameras/{id}/io` | Relay outputs and digital inputs |
