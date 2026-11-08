@@ -157,8 +157,10 @@ namespace Onvif.Open.Test.Recording.Integration
                     File.WriteAllBytes(Path.Combine(temp.Path, $"{sequence}.ts"), data);
                 }
 
+                // A live playlist has no end, so a player keeps reloading it; decode a finished copy of this window.
+                Assert.DoesNotContain("#EXT-X-ENDLIST", playlist);
                 var path = Path.Combine(temp.Path, "live.m3u8");
-                File.WriteAllText(path, playlist);
+                File.WriteAllText(path, playlist + "#EXT-X-ENDLIST\n");
 
                 Assert.Equal(string.Empty, await RealMedia.DecodeErrorsAsync(path));
                 var probe = await RealMedia.ProbeAsync(path);
