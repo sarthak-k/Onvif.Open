@@ -15,6 +15,8 @@ using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Core.DeviceIo;
 using Onvif.Open.Recorder.Configuration;
 
+using Onvif.Open.Recorder.Security;
+
 namespace Onvif.Open.Recorder.Api
 {
     /// <summary>
@@ -45,7 +47,7 @@ namespace Onvif.Open.Recorder.Api
 
         public static IEndpointRouteBuilder MapDeviceIoApi(this IEndpointRouteBuilder app)
         {
-            var io = app.MapGroup("/api/cameras/{id}/io");
+            var io = app.MapGroup("/api/cameras/{id}/io").RequireAuthorization(Policies.Viewer);
 
             io.MapGet("", (string id, IRecordingManager manager, ConfiguredRecording recording, CancellationToken ct) =>
                 Run(id, manager, recording, async i =>
@@ -79,7 +81,7 @@ namespace Onvif.Open.Recorder.Api
                     }
 
                     return Results.NoContent();
-                }));
+                })).RequireAuthorization(Policies.Operator);
 
             io.MapPut("/relays/{token}/settings", (string id, string token, RelaySettingsRequest request, IRecordingManager manager, ConfiguredRecording recording, CancellationToken ct) =>
                 Run(id, manager, recording, async i =>
@@ -87,7 +89,7 @@ namespace Onvif.Open.Recorder.Api
                     request = request ?? new RelaySettingsRequest();
                     await i.ConfigureRelayAsync(token, request.Mode, TimeSpan.FromMilliseconds(Math.Max(0, request.DelayMs)), request.IdleState, ct);
                     return Results.NoContent();
-                }));
+                })).RequireAuthorization(Policies.Admin);
 
             return app;
         }

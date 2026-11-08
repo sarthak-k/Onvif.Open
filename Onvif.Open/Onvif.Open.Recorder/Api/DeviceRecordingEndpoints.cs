@@ -16,6 +16,8 @@ using Onvif.Open.Core.Replay;
 using Onvif.Open.Recorder.Configuration;
 using Onvif.Open.Recording.Implementation.Export;
 
+using Onvif.Open.Recorder.Security;
+
 namespace Onvif.Open.Recorder.Api
 {
     /// <summary>
@@ -34,7 +36,7 @@ namespace Onvif.Open.Recorder.Api
 
         public static IEndpointRouteBuilder MapDeviceRecordingsApi(this IEndpointRouteBuilder app)
         {
-            var group = app.MapGroup("/api/cameras/{id}/device-recordings");
+            var group = app.MapGroup("/api/cameras/{id}/device-recordings").RequireAuthorization(Policies.Viewer);
 
             group.MapGet("", (string id, IRecordingManager manager, ConfiguredRecording recording, CancellationToken ct) =>
                 Run(id, manager, recording, async r =>

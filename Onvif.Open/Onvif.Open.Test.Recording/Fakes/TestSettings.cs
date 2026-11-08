@@ -30,13 +30,36 @@ namespace Onvif.Open.Test.Recording.Fakes
         public string Keys => Path.Combine(Root, "keys");
         public ISettingsStore Store { get; }
 
-        /// <summary>Points the recorder at this database and these keys.</summary>
+        public const string AdminName = "admin";
+        public const string AdminPassword = "Test-Admin-Pass-1";
+
+        /// <summary>Points the recorder at this database and these keys, with a known first admin.</summary>
         public void Apply(IWebHostBuilder builder)
         {
             builder.UseSetting("Database:Provider", "Sqlite");
             builder.UseSetting("Database:ConnectionString", $"Data Source={Database}");
             builder.UseSetting("DataProtection:KeysDirectory", Keys);
+            builder.UseSetting("Security:InitialAdmin:UserName", AdminName);
+            builder.UseSetting("Security:InitialAdmin:Password", AdminPassword);
+            builder.UseSetting("Security:SignInsPerMinute", "1000");
         }
+
+        /// <summary>Signs <paramref name="client"/> in (as the admin by default) and returns it.</summary>
+        public static System.Net.Http.HttpClient Authenticate(System.Net.Http.HttpClient client, string userName = AdminName, string password = AdminPassword)
+        {
+            client.DefaultRequestHeaders.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", SignInAsync(client, userName, password).GetAwaiter().GetResult().AccessToken);
+            return client;
+        }
+
+        public static async System.Threading.Tasks.Task<Tokens> SignInAsync(System.Net.Http.HttpClient client, string userName = AdminName, string password = AdminPassword)
+        {
+            var response = await System.Net.Http.Json.HttpClientJsonExtensions.PostAsJsonAsync(client, "/api/auth/login", new { userName, password });
+            response.EnsureSuccessStatusCode();
+            var json = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+            return new Tokens(json.GetProperty("accessToken").GetString(), json.GetProperty("refreshToken").GetString());
+        }
+
+        public sealed record Tokens(string AccessToken, string RefreshToken);
 
         public TestSettings Camera(CameraOptions camera)
         {

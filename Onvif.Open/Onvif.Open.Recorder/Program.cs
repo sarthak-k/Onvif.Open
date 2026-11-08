@@ -4,6 +4,7 @@
 // Onvif.Open.Recorder: records every camera configured in appsettings.json ("Recording" section)
 // and exposes a REST API for status, recordings and storage.
 
+using System;
 using System.IO;
 using System.Linq;
 using System.Text.Json.Serialization;
@@ -19,11 +20,16 @@ using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Recorder.Api;
 using Onvif.Open.Recorder.Configuration;
 using Onvif.Open.Recorder.Hosting;
+using Onvif.Open.Recorder.Security;
 using Onvif.Open.Recorder.Store;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<JsonOptions>(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+builder.Services.AddSingleton(TimeProvider.System);
+
+// Users, roles and sign-in; CORS for the web application (Security:AllowedOrigins).
+builder.Services.AddRecorderSecurity(builder.Configuration);
 
 // The settings database (cameras, plugin assignments): SQLite by default, or SQL Server, PostgreSQL, MySQL.
 builder.Services.AddSettingsDatabase(builder.Configuration, builder.Environment.ContentRootPath);
@@ -74,6 +80,8 @@ builder.Services.AddHostedService<PluginHostedService>();
 builder.Services.AddHostedService<RecordingHostedService>();
 
 var app = builder.Build();
+app.UseRecorderSecurity();
+app.MapAuthApi();
 app.MapRecordingApi();
 app.MapCameraConfigurationApi();
 app.MapPluginConfigurationApi();

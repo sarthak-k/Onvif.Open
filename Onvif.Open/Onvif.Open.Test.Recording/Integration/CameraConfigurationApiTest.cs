@@ -32,7 +32,7 @@ namespace Onvif.Open.Test.Recording.Integration
                 .Plugin(new Onvif.Open.Recorder.Store.StoredPlugin { Folder = "Mailer", Enabled = false, Cameras = { "cam1" } });
 
             _factory = Factory();
-            _client = _factory.CreateClient();
+            _client = TestSettings.Authenticate(_factory.CreateClient());
         }
 
         #endregion
@@ -183,7 +183,7 @@ namespace Onvif.Open.Test.Recording.Integration
             _factory.Dispose();
 
             using (var restarted = Factory())
-            using (var client = restarted.CreateClient())
+            using (var client = TestSettings.Authenticate(restarted.CreateClient()))
             {
                 var ids = JsonDocument.Parse(await client.GetStringAsync("/api/config/cameras")).RootElement.EnumerateArray().Select(c => c.GetProperty("id").GetString()).ToList();
                 Assert.Equal(new[] { "cam1", "cam2" }, ids);

@@ -45,7 +45,7 @@ namespace Onvif.Open.Test.Recording.Integration
                 builder.UseSetting("Recording:MaxReconnectDelay", "00:00:00.100");
             });
 
-            _client = _factory.CreateClient();
+            _client = TestSettings.Authenticate(_factory.CreateClient());
         }
 
         #endregion

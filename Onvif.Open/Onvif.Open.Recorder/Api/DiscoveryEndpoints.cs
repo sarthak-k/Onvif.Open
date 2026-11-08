@@ -11,6 +11,8 @@ using Onvif.Open.Core.Abstract.Interface.Discovery;
 using Onvif.Open.Core.Discovery;
 using Onvif.Open.Recorder.Configuration;
 
+using Onvif.Open.Recorder.Security;
+
 namespace Onvif.Open.Recorder.Api
 {
     /// <summary>
@@ -41,7 +43,7 @@ namespace Onvif.Open.Recorder.Api
                         respondedFrom = d.RespondedFrom?.ToString(),
                         configuredCameraId = FindConfiguredCamera(cameras, d)
                     });
-            });
+            }).RequireAuthorization(Policies.Admin);
 
             return app;
         }

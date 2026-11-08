@@ -13,6 +13,8 @@ using Onvif.Open.Recorder.Hosting;
 using Onvif.Open.Recording.Implementation.Export;
 using Onvif.Open.Recording.Implementation.Hls;
 
+using Onvif.Open.Recorder.Security;
+
 namespace Onvif.Open.Recorder.Api
 {
     /// <summary>
@@ -34,7 +36,7 @@ namespace Onvif.Open.Recorder.Api
 
         public static IEndpointRouteBuilder MapPlaybackApi(this IEndpointRouteBuilder app)
         {
-            var camera = app.MapGroup("/api/cameras/{id}");
+            var camera = app.MapGroup("/api/cameras/{id}").RequireAuthorization(Policies.Viewer);
 
             camera.MapGet("/live.m3u8", async (string id, LiveViewService live, HttpContext http, CancellationToken ct) =>
             {
@@ -51,7 +53,7 @@ namespace Onvif.Open.Recorder.Api
                 }
 
                 NoCache(http);
-                return Results.Text(stream.GetPlaylist(sequence => $"live/{sequence.ToString(CultureInfo.InvariantCulture)}.ts"), PlaylistType);
+                return Results.Text(stream.GetPlaylist(sequence => SecurityConfiguration.WithMediaToken(http, $"live/{sequence.ToString(CultureInfo.InvariantCulture)}.ts")), PlaylistType);
             });
 
             camera.MapGet("/live/{sequence:long}.ts", (string id, long sequence, LiveViewService live) =>
@@ -78,7 +80,7 @@ namespace Onvif.Open.Recorder.Api
                     return Results.BadRequest(new { error = "'to' must be after 'from'." });
                 }
 
-                var text = await playlist.GetPlaylistAsync(cameraId, start, end, s => $"segments/{Uri.EscapeDataString(s.FileName)}", ct);
+                var text = await playlist.GetPlaylistAsync(cameraId, start, end, s => SecurityConfiguration.WithMediaToken(http, $"segments/{Uri.EscapeDataString(s.FileName)}"), ct);
                 NoCache(http);
                 return Results.Text(text, PlaylistType);
             });
