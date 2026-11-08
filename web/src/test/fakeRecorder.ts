@@ -33,6 +33,9 @@ export function memoryStorage(initial: string | null = null): TokenStorage & { v
     read() {
       return this.value;
     },
+    isPersistent() {
+      return this.persistent;
+    },
     write(token, persistent) {
       this.value = token;
       this.persistent = persistent;
