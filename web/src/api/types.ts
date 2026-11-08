@@ -103,3 +103,24 @@ export interface ProbeResult {
   capabilities?: { ptz: boolean; imaging: boolean; analytics: boolean; replay: boolean; deviceIo: boolean } | null;
   stream?: { codec?: string | null; audio?: string | null } | null;
 }
+
+export interface Layout {
+  id: string;
+  name: string;
+  /** Grid template id (see features/live/gridTemplates.ts), e.g. "2x2" or "1+5". */
+  grid: string;
+  /** Camera id per tile, in the template's order; null: empty tile. */
+  cameras: (string | null)[];
+  shared: boolean;
+  /** Whether the signed-in user may change or delete it. */
+  editable: boolean;
+  updatedAt: string;
+}
+
+export interface LayoutRequest {
+  name: string;
+  grid: string;
+  cameras: (string | null)[];
+  /** Only read when creating; administrators only. */
+  shared?: boolean;
+}

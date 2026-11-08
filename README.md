@@ -423,6 +423,7 @@ dotnet run --project Onvif.Open/Onvif.Open.Recorder
 | `GET .../ptz/presets`, `PUT/DELETE .../ptz/presets/{name}`, `POST .../ptz/presets/{name}/goto` | Presets |
 | `POST/PUT /api/cameras/{id}/ptz/home` | Go to / set home position |
 | `GET /api/discovery` | ONVIF devices on the network (WS-Discovery), with `configuredCameraId` for those already set up |
+| `GET /api/layouts`, `POST /api/layouts` `{name, grid, cameras, shared}`, `PUT .../{id}`, `DELETE .../{id}` | Live view layouts: each user's own, plus shared ones (managed by administrators); the grid is the web app's template id and `cameras` the camera of each tile |
 | `GET /api/plugins` | Plugin state, delivered/dropped frames, errors |
 | `GET /api/events?cameraId=&type=&source=&since=&severity=&limit=` | Plugin events, each linked to the recording covering it |
 | `GET /health` | Liveness |
@@ -432,7 +433,9 @@ a network: bearer tokens and passwords must not travel in clear text.
 
 ## Web app
 
-`web/` is a React + TypeScript app for the recorder: sign-in, cameras (status for everyone; adding, editing and
+`web/` is a React + TypeScript app for the recorder: sign-in, live view (several cameras in a grid: single, 2 × 2 up to
+5 × 5, or one large tile with smaller ones; arrange cameras by picking or dragging, enlarge one with a double click,
+full screen; layouts saved per user or shared by administrators), cameras (status for everyone; adding, editing and
 removing for administrators, with discovery and a connection test), users and roles, and the own account. It is a
 static site served separately from the recorder:
 

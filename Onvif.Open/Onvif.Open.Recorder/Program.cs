@@ -20,6 +20,7 @@ using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Recorder.Api;
 using Onvif.Open.Recorder.Configuration;
 using Onvif.Open.Recorder.Hosting;
+using Onvif.Open.Recorder.Layouts;
 using Onvif.Open.Recorder.Security;
 using Onvif.Open.Recorder.Store;
 
@@ -57,6 +58,8 @@ builder.Services.AddSingleton(sp =>
             sp.GetRequiredService<ILoggerFactory>())));
 builder.Services.AddSingleton<IRecordingManager>(sp => sp.GetRequiredService<ConfiguredRecording>().Manager);
 builder.Services.AddSingleton<CameraConfigurationService>();
+builder.Services.AddSingleton<ILayoutStore, EfLayoutStore>();
+builder.Services.AddSingleton<LayoutService>();
 builder.Services.AddSingleton(sp => new CameraEventStore(sp.GetRequiredService<IRecordingManager>()));
 builder.Services.AddSingleton(sp => new LiveViewService(
     sp.GetRequiredService<IRecordingManager>(),
@@ -92,6 +95,7 @@ app.MapImagingApi();
 app.MapDeviceIoApi();
 app.MapDeviceRecordingsApi();
 app.MapPlaybackApi();
+app.MapLayoutApi();
 app.Run();
 
 public partial class Program

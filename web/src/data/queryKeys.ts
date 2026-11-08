@@ -9,4 +9,7 @@ export const queryKeys = {
   users: {
     all: ['users'] as const,
   },
+  layouts: {
+    all: ['layouts'] as const,
+  },
 };

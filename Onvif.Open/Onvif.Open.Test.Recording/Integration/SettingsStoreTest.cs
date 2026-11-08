@@ -56,6 +56,15 @@ namespace Onvif.Open.Test.Recording.Integration
             {
                 await db.Cameras.ExecuteDeleteAsync();
                 await db.Plugins.ExecuteDeleteAsync();
+
+                try
+                {
+                    await db.Layouts.ExecuteDeleteAsync();
+                }
+                catch (System.Data.Common.DbException)
+                {
+                    // A database from before layouts: EnsureCreated adds the table.
+                }
             }
         }
 
@@ -146,6 +155,32 @@ namespace Onvif.Open.Test.Recording.Integration
             // Without the keys, the secrets cannot be read.
             var (otherKeys, _) = Open("Sqlite", keys: "other-keys");
             await Assert.ThrowsAnyAsync<System.Security.Cryptography.CryptographicException>(() => otherKeys.GetCamerasAsync());
+        }
+
+        [SkippableTheory]
+        [InlineData("Sqlite")]
+        [InlineData("Postgres")]
+        [InlineData("SqlServer")]
+        [InlineData("MySql")]
+        public async Task TablesAddedSinceShouldBeCreatedInAnExistingDatabase(string provider)
+        {
+            var (store, contexts) = Open(provider);
+            await ClearAsync(contexts);
+            await store.SaveCameraAsync(Camera("kept"));
+
+            // A database from before layouts existed.
+            await using (var db = await contexts.CreateDbContextAsync())
+            {
+                await db.Database.ExecuteSqlRawAsync("DROP TABLE onvif_layouts");
+            }
+
+            await DatabaseConfiguration.EnsureCreatedAsync(contexts);
+
+            var layouts = new EfLayoutStore(contexts);
+            await layouts.SaveAsync(new LayoutRecord { Id = Guid.NewGuid().ToString(), Name = "Lobby", Grid = "2x2", Cameras = "[\"kept\"]", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+
+            Assert.Equal("Lobby", Assert.Single(await layouts.GetVisibleAsync("anyone")).Name);
+            Assert.Equal("kept", Assert.Single(await store.GetCamerasAsync()).Id);
         }
 
         [Fact]

@@ -27,6 +27,7 @@ namespace Onvif.Open.Recorder.Store
         public DbSet<CameraRecord> Cameras => Set<CameraRecord>();
         public DbSet<PluginRecord> Plugins => Set<PluginRecord>();
         public DbSet<UserRecord> Users => Set<UserRecord>();
+        public DbSet<LayoutRecord> Layouts => Set<LayoutRecord>();
 
         #endregion
 
@@ -64,6 +65,18 @@ namespace Onvif.Open.Recorder.Store
                 user.Property(u => u.PasswordHash).IsRequired();
                 user.Property(u => u.Role).HasMaxLength(16).IsRequired();
                 user.Property(u => u.SecurityStamp).HasMaxLength(36).IsRequired();
+            });
+
+            modelBuilder.Entity<LayoutRecord>(layout =>
+            {
+                layout.ToTable("onvif_layouts");
+                layout.HasKey(l => l.Id);
+                layout.Property(l => l.Id).HasMaxLength(36);
+                layout.Property(l => l.OwnerId).HasMaxLength(36);
+                layout.Property(l => l.Name).HasMaxLength(64).IsRequired();
+                layout.Property(l => l.Grid).HasMaxLength(32).IsRequired();
+                layout.Property(l => l.Cameras).IsRequired();
+                layout.HasIndex(l => l.OwnerId);
             });
         }
 
@@ -111,6 +124,29 @@ namespace Onvif.Open.Recorder.Store
         public int FailedLogins { get; set; }
         public DateTime? LockedUntil { get; set; }
         public DateTime? LastLoginAt { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
+    }
+
+    /// <summary>
+    /// A saved live view: which cameras show in which tiles of a grid. Private to its owner, or shared with everyone
+    /// (no owner; managed by administrators).
+    /// </summary>
+    public sealed class LayoutRecord
+    {
+        public string Id { get; set; }
+
+        /// <summary>The user the layout belongs to; null: shared.</summary>
+        public string OwnerId { get; set; }
+
+        public string Name { get; set; }
+
+        /// <summary>The grid template the web application draws, e.g. "2x2" or "1+5".</summary>
+        public string Grid { get; set; }
+
+        /// <summary>The camera of each tile as a JSON array; null for an empty tile.</summary>
+        public string Cameras { get; set; }
+
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
     }
