@@ -32,6 +32,10 @@ builder.Services.AddSingleton(sp =>
             sp.GetRequiredService<ILoggerFactory>())));
 builder.Services.AddSingleton<IRecordingManager>(sp => sp.GetRequiredService<ConfiguredRecording>().Manager);
 builder.Services.AddSingleton(sp => new CameraEventStore(sp.GetRequiredService<IRecordingManager>()));
+builder.Services.AddSingleton(sp => new LiveViewService(
+    sp.GetRequiredService<IRecordingManager>(),
+    sp.GetRequiredService<IConfiguration>().GetSection(LiveViewOptions.SectionName).Get<LiveViewOptions>()));
+builder.Services.AddSingleton(sp => new Onvif.Open.Recording.Implementation.Hls.RecordingPlaylist(sp.GetRequiredService<IRecordingManager>()));
 builder.Services.AddSingleton(sp => DiscoveryConfiguration.CreateDiscovery(
     sp.GetRequiredService<IConfiguration>().GetSection(DiscoveryOptions.SectionName).Get<DiscoveryOptions>()));
 builder.Services.AddSingleton<IPluginHost>(sp => PluginConfiguration.CreateHost(
@@ -56,6 +60,7 @@ app.MapPtzApi();
 app.MapImagingApi();
 app.MapDeviceIoApi();
 app.MapDeviceRecordingsApi();
+app.MapPlaybackApi();
 app.Run();
 
 public partial class Program

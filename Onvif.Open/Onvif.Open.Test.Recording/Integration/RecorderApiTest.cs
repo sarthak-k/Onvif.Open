@@ -34,6 +34,7 @@ namespace Onvif.Open.Test.Recording.Integration
             {
                 builder.UseSetting("Recording:StorageDirectory", _storage.Path);
                 builder.UseSetting("Recording:Retention:MinFreeSpaceGB", "0");
+                builder.UseSetting("LiveView:StartTimeout", "00:00:00.500");
                 builder.UseSetting("Recording:MinReconnectDelay", "00:00:00.050");
                 builder.UseSetting("Recording:MaxReconnectDelay", "00:00:00.100");
                 builder.UseSetting("Recording:Cameras:0:Id", "cam1");
@@ -183,6 +184,39 @@ namespace Onvif.Open.Test.Recording.Integration
             Assert.Equal(HttpStatusCode.NotImplemented, (await _client.GetAsync("/api/cameras/cam1/device-recordings")).StatusCode);
             Assert.Equal(HttpStatusCode.NotImplemented, (await _client.GetAsync("/api/cameras/cam1/device-recordings/Rec_1/export?from=2026-11-05T08:00:00Z&to=2026-11-05T08:01:00Z")).StatusCode);
             Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/cameras/nope/device-recordings")).StatusCode);
+        }
+
+        [Fact]
+        public async Task LiveViewShouldReportCamerasWithoutVideo()
+        {
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, (await _client.GetAsync("/api/cameras/cam1/live.m3u8")).StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/cameras/cam1/live/0.ts")).StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/cameras/nope/live.m3u8")).StatusCode);
+        }
+
+        [Fact]
+        public async Task RecordingsShouldBeListedAsHlsPlaylist()
+        {
+            var response = await _client.GetAsync("/api/cameras/cam1/recordings.m3u8?from=2026-11-01T07:00:00Z&to=2026-11-01T09:00:00Z");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal("application/vnd.apple.mpegurl", response.Content.Headers.ContentType.MediaType);
+
+            // Not a real MPEG-TS file: listed whole, pointing at the download endpoint (relative to the playlist).
+            var playlist = await response.Content.ReadAsStringAsync();
+            Assert.StartsWith("#EXTM3U", playlist);
+            Assert.Contains("segments/" + SegmentName, playlist);
+            Assert.DoesNotContain("BYTERANGE", playlist);
+
+            Assert.Equal(HttpStatusCode.BadRequest, (await _client.GetAsync("/api/cameras/cam1/recordings.m3u8?from=2026-11-01T09:00:00Z&to=2026-11-01T07:00:00Z")).StatusCode);
+        }
+
+        [Fact]
+        public async Task ClipsShouldValidateTheirRange()
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, (await _client.GetAsync("/api/cameras/cam1/clip")).StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, (await _client.GetAsync("/api/cameras/cam1/clip?from=2026-11-01T00:00:00Z&to=2026-11-02T00:00:00Z")).StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/cameras/cam1/clip?from=2026-10-01T00:00:00Z&to=2026-10-01T01:00:00Z")).StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/cameras/nope/clip?from=2026-11-01T07:00:00Z&to=2026-11-01T09:00:00Z")).StatusCode);
         }
 
         [Fact]

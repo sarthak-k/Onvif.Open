@@ -395,9 +395,12 @@ namespace Onvif.Open.Test.Recording.Integration
                 Onvif.Open.Core.Events.CameraEvent Motion(bool on) => new Onvif.Open.Core.Events.CameraEvent(null, "tns1:RuleEngine/CellMotionDetector/Motion", DateTimeOffset.UtcNow, "Changed", null, null,
                     new System.Collections.Generic.Dictionary<string, string> { ["IsMotion"] = on ? "true" : "false" });
 
+                var frames = new ConcurrentQueue<CameraFrame>();
+
                 await using (var manager = Builder(temp).Build())
                 {
                     manager.CameraEventReceived += (_, e) => forwarded.Enqueue(e);
+                    manager.FrameReceived += (_, f) => frames.Enqueue(f);
                     manager.AddCamera("cam1", new FakeStreamSource().Add(stream).ConnectAsync, options, ct => events.Reader.ReadAllAsync(ct));
                     await manager.StartAsync();
 
@@ -417,6 +420,11 @@ namespace Onvif.Open.Test.Recording.Integration
 
                     Assert.Equal(5, manager.GetStatus()[0].FramesRecorded);
                     Assert.Equal(2, forwarded.Count);
+
+                    // Every frame is raised, recorded or not, so analytics and live view also work between triggers.
+                    await Eventually.True(() => frames.Count == 15, "every received frame is raised");
+                    Assert.Equal(5, frames.Count(f => f.IsRecorded));
+                    Assert.Equal(10, frames.Count(f => !f.IsRecorded));
                     Assert.All(forwarded, e => Assert.Equal("cam1", e.CameraId));
                 }
             }
