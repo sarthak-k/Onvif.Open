@@ -26,6 +26,7 @@ namespace Onvif.Open.Test.Recording.Integration
         {
             _storage = new TempDirectory();
             _archive = new TempDirectory();
+            _settings = new TestSettings().Camera(new Onvif.Open.Recorder.Configuration.CameraOptions { Id = "cam1", RtspUrl = "rtsp://127.0.0.1:1/stream" });
 
             var day = Path.Combine(_storage.Path, "cam1", "2026-11-01");
             Directory.CreateDirectory(day);
@@ -33,14 +34,13 @@ namespace Onvif.Open.Test.Recording.Integration
 
             _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             {
+                _settings.Apply(builder);
                 builder.UseSetting("Recording:StorageDirectory", _storage.Path);
                 builder.UseSetting("Recording:Retention:MinFreeSpaceGB", "0");
                 builder.UseSetting("Recording:RetentionInterval", "00:00:00.200");
                 builder.UseSetting("Recording:Archive:Provider", "FileSystem");
                 builder.UseSetting("Recording:Archive:Prefix", "site-a");
                 builder.UseSetting("Recording:Archive:Settings:Path", _archive.Path);
-                builder.UseSetting("Recording:Cameras:0:Id", "cam1");
-                builder.UseSetting("Recording:Cameras:0:RtspUrl", "rtsp://127.0.0.1:1/stream");
             });
 
             _client = _factory.CreateClient();
@@ -54,6 +54,7 @@ namespace Onvif.Open.Test.Recording.Integration
 
         private readonly TempDirectory _storage;
         private readonly TempDirectory _archive;
+        private readonly TestSettings _settings;
         private readonly WebApplicationFactory<Program> _factory;
         private readonly HttpClient _client;
 
@@ -112,6 +113,7 @@ namespace Onvif.Open.Test.Recording.Integration
             _factory.Dispose();
             _storage.Dispose();
             _archive.Dispose();
+            _settings.Dispose();
         }
 
         #endregion

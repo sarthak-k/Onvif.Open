@@ -231,3 +231,6 @@ _Pvt_Extensions
 
 # FAKE - F# Make
 .fake/
+
+# Recorder runtime data: settings database and Data Protection keys
+Onvif.Open/Onvif.Open.Recorder/data/

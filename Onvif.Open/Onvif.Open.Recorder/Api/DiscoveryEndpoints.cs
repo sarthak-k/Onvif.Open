@@ -22,9 +22,10 @@ namespace Onvif.Open.Recorder.Api
 
         public static IEndpointRouteBuilder MapDiscoveryApi(this IEndpointRouteBuilder app)
         {
-            app.MapGet("/api/discovery", async (ICameraDiscovery discovery, RecorderOptions options, CancellationToken ct) =>
+            app.MapGet("/api/discovery", async (ICameraDiscovery discovery, Store.ISettingsStore settings, CancellationToken ct) =>
             {
                 var devices = await discovery.FindAsync(ct);
+                var cameras = await settings.GetCamerasAsync(ct);
 
                 return devices
                     .OrderBy(d => d.DeviceServiceUri?.Host, StringComparer.Ordinal)
@@ -38,7 +39,7 @@ namespace Onvif.Open.Recorder.Api
                         deviceServiceUri = d.DeviceServiceUri?.ToString(),
                         serviceAddresses = d.ServiceAddresses.Select(a => a.ToString()),
                         respondedFrom = d.RespondedFrom?.ToString(),
-                        configuredCameraId = FindConfiguredCamera(options, d)
+                        configuredCameraId = FindConfiguredCamera(cameras, d)
                     });
             });
 
@@ -50,11 +51,11 @@ namespace Onvif.Open.Recorder.Api
         #region Private Methods
 
         /// <summary>The id of an already configured camera with the same host, so a UI can offer to add only new devices.</summary>
-        private static string FindConfiguredCamera(RecorderOptions options, DiscoveredDevice device)
+        private static string FindConfiguredCamera(System.Collections.Generic.IReadOnlyList<CameraOptions> cameras, DiscoveredDevice device)
         {
             var hosts = device.ServiceAddresses.Select(a => a.Host).ToList();
 
-            return options.Cameras.FirstOrDefault(c =>
+            return cameras.FirstOrDefault(c =>
                 Uri.TryCreate(c.OnvifUrl ?? c.RtspUrl ?? string.Empty, UriKind.Absolute, out var configured) &&
                 hosts.Contains(configured.Host, StringComparer.OrdinalIgnoreCase))?.Id;
         }

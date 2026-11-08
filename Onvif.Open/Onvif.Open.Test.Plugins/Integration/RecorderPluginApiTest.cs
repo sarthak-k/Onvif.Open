@@ -8,7 +8,10 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Onvif.Open.Recorder.Configuration;
+using Onvif.Open.Recorder.Store;
 using Onvif.Open.Test.Plugins.Fakes;
+using Onvif.Open.Test.Recording.Fakes;
 using Xunit;
 
 namespace Onvif.Open.Test.Plugins.Integration
@@ -17,20 +20,21 @@ namespace Onvif.Open.Test.Plugins.Integration
     {
         #region Private Methods
 
-        private static WebApplicationFactory<Program> Factory(string storage, string plugins, params (string Key, string Value)[] settings)
+        private static WebApplicationFactory<Program> Factory(TestSettings settings, string storage, string plugins, StoredPlugin plugin = null)
         {
+            settings.Camera(new CameraOptions { Id = "room-1", RtspUrl = "rtsp://127.0.0.1:1/stream" });
+
+            if (plugin != null)
+            {
+                settings.Plugin(plugin);
+            }
+
             return new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             {
+                settings.Apply(builder);
                 builder.UseSetting("Recording:StorageDirectory", storage);
                 builder.UseSetting("Recording:Retention:MinFreeSpaceGB", "0");
-                builder.UseSetting("Recording:Cameras:0:Id", "room-1");
-                builder.UseSetting("Recording:Cameras:0:RtspUrl", "rtsp://127.0.0.1:1/stream");
                 builder.UseSetting("Plugins:Directory", plugins);
-
-                foreach (var (key, value) in settings)
-                {
-                    builder.UseSetting(key, value);
-                }
             });
         }
 
@@ -42,9 +46,9 @@ namespace Onvif.Open.Test.Plugins.Integration
         public async Task ConfiguredPluginShouldBeLoadedAndReported()
         {
             using (var folders = new PluginFolders())
-            using (var factory = Factory(Path.Combine(folders.Root, "recordings"), folders.Root,
-                ($"Plugins:Items:{PluginFolders.SampleFolder}:Cameras:0", "room-1"),
-                ($"Plugins:Items:{PluginFolders.SampleFolder}:Settings:ReportEveryFrames", "10")))
+            using (var settings = new TestSettings())
+            using (var factory = Factory(settings, Path.Combine(folders.Root, "recordings"), folders.Root,
+                new StoredPlugin { Folder = PluginFolders.SampleFolder, Cameras = { "room-1" }, Settings = { ["ReportEveryFrames"] = "10" } }))
             using (var client = factory.CreateClient())
             {
                 var plugins = JsonDocument.Parse(await client.GetStringAsync("/api/plugins")).RootElement;
@@ -67,8 +71,9 @@ namespace Onvif.Open.Test.Plugins.Integration
         public async Task UnlistedOrDisabledPluginsShouldNotBeLoaded()
         {
             using (var folders = new PluginFolders())
-            using (var factory = Factory(Path.Combine(folders.Root, "recordings"), folders.Root,
-                ($"Plugins:Items:{PluginFolders.SampleFolder}:Enabled", "false")))
+            using (var settings = new TestSettings())
+            using (var factory = Factory(settings, Path.Combine(folders.Root, "recordings"), folders.Root,
+                new StoredPlugin { Folder = PluginFolders.SampleFolder, Enabled = false }))
             using (var client = factory.CreateClient())
             {
                 var plugins = JsonDocument.Parse(await client.GetStringAsync("/api/plugins")).RootElement;
@@ -80,8 +85,9 @@ namespace Onvif.Open.Test.Plugins.Integration
         public void PluginForUnknownCameraShouldFailStartup()
         {
             using (var folders = new PluginFolders())
-            using (var factory = Factory(Path.Combine(folders.Root, "recordings"), folders.Root,
-                ($"Plugins:Items:{PluginFolders.SampleFolder}:Cameras:0", "nope")))
+            using (var settings = new TestSettings())
+            using (var factory = Factory(settings, Path.Combine(folders.Root, "recordings"), folders.Root,
+                new StoredPlugin { Folder = PluginFolders.SampleFolder, Cameras = { "nope" } }))
             {
                 var error = Assert.ThrowsAny<Exception>(() => factory.CreateClient());
                 Assert.Contains("unknown camera", error.ToString());

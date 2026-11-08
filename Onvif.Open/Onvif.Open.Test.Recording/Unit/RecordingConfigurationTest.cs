@@ -26,9 +26,9 @@ namespace Onvif.Open.Test.Recording.Unit
             public int FrameCount { get; set; }
         }
 
-        private static RecorderOptions Options(params CameraOptions[] cameras)
+        private static List<CameraOptions> Options(params CameraOptions[] cameras)
         {
-            return new RecorderOptions { Cameras = new List<CameraOptions>(cameras) };
+            return new List<CameraOptions>(cameras);
         }
 
         #endregion
@@ -76,7 +76,7 @@ namespace Onvif.Open.Test.Recording.Unit
         public void InvalidCamerasShouldBeReported(string id, string onvif, string rtsp, string message)
         {
             var error = Assert.Throws<InvalidOperationException>(() =>
-                RecordingConfiguration.Validate(Options(new CameraOptions { Id = id, OnvifUrl = onvif, RtspUrl = rtsp })));
+                RecordingConfiguration.ValidateCameras(Options(new CameraOptions { Id = id, OnvifUrl = onvif, RtspUrl = rtsp })));
 
             Assert.Contains(message, error.Message);
         }
@@ -84,7 +84,7 @@ namespace Onvif.Open.Test.Recording.Unit
         [Fact]
         public void DuplicateCameraIdsShouldBeReported()
         {
-            var error = Assert.Throws<InvalidOperationException>(() => RecordingConfiguration.Validate(Options(
+            var error = Assert.Throws<InvalidOperationException>(() => RecordingConfiguration.ValidateCameras(Options(
                 new CameraOptions { Id = "cam1", RtspUrl = "rtsp://192.168.1.3/a" },
                 new CameraOptions { Id = "CAM1", RtspUrl = "rtsp://192.168.1.3/b" })));
 
@@ -135,21 +135,21 @@ namespace Onvif.Open.Test.Recording.Unit
             var camera = new CameraOptions { Id = "cam", OnvifUrl = "http://192.168.1.10", Audio = new CameraAudioOptions { Enabled = true } };
             Assert.True(RecordingConfiguration.ToRecordingOptions(camera).Audio);
 
-            var options = new RecorderOptions();
-            options.Cameras.Add(new CameraOptions { Id = "udp", OnvifUrl = "http://192.168.1.10", Transport = Onvif.Open.Core.Operations.StreamTransport.Udp, Audio = new CameraAudioOptions { Enabled = true } });
+            var options = new List<CameraOptions>();
+            options.Add(new CameraOptions { Id = "udp", OnvifUrl = "http://192.168.1.10", Transport = Onvif.Open.Core.Operations.StreamTransport.Udp, Audio = new CameraAudioOptions { Enabled = true } });
 
-            var error = Assert.Throws<InvalidOperationException>(() => RecordingConfiguration.Validate(options));
+            var error = Assert.Throws<InvalidOperationException>(() => RecordingConfiguration.ValidateCameras(options));
             Assert.Contains("'udp': Audio needs Transport Rtsp", error.Message);
         }
 
         [Fact]
         public void AnalyticsShouldRequireAnOnvifCameraAndAValidLikelihood()
         {
-            var options = new RecorderOptions();
-            options.Cameras.Add(new CameraOptions { Id = "rtsp", RtspUrl = "rtsp://192.168.1.11/stream", Analytics = new CameraAnalyticsOptions { Enabled = true } });
-            options.Cameras.Add(new CameraOptions { Id = "onvif", OnvifUrl = "http://192.168.1.10", Analytics = new CameraAnalyticsOptions { Enabled = true, MinLikelihood = 1.5 } });
+            var options = new List<CameraOptions>();
+            options.Add(new CameraOptions { Id = "rtsp", RtspUrl = "rtsp://192.168.1.11/stream", Analytics = new CameraAnalyticsOptions { Enabled = true } });
+            options.Add(new CameraOptions { Id = "onvif", OnvifUrl = "http://192.168.1.10", Analytics = new CameraAnalyticsOptions { Enabled = true, MinLikelihood = 1.5 } });
 
-            var error = Assert.Throws<InvalidOperationException>(() => RecordingConfiguration.Validate(options));
+            var error = Assert.Throws<InvalidOperationException>(() => RecordingConfiguration.ValidateCameras(options));
             Assert.Contains("'rtsp': Analytics need an ONVIF camera", error.Message);
             Assert.Contains("'onvif': Analytics:MinLikelihood", error.Message);
         }

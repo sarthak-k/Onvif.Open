@@ -37,6 +37,22 @@ jobs:
       - name: Install ffmpeg
         run: command -v ffmpeg || (sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends ffmpeg)
 
+      # Databases for the settings store tests (Onvif.Open.Test.Recording); the tests skip when they are absent.
+      # Test-only credentials of throwaway containers. SQL Server's database is left for the recorder to create.
+      - name: Start databases
+        run: |
+          docker run -d --name postgres -p 5432:5432 -e POSTGRES_PASSWORD=Onvif-Test-2026 -e POSTGRES_DB=onvif_test postgres:16.4
+          docker run -d --name mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=Onvif-Test-2026 -e MYSQL_DATABASE=onvif_test mysql:8.4.2
+          docker run -d --name mssql -p 1433:1433 -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=Onvif-Test-2026 mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04
+          for attempt in $(seq 1 90); do docker exec postgres pg_isready -U postgres > /dev/null 2>&1 && break; sleep 2; done
+          for attempt in $(seq 1 90); do docker exec mysql mysqladmin ping -uroot -pOnvif-Test-2026 --silent > /dev/null 2>&1 && break; sleep 2; done
+          for attempt in $(seq 1 90); do docker logs mssql 2>&1 | grep -q "SQL Server is now ready for client connections" && break; sleep 2; done
+          {
+            echo "ONVIF_OPEN_TEST_POSTGRES=Host=127.0.0.1;Username=postgres;Password=Onvif-Test-2026;Database=onvif_test"
+            echo "ONVIF_OPEN_TEST_MYSQL=Server=127.0.0.1;User=root;Password=Onvif-Test-2026;Database=onvif_test"
+            echo "ONVIF_OPEN_TEST_SQLSERVER=Server=127.0.0.1;User Id=sa;Password=Onvif-Test-2026;TrustServerCertificate=true;Database=onvif_test"
+          } >> "$GITHUB_ENV"
+
       # Emulators for the cloud storage provider tests (Onvif.Open.Test.Storage); the tests skip when they are absent.
       - name: Start storage emulators
         run: |
