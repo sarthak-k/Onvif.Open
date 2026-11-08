@@ -30,24 +30,19 @@ namespace Onvif.Open.Test.Recording.Integration
             _segmentPath = Path.Combine(day, SegmentName);
             File.WriteAllBytes(_segmentPath, Enumerable.Repeat((byte)0x47, 188 * 3).ToArray());
 
+            _settings = new TestSettings()
+                .Camera(new Onvif.Open.Recorder.Configuration.CameraOptions { Id = "cam1", RtspUrl = "rtsp://admin:secret@127.0.0.1:1/stream", Username = "admin", Password = "secret" })
+                .Camera(new Onvif.Open.Recorder.Configuration.CameraOptions { Id = "disabled", Enabled = false, RtspUrl = "rtsp://127.0.0.1:1/other" })
+                .Camera(new Onvif.Open.Recorder.Configuration.CameraOptions { Id = "lobby", RtspUrl = "rtsp://127.0.0.1:1/lobby", Mode = Onvif.Open.Core.Recording.RecordingMode.Triggered });
+
             _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             {
+                _settings.Apply(builder);
                 builder.UseSetting("Recording:StorageDirectory", _storage.Path);
-                builder.UseSetting("Settings:Database", System.IO.Path.Combine(System.IO.Path.GetTempPath(), "onvif-open-settings", System.Guid.NewGuid().ToString("N"), "settings.db"));
                 builder.UseSetting("Recording:Retention:MinFreeSpaceGB", "0");
                 builder.UseSetting("LiveView:StartTimeout", "00:00:00.500");
                 builder.UseSetting("Recording:MinReconnectDelay", "00:00:00.050");
                 builder.UseSetting("Recording:MaxReconnectDelay", "00:00:00.100");
-                builder.UseSetting("Recording:Cameras:0:Id", "cam1");
-                builder.UseSetting("Recording:Cameras:0:RtspUrl", "rtsp://admin:secret@127.0.0.1:1/stream");
-                builder.UseSetting("Recording:Cameras:0:Username", "admin");
-                builder.UseSetting("Recording:Cameras:0:Password", "secret");
-                builder.UseSetting("Recording:Cameras:2:Id", "lobby");
-                builder.UseSetting("Recording:Cameras:2:RtspUrl", "rtsp://127.0.0.1:1/lobby");
-                builder.UseSetting("Recording:Cameras:2:Mode", "Triggered");
-                builder.UseSetting("Recording:Cameras:1:Id", "disabled");
-                builder.UseSetting("Recording:Cameras:1:Enabled", "false");
-                builder.UseSetting("Recording:Cameras:1:RtspUrl", "rtsp://127.0.0.1:1/other");
             });
 
             _client = _factory.CreateClient();
@@ -60,6 +55,7 @@ namespace Onvif.Open.Test.Recording.Integration
         private const string SegmentName = "cam1_20261101T080000000Z.ts";
 
         private readonly TempDirectory _storage;
+        private readonly TestSettings _settings;
         private readonly string _segmentPath;
         private readonly WebApplicationFactory<Program> _factory;
         private readonly HttpClient _client;
@@ -239,6 +235,7 @@ namespace Onvif.Open.Test.Recording.Integration
             _client.Dispose();
             _factory.Dispose();
             _storage.Dispose();
+            _settings.Dispose();
         }
 
         #endregion

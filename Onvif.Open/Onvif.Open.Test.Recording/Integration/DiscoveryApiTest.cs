@@ -56,6 +56,7 @@ namespace Onvif.Open.Test.Recording.Integration
         public async Task DiscoveryShouldListDevicesAndFlagConfiguredOnes()
         {
             using (var storage = new TempDirectory())
+            using (var settings = new TestSettings().Camera(new Onvif.Open.Recorder.Configuration.CameraOptions { Id = "front", Enabled = false, OnvifUrl = "http://192.168.1.10" }))
             using (var device = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0)))
             using (var stop = new CancellationTokenSource())
             {
@@ -64,12 +65,9 @@ namespace Onvif.Open.Test.Recording.Integration
 
                 using (var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
                 {
+                    settings.Apply(builder);
                     builder.UseSetting("Recording:StorageDirectory", storage.Path);
-                builder.UseSetting("Settings:Database", System.IO.Path.Combine(System.IO.Path.GetTempPath(), "onvif-open-settings", System.Guid.NewGuid().ToString("N"), "settings.db"));
                     builder.UseSetting("Recording:Retention:MinFreeSpaceGB", "0");
-                    builder.UseSetting("Recording:Cameras:0:Id", "front");
-                    builder.UseSetting("Recording:Cameras:0:Enabled", "false");
-                    builder.UseSetting("Recording:Cameras:0:OnvifUrl", "http://192.168.1.10");
                     builder.UseSetting("Discovery:Multicast", "false");
                     builder.UseSetting("Discovery:Timeout", "00:00:00.500");
                     builder.UseSetting("Discovery:Targets:0", $"127.0.0.1:{port}");

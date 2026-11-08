@@ -36,7 +36,6 @@ namespace Onvif.Open.Recorder.Configuration
 
         public TimeSpan MaxReconnectDelay { get; set; } = TimeSpan.FromMinutes(1);
 
-        public List<CameraOptions> Cameras { get; set; } = new List<CameraOptions>();
 
         #endregion
     }
@@ -78,20 +77,6 @@ namespace Onvif.Open.Recorder.Configuration
 
         public TimeSpan StopTimeout { get; set; } = TimeSpan.FromSeconds(10);
 
-        /// <summary>Plugins to load, keyed by plugin folder name. Folders not listed (or disabled) are never loaded.</summary>
-        public Dictionary<string, PluginItemOptions> Items { get; set; } = new Dictionary<string, PluginItemOptions>(StringComparer.OrdinalIgnoreCase);
-
-        #endregion
-    }
-
-    public sealed class PluginItemOptions
-    {
-        #region Public Variables
-
-        public bool Enabled { get; set; } = true;
-
-        /// <summary>Camera ids the plugin may use; all cameras when empty.</summary>
-        public List<string> Cameras { get; set; } = new List<string>();
 
         #endregion
     }

@@ -28,15 +28,14 @@ namespace Onvif.Open.Recorder.Configuration
     {
         #region Public Methods
 
-        public static IRecordingManager CreateManager(RecorderOptions options, ILoggerFactory loggerFactory)
-        {
-            return Create(options, loggerFactory).Manager;
-        }
-
-        /// <summary>Creates the manager and keeps the ONVIF cameras, which also provide snapshots.</summary>
-        public static ConfiguredRecording Create(RecorderOptions options, ILoggerFactory loggerFactory, ArchiveStore archive = null)
+        /// <summary>
+        /// Creates the manager with <paramref name="cameras"/> (from the settings database) and keeps the ONVIF cameras,
+        /// which also provide snapshots, PTZ, imaging, ...
+        /// </summary>
+        public static ConfiguredRecording Create(RecorderOptions options, IReadOnlyList<CameraOptions> cameras, ILoggerFactory loggerFactory, ArchiveStore archive = null)
         {
             Validate(options);
+            ValidateCameras(cameras);
 
             var builder = RecordingManagerBuilder.GetBuilder();
 
@@ -66,7 +65,7 @@ namespace Onvif.Open.Recorder.Configuration
 
             var onvifCameras = new Dictionary<string, (ICamera Camera, string ProfileToken)>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var camera in options.Cameras.Where(c => c.Enabled))
+            foreach (var camera in (cameras ?? Array.Empty<CameraOptions>()).Where(c => c.Enabled))
             {
                 var onvifCamera = AddCamera(manager, camera);
                 if (onvifCamera != null)
@@ -131,6 +130,27 @@ namespace Onvif.Open.Recorder.Configuration
             return errors;
         }
 
+        /// <summary>Throws when a camera is invalid or an id is used twice.</summary>
+        public static void ValidateCameras(IReadOnlyList<CameraOptions> cameras)
+        {
+            var errors = new List<string>();
+
+            foreach (var camera in cameras ?? Array.Empty<CameraOptions>())
+            {
+                errors.AddRange(ValidateCamera(camera));
+            }
+
+            foreach (var duplicate in (cameras ?? Array.Empty<CameraOptions>()).GroupBy(c => c.Id, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1))
+            {
+                errors.Add($"Camera id '{duplicate.Key}' is used more than once.");
+            }
+
+            if (errors.Count > 0)
+            {
+                throw new InvalidOperationException("Invalid cameras:" + Environment.NewLine + string.Join(Environment.NewLine, errors));
+            }
+        }
+
         public static void Validate(RecorderOptions options)
         {
             if (options == null)
@@ -145,20 +165,10 @@ namespace Onvif.Open.Recorder.Configuration
                 errors.Add("Recording:StorageDirectory is required.");
             }
 
-            foreach (var camera in options.Cameras ?? new List<CameraOptions>())
-            {
-                errors.AddRange(ValidateCamera(camera));
-            }
-
             if (options.Archive != null && options.Archive.IsEnabled
                 && (options.Archive.KeepLocalCopyFor < TimeSpan.Zero || options.Archive.MaxConcurrentUploads < 1 || options.Archive.RefreshInterval <= TimeSpan.Zero))
             {
                 errors.Add("Recording:Archive: KeepLocalCopyFor must not be negative, MaxConcurrentUploads must be at least 1 and RefreshInterval positive.");
-            }
-
-            foreach (var duplicate in (options.Cameras ?? new List<CameraOptions>()).GroupBy(c => c.Id, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1))
-            {
-                errors.Add($"Camera id '{duplicate.Key}' is used more than once.");
             }
 
             if (errors.Count > 0)

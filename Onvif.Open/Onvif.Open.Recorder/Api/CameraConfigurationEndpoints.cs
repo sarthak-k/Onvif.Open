@@ -34,11 +34,11 @@ namespace Onvif.Open.Recorder.Api
         {
             var cameras = app.MapGroup("/api/config/cameras");
 
-            cameras.MapGet("", (CameraConfigurationService service) => service.GetCameras().Select(ToDto));
+            cameras.MapGet("", async (CameraConfigurationService service, CancellationToken ct) => (await service.GetCamerasAsync(ct)).Select(ToDto));
 
-            cameras.MapGet("/{id}", (string id, CameraConfigurationService service) =>
+            cameras.MapGet("/{id}", async (string id, CameraConfigurationService service, CancellationToken ct) =>
             {
-                var camera = service.GetCamera(id);
+                var camera = await service.GetCameraAsync(id, ct);
                 return camera == null ? Results.NotFound() : Results.Ok(ToDto(camera));
             });
 

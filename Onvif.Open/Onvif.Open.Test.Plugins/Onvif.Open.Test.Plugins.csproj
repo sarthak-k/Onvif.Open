@@ -25,4 +25,8 @@
     <ProjectReference Include="..\Onvif.Open.Plugins.Sample\Onvif.Open.Plugins.Sample.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\Onvif.Open.Test.Recording\Fakes\TestSettings.cs" Link="Fakes\TestSettings.cs" />
+  </ItemGroup>
+
 </Project>

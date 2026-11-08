@@ -25,8 +25,13 @@ namespace Onvif.Open.Test.Recording.Integration
         public CameraConfigurationApiTest()
         {
             _storage = new TempDirectory();
-            _settings = new TempDirectory();
-            _factory = Factory(firstStart: true);
+
+            // cam1 is assigned to a disabled plugin: deleting it must be refused.
+            _settings = new TestSettings()
+                .Camera(new Onvif.Open.Recorder.Configuration.CameraOptions { Id = "cam1", RtspUrl = "rtsp://127.0.0.1:1/stream", Username = "admin", Password = "secret" })
+                .Plugin(new Onvif.Open.Recorder.Store.StoredPlugin { Folder = "Mailer", Enabled = false, Cameras = { "cam1" } });
+
+            _factory = Factory();
             _client = _factory.CreateClient();
         }
 
@@ -35,7 +40,7 @@ namespace Onvif.Open.Test.Recording.Integration
         #region Private Variables
 
         private readonly TempDirectory _storage;
-        private readonly TempDirectory _settings;
+        private readonly TestSettings _settings;
         private readonly WebApplicationFactory<Program> _factory;
         private readonly HttpClient _client;
 
@@ -43,25 +48,15 @@ namespace Onvif.Open.Test.Recording.Integration
 
         #region Private Methods
 
-        private WebApplicationFactory<Program> Factory(bool firstStart)
+        private WebApplicationFactory<Program> Factory()
         {
             return new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
             {
+                _settings.Apply(builder);
                 builder.UseSetting("Recording:StorageDirectory", _storage.Path);
                 builder.UseSetting("Recording:Retention:MinFreeSpaceGB", "0");
                 builder.UseSetting("Recording:MinReconnectDelay", "00:00:00.050");
                 builder.UseSetting("Recording:MaxReconnectDelay", "00:00:00.100");
-                builder.UseSetting("Settings:Database", Path.Combine(_settings.Path, "settings.db"));
-
-                // Imported on the first start only.
-                builder.UseSetting("Recording:Cameras:0:Id", firstStart ? "cam1" : "from-file");
-                builder.UseSetting("Recording:Cameras:0:RtspUrl", "rtsp://127.0.0.1:1/stream");
-                builder.UseSetting("Recording:Cameras:0:Username", "admin");
-                builder.UseSetting("Recording:Cameras:0:Password", "secret");
-
-                // A disabled plugin assigned to cam1: deleting cam1 must be refused.
-                builder.UseSetting("Plugins:Items:Mailer:Enabled", "false");
-                builder.UseSetting("Plugins:Items:Mailer:Cameras:0", "cam1");
             });
         }
 
@@ -90,7 +85,7 @@ namespace Onvif.Open.Test.Recording.Integration
         #region Public Methods
 
         [Fact]
-        public async Task ImportedCamerasShouldBeListedWithoutPasswords()
+        public async Task CamerasShouldBeListedWithoutPasswords()
         {
             var body = await _client.GetStringAsync("/api/config/cameras");
             var camera = JsonDocument.Parse(body).RootElement.EnumerateArray().Single();
@@ -146,6 +141,28 @@ namespace Onvif.Open.Test.Recording.Integration
         }
 
         [Fact]
+        public async Task PluginAssignmentsShouldBeSavedWithWriteOnlySettings()
+        {
+            var saved = await _client.PutAsJsonAsync("/api/config/plugins/Onvif.Open.Plugins.Sample", new { enabled = true, cameras = new[] { "CAM1" }, settings = new System.Collections.Generic.Dictionary<string, string> { ["Smtp:Password"] = "mail-secret" } });
+            Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+
+            var body = await _client.GetStringAsync("/api/config/plugins");
+            Assert.DoesNotContain("mail-secret", body);
+            var plugin = JsonDocument.Parse(body).RootElement.EnumerateArray().Single(p => p.GetProperty("folder").GetString() == "Onvif.Open.Plugins.Sample");
+            Assert.Equal("Smtp:Password", plugin.GetProperty("settings")[0].GetString());
+            Assert.Equal("cam1", plugin.GetProperty("cameras")[0].GetString(), ignoreCase: true);
+
+            // Settings left out are kept.
+            Assert.Equal(HttpStatusCode.OK, (await _client.PutAsJsonAsync("/api/config/plugins/Onvif.Open.Plugins.Sample", new { enabled = false, cameras = new[] { "cam1" } })).StatusCode);
+            Assert.Equal("mail-secret", (await _settings.Store.GetPluginsAsync()).Single(p => p.Folder == "Onvif.Open.Plugins.Sample").Settings["Smtp:Password"]);
+
+            Assert.Equal(HttpStatusCode.BadRequest, (await _client.PutAsJsonAsync("/api/config/plugins/Sample", new { cameras = new[] { "nope" } })).StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, (await _client.PutAsJsonAsync("/api/config/plugins/a..b", new { })).StatusCode);
+            Assert.Equal(HttpStatusCode.NoContent, (await _client.DeleteAsync("/api/config/plugins/Onvif.Open.Plugins.Sample")).StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound, (await _client.DeleteAsync("/api/config/plugins/Onvif.Open.Plugins.Sample")).StatusCode);
+        }
+
+        [Fact]
         public async Task DisabledCamerasShouldBeKeptButNotRecorded()
         {
             Assert.Equal(HttpStatusCode.Created, (await _client.PostAsJsonAsync("/api/config/cameras", RtspCamera("spare", enabled: false))).StatusCode);
@@ -159,13 +176,13 @@ namespace Onvif.Open.Test.Recording.Integration
         }
 
         [Fact]
-        public async Task ChangesShouldSurviveARestartAndTheFileShouldNotBeImportedAgain()
+        public async Task ChangesShouldSurviveARestart()
         {
             Assert.Equal(HttpStatusCode.Created, (await _client.PostAsJsonAsync("/api/config/cameras", RtspCamera("cam2", password: "p4ss"))).StatusCode);
             _client.Dispose();
             _factory.Dispose();
 
-            using (var restarted = Factory(firstStart: false))
+            using (var restarted = Factory())
             using (var client = restarted.CreateClient())
             {
                 var ids = JsonDocument.Parse(await client.GetStringAsync("/api/config/cameras")).RootElement.EnumerateArray().Select(c => c.GetProperty("id").GetString()).ToList();

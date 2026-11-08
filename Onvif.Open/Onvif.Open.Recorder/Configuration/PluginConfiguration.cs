@@ -72,21 +72,6 @@ namespace Onvif.Open.Recorder.Configuration
             return builder.Build();
         }
 
-        /// <summary>The "Plugins:Items" of the configuration file, for the one-time import into the settings store.</summary>
-        public static IReadOnlyList<Store.StoredPlugin> ReadPlugins(IConfiguration configuration)
-        {
-            var section = configuration.GetSection(PluginsOptions.SectionName);
-            var options = section.Get<PluginsOptions>() ?? new PluginsOptions();
-
-            return options.Items.Select(item => new Store.StoredPlugin
-            {
-                Folder = item.Key,
-                Enabled = item.Value?.Enabled != false,
-                Cameras = item.Value?.Cameras?.Where(c => !string.IsNullOrWhiteSpace(c)).ToList() ?? new List<string>(),
-                Settings = new Dictionary<string, string>(ReadSettings(section.GetSection("Items").GetSection(item.Key).GetSection("Settings")), StringComparer.OrdinalIgnoreCase)
-            }).ToList();
-        }
-
         /// <summary>Flattens a configuration section into "Key" / "Nested:Key" pairs.</summary>
         public static IReadOnlyDictionary<string, string> ReadSettings(IConfigurationSection settings)
         {

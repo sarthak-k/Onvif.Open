@@ -41,14 +41,14 @@ namespace Onvif.Open.Recorder.Configuration
         #region Public Methods
 
         /// <summary>All configured cameras (also disabled ones), with their passwords: never return those to clients.</summary>
-        public IReadOnlyList<CameraOptions> GetCameras()
+        public Task<IReadOnlyList<CameraOptions>> GetCamerasAsync(CancellationToken cancellationToken = default)
         {
-            return _store.GetCameras();
+            return _store.GetCamerasAsync(cancellationToken);
         }
 
-        public CameraOptions GetCamera(string cameraId)
+        public Task<CameraOptions> GetCameraAsync(string cameraId, CancellationToken cancellationToken = default)
         {
-            return _store.GetCamera(cameraId);
+            return _store.GetCameraAsync(cameraId, cancellationToken);
         }
 
         public async Task<ConfigurationResult> AddAsync(CameraOptions camera, CancellationToken cancellationToken = default)
@@ -63,7 +63,7 @@ namespace Onvif.Open.Recorder.Configuration
                     return ConfigurationResult.Invalid(errors);
                 }
 
-                if (_store.GetCamera(camera.Id) != null)
+                if (await _store.GetCameraAsync(camera.Id, cancellationToken).ConfigureAwait(false) != null)
                 {
                     return ConfigurationResult.Conflict($"Camera '{camera.Id}' already exists.");
                 }
@@ -78,7 +78,7 @@ namespace Onvif.Open.Recorder.Configuration
                     return ConfigurationResult.Invalid(new[] { $"Camera '{camera.Id}': {ex.Message}" });
                 }
 
-                _store.SaveCamera(camera);
+                await _store.SaveCameraAsync(camera, cancellationToken).ConfigureAwait(false);
                 _logger.LogInformation("Camera {CameraId} added", camera.Id);
                 return ConfigurationResult.Ok(camera);
             }
@@ -98,7 +98,7 @@ namespace Onvif.Open.Recorder.Configuration
 
             try
             {
-                var existing = _store.GetCamera(cameraId);
+                var existing = await _store.GetCameraAsync(cameraId, cancellationToken).ConfigureAwait(false);
                 if (existing == null)
                 {
                     return ConfigurationResult.NotFound();
@@ -131,7 +131,7 @@ namespace Onvif.Open.Recorder.Configuration
                     return ConfigurationResult.Invalid(new[] { $"Camera '{camera.Id}': {ex.Message}" });
                 }
 
-                _store.SaveCamera(camera);
+                await _store.SaveCameraAsync(camera, cancellationToken).ConfigureAwait(false);
                 _logger.LogInformation("Camera {CameraId} changed", camera.Id);
                 return ConfigurationResult.Ok(camera);
             }
@@ -148,21 +148,21 @@ namespace Onvif.Open.Recorder.Configuration
 
             try
             {
-                var existing = _store.GetCamera(cameraId);
+                var existing = await _store.GetCameraAsync(cameraId, cancellationToken).ConfigureAwait(false);
                 if (existing == null)
                 {
                     return ConfigurationResult.NotFound();
                 }
 
                 // An emptied camera list would mean "all cameras": the plugin must be reassigned explicitly.
-                var plugins = _store.GetPlugins().Where(p => p.Cameras.Contains(existing.Id, StringComparer.OrdinalIgnoreCase)).Select(p => p.Folder).ToList();
+                var plugins = (await _store.GetPluginsAsync(cancellationToken).ConfigureAwait(false)).Where(p => p.Cameras.Contains(existing.Id, StringComparer.OrdinalIgnoreCase)).Select(p => p.Folder).ToList();
                 if (plugins.Count > 0)
                 {
                     return ConfigurationResult.Conflict($"Camera '{existing.Id}' is assigned to plugin(s) {string.Join(", ", plugins)}: remove it from them first.");
                 }
 
                 await _recording.RemoveCameraAsync(existing.Id, cancellationToken).ConfigureAwait(false);
-                _store.DeleteCamera(existing.Id);
+                await _store.DeleteCameraAsync(existing.Id, cancellationToken).ConfigureAwait(false);
                 _logger.LogInformation("Camera {CameraId} removed", existing.Id);
                 return ConfigurationResult.Ok(existing);
             }

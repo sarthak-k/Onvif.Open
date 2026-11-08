@@ -2,39 +2,37 @@
 // 2026-11-08
 
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Onvif.Open.Recorder.Configuration;
 
 namespace Onvif.Open.Recorder.Store
 {
     /// <summary>
-    /// Durable configuration that changes while the recorder runs: cameras and plugin assignments.
-    /// Secrets (camera passwords, plugin settings) are encrypted at rest.
+    /// Durable settings that change while the recorder runs: cameras and plugin assignments.
+    /// Secrets (camera passwords, plugin settings) are encrypted before they reach the database.
     /// </summary>
     public interface ISettingsStore
     {
         #region Public Methods
 
         /// <summary>All cameras in the order they were added, with their passwords.</summary>
-        IReadOnlyList<CameraOptions> GetCameras();
+        Task<IReadOnlyList<CameraOptions>> GetCamerasAsync(CancellationToken cancellationToken = default);
 
-        /// <summary>One camera with its password, or null.</summary>
-        CameraOptions GetCamera(string cameraId);
+        /// <summary>One camera (id case-insensitive) with its password, or null.</summary>
+        Task<CameraOptions> GetCameraAsync(string cameraId, CancellationToken cancellationToken = default);
 
-        /// <summary>Inserts the camera or replaces the one with the same id (case-insensitive).</summary>
-        void SaveCamera(CameraOptions camera);
+        /// <summary>Inserts the camera or replaces the one with the same id; the id keeps its first spelling.</summary>
+        Task SaveCameraAsync(CameraOptions camera, CancellationToken cancellationToken = default);
 
-        bool DeleteCamera(string cameraId);
+        Task<bool> DeleteCameraAsync(string cameraId, CancellationToken cancellationToken = default);
 
         /// <summary>Plugin folders with their options and settings.</summary>
-        IReadOnlyList<StoredPlugin> GetPlugins();
+        Task<IReadOnlyList<StoredPlugin>> GetPluginsAsync(CancellationToken cancellationToken = default);
 
-        void SavePlugin(StoredPlugin plugin);
+        Task SavePluginAsync(StoredPlugin plugin, CancellationToken cancellationToken = default);
 
-        /// <summary>True once the configuration file has been imported (the store is the source of truth from then on).</summary>
-        bool IsImported { get; }
-
-        /// <summary>Saves the cameras and plugins of the configuration file and marks the store as imported, in one transaction.</summary>
-        void Import(IEnumerable<CameraOptions> cameras, IEnumerable<StoredPlugin> plugins);
+        Task<bool> DeletePluginAsync(string folder, CancellationToken cancellationToken = default);
 
         #endregion
     }

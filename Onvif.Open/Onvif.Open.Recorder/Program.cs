@@ -25,26 +25,25 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<JsonOptions>(o => o.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
-// Camera passwords and plugin settings are encrypted with keys stored next to the settings database.
+// The settings database (cameras, plugin assignments): SQLite by default, or SQL Server, PostgreSQL, MySQL.
+builder.Services.AddSettingsDatabase(builder.Configuration, builder.Environment.ContentRootPath);
+
+// Camera passwords and plugin settings are encrypted with keys kept on disk, apart from the database.
 builder.Services.AddDataProtection()
     .SetApplicationName("Onvif.Open.Recorder")
-    .PersistKeysToFileSystem(new DirectoryInfo(SettingsStoreConfiguration.GetKeysDirectory(builder.Configuration, builder.Environment.ContentRootPath)));
-builder.Services.AddSingleton(sp => SettingsStoreConfiguration.Open(
-    sp.GetRequiredService<IConfiguration>(),
-    sp.GetRequiredService<IHostEnvironment>().ContentRootPath,
-    sp.GetRequiredService<IDataProtectionProvider>(),
-    sp.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(SettingsStoreConfiguration).FullName)));
+    .PersistKeysToFileSystem(new DirectoryInfo(Path.GetFullPath(Path.Combine(
+        builder.Environment.ContentRootPath, builder.Configuration["DataProtection:KeysDirectory"] ?? Path.Combine("data", "keys")))));
 
-// Cameras come from the settings store (the configuration file is imported into it on the first start).
+// Read once at startup: the cameras to record and the plugins to load. Later changes go through the API.
+builder.Services.AddSingleton(sp => StartupSettings.LoadAsync(
+    sp.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<RecorderDbContext>>(),
+    sp.GetRequiredService<ISettingsStore>()).GetAwaiter().GetResult());
 builder.Services.AddSingleton(sp =>
-{
-    var options = sp.GetRequiredService<IConfiguration>().GetSection(RecorderOptions.SectionName).Get<RecorderOptions>() ?? new RecorderOptions();
-    options.Cameras = sp.GetRequiredService<ISettingsStore>().GetCameras().ToList();
-    return options;
-});
+    sp.GetRequiredService<IConfiguration>().GetSection(RecorderOptions.SectionName).Get<RecorderOptions>() ?? new RecorderOptions());
 builder.Services.AddSingleton(sp =>
     RecordingConfiguration.Create(
         sp.GetRequiredService<RecorderOptions>(),
+        sp.GetRequiredService<StartupSettings>().Cameras,
         sp.GetRequiredService<ILoggerFactory>(),
         StorageConfiguration.CreateArchive(
             sp.GetRequiredService<IConfiguration>(),
@@ -62,8 +61,8 @@ builder.Services.AddSingleton(sp => DiscoveryConfiguration.CreateDiscovery(
 builder.Services.AddSingleton<IPluginHost>(sp => PluginConfiguration.CreateHost(
     sp.GetRequiredService<IConfiguration>(),
     sp.GetRequiredService<IHostEnvironment>().ContentRootPath,
-    sp.GetRequiredService<ISettingsStore>().GetPlugins(),
-    sp.GetRequiredService<RecorderOptions>().Cameras.Select(c => c.Id),
+    sp.GetRequiredService<StartupSettings>().Plugins,
+    sp.GetRequiredService<StartupSettings>().Cameras.Select(c => c.Id),
     sp.GetRequiredService<ConfiguredRecording>(),
     sp.GetRequiredService<ILoggerFactory>()));
 
@@ -77,6 +76,7 @@ builder.Services.AddHostedService<RecordingHostedService>();
 var app = builder.Build();
 app.MapRecordingApi();
 app.MapCameraConfigurationApi();
+app.MapPluginConfigurationApi();
 app.MapPluginApi();
 app.MapDiscoveryApi();
 app.MapPtzApi();

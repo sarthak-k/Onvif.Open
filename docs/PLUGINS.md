@@ -43,7 +43,7 @@ Every plugin implements `IPlugin` (`Name`, `StartAsync`, `StopAsync`) and any of
 
 `StartAsync` receives an `IPluginContext`:
 
-* `Settings`: your configuration (`Plugins:Items:<folder>:Settings`), keys like `Schedule:Start`.
+* `Settings`: your settings, as saved with `PUT /api/config/plugins/<folder>`, keys like `Schedule:Start`.
 * `Logger`, `TimeProvider`.
 * `Cameras`: status, segments (`OpenSegmentAsync` reads one, whether it is on the local disk or in the archive), `StartRecordingAsync` / `StopRecordingAsync`, `TriggerRecording` (for cameras in
   triggered mode: record around what you detected), `GetPtz` (pan/tilt/zoom, presets), `GetImaging` (brightness, day/night, focus), `GetIo` (relays, digital inputs), `GetDeviceRecordings` (recordings on the camera's SD card: search, replay, export), and `GetSnapshotAsync` (JPEG through ONVIF,
@@ -74,20 +74,16 @@ plugins/
     ...dependencies
 ```
 
-```json
-"Plugins": {
-  "Directory": "plugins",
-  "Items": {
-    "Contoso.ExamProctoring": {
-      "Enabled": true,
-      "Cameras": [ "room-101", "room-102" ],
-      "Settings": { "Threshold": "0.8", "Schedule:Start": "09:00", "Schedule:End": "12:00" }
-    }
-  }
-}
+Then assign the plugin (stored in the settings database, applied when the recorder starts next):
+
+```
+PUT /api/config/plugins/Contoso.ExamProctoring
+{ "enabled": true, "cameras": [ "room-101", "room-102" ],
+  "settings": { "Threshold": "0.8", "Schedule:Start": "09:00", "Schedule:End": "12:00" } }
 ```
 
-Only folders listed and enabled under `Items` are loaded. Each plugin folder gets its own `AssemblyLoadContext`:
+Only folders assigned and enabled this way are loaded; an empty `cameras` list means all cameras. Settings are encrypted
+in the database and never returned by the API. Each plugin folder gets its own `AssemblyLoadContext`:
 your dependencies may use other versions than the host's, except for the assemblies the host already provides
 (Onvif.Open.Core, Microsoft.Extensions.*), which are shared.
 

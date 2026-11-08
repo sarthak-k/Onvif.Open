@@ -306,14 +306,27 @@ var live = new HlsLiveStream();                                           // fee
 
 ### Recorder service
 
-`Onvif.Open.Recorder` runs the recording manager as a service. Configure policies in
-`Onvif.Open/Onvif.Open.Recorder/appsettings.json` (see `appsettings.Example.json`).
+`Onvif.Open.Recorder` runs the recording manager as a service. Recording policies, storage and archive are configured
+in `Onvif.Open/Onvif.Open.Recorder/appsettings.json` (see `appsettings.Example.json`).
 
-Cameras and plugin assignments live in a settings database (SQLite, `data/onvif-open.db`, see `"Settings"`): on the
-first start, the `Recording:Cameras` and `Plugins:Items` of the configuration file are imported into it, and from then
-on cameras are added, changed and removed through `/api/config/cameras` while the recorder runs. Camera passwords and
-plugin settings are encrypted with ASP.NET Core Data Protection (keys in `data/keys`): back up and protect the whole
-`data` folder.
+Cameras and plugin assignments live in a settings database and are managed through the API while the recorder runs
+(`/api/config/cameras`, `/api/config/plugins`). Bring the database you use (EF Core; tables `onvif_cameras` and
+`onvif_plugins` are created on first start, also inside an existing database):
+
+```json
+"Database": { "Provider": "PostgreSql", "ConnectionString": "Host=db;Database=onvif;Username=onvif;Password=..." }
+```
+
+| Provider | Package | Notes |
+| --- | --- | --- |
+| `Sqlite` | Microsoft.EntityFrameworkCore.Sqlite | Default: `Data Source=data/onvif-open.db`, nothing to set up |
+| `SqlServer` | Microsoft.EntityFrameworkCore.SqlServer | SQL Server 2016+, Azure SQL |
+| `PostgreSql` | Npgsql.EntityFrameworkCore.PostgreSQL | |
+| `MySql` | MySql.EntityFrameworkCore (Oracle) | MySQL 8+; MariaDB is not supported by this provider |
+
+Camera passwords and plugin settings are encrypted by the recorder (ASP.NET Core Data Protection, keys in `data/keys`,
+see `DataProtection:KeysDirectory`) before they reach the database: back up the keys with the database, and protect
+both. Keep connection strings with passwords out of the file, e.g. `Database__ConnectionString` as an environment variable.
 
 ```json
 "Recording": {
@@ -323,30 +336,28 @@ plugin settings are encrypted with ASP.NET Core Data Protection (keys in `data/k
   "Archive": {
     "Provider": "Onvif.Open.Storage.S3",          // or "FileSystem" (NAS), "Onvif.Open.Storage.Azure", "Onvif.Open.Storage.Gcs"
     "Settings": { "Bucket": "my-recordings", "Region": "eu-west-1" }
-  },
-  "Cameras": [
-    { "Id": "front-door", "OnvifUrl": "http://192.168.1.10", "Username": "admin", "Password": "..." },
-    { "Id": "garage", "RtspUrl": "rtsp://192.168.1.11/stream1", "Username": "admin", "Password": "...",
-      "Transport": "Udp", "Rotation": { "AlignToClock": "01:00:00" } },
-    { "Id": "parking", "OnvifUrl": "http://192.168.1.12", "Username": "admin", "Password": "...",
-      "Mode": "Triggered", "PreRoll": "00:00:05", "PostRoll": "00:00:10",
-      "Events": { "TriggerTopics": [ "RuleEngine/CellMotionDetector/Motion" ] } },
-    { "Id": "entrance", "OnvifUrl": "http://192.168.1.13", "Username": "admin", "Password": "...",
-      "Mode": "Triggered", "PostRoll": "00:00:10",
-      "Analytics": { "TriggerClasses": [ "Human", "Vehicle" ], "MinLikelihood": 0.6 },
-      "Audio": { "Enabled": true } }
-  ]
+  }
 }
 ```
 
-`Analytics` uses the camera's own object detection (ONVIF Profile M): `TriggerClasses` records while such an object is
-in view (instead of on every motion event), and `"Enabled": true` passes detected objects to plugins.
+A camera, as sent to `POST /api/config/cameras`:
+
+```json
+{ "id": "entrance", "onvifUrl": "http://192.168.1.13", "username": "admin", "password": "...",
+  "mode": "Triggered", "preRoll": "00:00:05", "postRoll": "00:00:10",
+  "events": { "triggerTopics": [ "RuleEngine/CellMotionDetector/Motion" ] },
+  "analytics": { "triggerClasses": [ "Human", "Vehicle" ], "minLikelihood": 0.6 },
+  "audio": { "enabled": true } }
+```
+
+RTSP-only cameras use `rtspUrl` (optionally `"transport": "Udp"`). `analytics` uses the camera's own object detection
+(ONVIF Profile M): `triggerClasses` records while such an object is in view (instead of on every motion event), and
+`"enabled": true` passes detected objects to plugins.
 
 ```
 dotnet run --project Onvif.Open/Onvif.Open.Recorder
 ```
 
-Passwords can be supplied through environment variables instead of the file, e.g. `Recording__Cameras__0__Password`.
 
 | Endpoint | |
 | --- | --- |
@@ -367,6 +378,7 @@ Passwords can be supplied through environment variables instead of the file, e.g
 | `GET /api/cameras/{id}/recordings.m3u8?from=...&to=...` | HLS playback of the recordings (default: the last hour), split at key frames for a fast start |
 | `GET /api/cameras/{id}/clip?from=...&to=...` | Download a clip cut from the recordings (MPEG-TS, across files, local or archived, up to 6 hours) |
 | `GET /api/config/cameras`, `GET .../{id}` | Camera configuration (also disabled cameras); passwords are never returned (`hasPassword`) |
+| `GET /api/config/plugins`, `PUT .../{folder}` `{enabled, cameras, settings}`, `DELETE .../{folder}` | Plugin assignments (applied at the next start); setting values are write-only |
 | `POST /api/config/cameras`, `PUT .../{id}`, `DELETE .../{id}` | Add, change (password omitted: kept, `""`: removed) or remove a camera; applied immediately. Removing a camera assigned to a plugin is refused |
 | `GET /api/cameras/{id}/device-recordings` | Recordings stored on the camera (Profile G) and their time span |
 | `GET /api/cameras/{id}/device-recordings/{token}/export?from=...&to=...` | Download a clip from the camera's own storage as MPEG-TS (up to 6 hours) |
@@ -396,13 +408,12 @@ siren on a detection), and read the camera's own recordings (e.g. footage from b
 and publishes its `PluginEvent`s through the API. Each plugin has its own queues, threads and load context, so a slow or
 crashing plugin never affects recording or other plugins.
 
-```json
-"Plugins": {
-  "Directory": "plugins",
-  "Items": {
-    "Contoso.ExamProctoring": { "Enabled": true, "Cameras": [ "room-101" ], "Settings": { "Threshold": "0.8" } }
-  }
-}
+Plugin folders live in `Plugins:Directory`; which ones run, for which cameras and with which settings is set through
+the API (applied at the next start):
+
+```
+PUT /api/config/plugins/Contoso.ExamProctoring
+{ "enabled": true, "cameras": [ "room-101" ], "settings": { "Threshold": "0.8" } }
 ```
 
 See [docs/PLUGINS.md](docs/PLUGINS.md) for the authoring guide and `Onvif.Open/Onvif.Open.Plugins.Sample` for a template.
