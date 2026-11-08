@@ -411,6 +411,7 @@ dotnet run --project Onvif.Open/Onvif.Open.Recorder
 | `GET /api/auth/me`, `POST /api/auth/password` `{currentPassword, newPassword}` | The own account; a password change returns new tokens |
 | `GET /api/users`, `POST /api/users` `{userName, password, role}`, `PUT .../{id}` `{role, enabled, password}`, `DELETE .../{id}` | Users (admins); an enabled admin always remains |
 | `GET /api/config/plugins`, `PUT .../{folder}` `{enabled, cameras, settings}`, `DELETE .../{folder}` | Plugin assignments (applied at the next start); setting values are write-only |
+| `POST /api/config/cameras/test` | Try a camera before saving it: sign-in, device, media profiles and capabilities (ONVIF) or codec (RTSP). With `id` and no password the stored password is used |
 | `POST /api/config/cameras`, `PUT .../{id}`, `DELETE .../{id}` | Add, change (password omitted: kept, `""`: removed) or remove a camera; applied immediately. Removing a camera assigned to a plugin is refused |
 | `GET /api/cameras/{id}/device-recordings` | Recordings stored on the camera (Profile G) and their time span |
 | `GET /api/cameras/{id}/device-recordings/{token}/export?from=...&to=...` | Download a clip from the camera's own storage as MPEG-TS (up to 6 hours) |
@@ -426,8 +427,34 @@ dotnet run --project Onvif.Open/Onvif.Open.Recorder
 | `GET /api/events?cameraId=&type=&source=&since=&severity=&limit=` | Plugin events, each linked to the recording covering it |
 | `GET /health` | Liveness |
 
-The API has no authentication and listens on `http://localhost:5080` by default. Put it behind a reverse proxy with
-authentication before exposing it on a network.
+The API listens on `http://localhost:5080` by default. Put it behind a reverse proxy with HTTPS before exposing it on
+a network: bearer tokens and passwords must not travel in clear text.
+
+## Web app
+
+`web/` is a React + TypeScript app for the recorder: sign-in, cameras (status for everyone; adding, editing and
+removing for administrators, with discovery and a connection test), users and roles, and the own account. It is a
+static site served separately from the recorder:
+
+```
+cd web
+npm ci
+npm run dev            # http://localhost:5173, proxies /api to the recorder on http://localhost:5080
+npm run build          # dist/: host it on any web server
+```
+
+A deployed app reads `config.json` next to `index.html` for the recorder's URL, so one build fits any recorder:
+
+```json
+{ "apiBaseUrl": "https://recorder.example.com" }
+```
+
+and the recorder must allow the app's origin: `"Security": { "AllowedOrigins": [ "https://cameras.example.com" ] }`.
+The access token stays in memory and is renewed before it expires; the refresh token is kept for the browser tab, or
+in the browser with "Keep me signed in".
+
+`npm test` runs the component tests, `npm run e2e` the end-to-end tests (Playwright) against a real recorder started
+with an empty database.
 
 ## Plugins
 

@@ -19,6 +19,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The camera tests' RTSP server, for the connection test of the configuration API. -->
+    <Compile Include="..\Onvif.Open.Test.Camera\Fakes\FakeRtspServer.cs" Link="Fakes\FakeRtspServer.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Onvif.Open.Models\Onvif.Open.Core.csproj" />
     <ProjectReference Include="..\Onvif.Open.Recorder\Onvif.Open.Recorder.csproj" />
     <ProjectReference Include="..\Onvif.Open.Recording\Onvif.Open.Recording.csproj" />
