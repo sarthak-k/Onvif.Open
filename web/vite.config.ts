@@ -6,6 +6,14 @@ import react from '@vitejs/plugin-react';
 // A deployed app is a static site: public/config.json tells it where the recorder is.
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        // Libraries change less often than the app: their own chunk stays cached across app releases.
+        manualChunks: (id) => (id.includes('node_modules') ? 'vendor' : undefined),
+      },
+    },
+  },
   server: {
     port: 5173,
     proxy: { '/api': process.env.RECORDER_URL ?? 'http://localhost:5080' },

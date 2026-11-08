@@ -453,6 +453,18 @@ and the recorder must allow the app's origin: `"Security": { "AllowedOrigins": [
 The access token stays in memory and is renewed before it expires; the refresh token is kept for the browser tab, or
 in the browser with "Keep me signed in".
 
+The app is layered so each part has one job and depends only on the layer below:
+
+| Folder | Role |
+| --- | --- |
+| `src/api` | HTTP transport, session (token renewal), and the recorder's API as interfaces (`RecorderApi`) |
+| `src/data` | TanStack Query hooks per area (`useCameraStatus`, `useSaveCamera`, ...) and the query-key factory |
+| `src/features` | Pages and their parts per feature (`auth`, `cameras`, `users`); permissions in `auth/permissions.ts` |
+| `src/shared` | Form fields, `useForm`, dialogs, error display |
+| `src/app` | Composition root, route table (lazy-loaded pages, navigation and access derived from it), layout |
+
+A new page is one entry in `app/routes.tsx`; tests and other back ends can pass their own `RecorderApi` to `App`.
+
 `npm test` runs the component tests, `npm run e2e` the end-to-end tests (Playwright) against a real recorder started
 with an empty database.
 

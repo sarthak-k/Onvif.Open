@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { ApiClient } from './api/client';
 import { loadConfig } from './api/config';
-import { App, createQueryClient } from './App';
+import { App, createQueryClient } from './app/App';
 import './styles.css';
 
 const config = await loadConfig();
