@@ -46,6 +46,7 @@ namespace Onvif.Open.Streaming.Implementation.Builder
         private TimeSpan _timeout = DefaultTimeout;
         private int _frameBufferCapacity = DefaultFrameBufferCapacity;
         private DateTimeOffset? _replayFrom;
+        private bool _includeAudio;
         private ReplayOptions _replay;
 
         #endregion
@@ -60,7 +61,7 @@ namespace Onvif.Open.Streaming.Implementation.Builder
                 return Task.FromException<ILiveVideoStream>(new InvalidOperationException("Live Video Stream Builder must have a stream URL to start streaming."));
             }
 
-            return RtspLiveVideoStream.StartAsync(_streamUri, _credential, _transport, _timeout, _frameBufferCapacity, cancellationToken, _replayFrom, _replay);
+            return RtspLiveVideoStream.StartAsync(_streamUri, _credential, _transport, _timeout, _frameBufferCapacity, cancellationToken, _replayFrom, _replay, _includeAudio);
         }
 
         public LiveVideoStreamBuilder SetStreamUri(Uri streamUri)
@@ -139,6 +140,16 @@ namespace Onvif.Open.Streaming.Implementation.Builder
         {
             _replay = (options ?? new ReplayOptions()).Validate(from);
             _replayFrom = from;
+            return this;
+        }
+
+        /// <summary>
+        /// Also receive the audio track (AAC, G.711) when the stream has one; see <see cref="ILiveVideoStream.Audio"/>
+        /// and <see cref="ILiveVideoStream.ReadMediaFramesAsync"/>. Needs <see cref="StreamTransport.Rtsp"/>. Default: off.
+        /// </summary>
+        public LiveVideoStreamBuilder SetAudio(bool includeAudio = true)
+        {
+            _includeAudio = includeAudio;
             return this;
         }
 

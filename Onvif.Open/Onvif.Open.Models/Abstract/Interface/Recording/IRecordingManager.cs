@@ -43,6 +43,12 @@ namespace Onvif.Open.Core.Abstract.Interface.Recording
         /// </summary>
         event EventHandler<AnalyticsFrame> AnalyticsReceived;
 
+        /// <summary>
+        /// Raised for every audio frame of cameras with <see cref="CameraRecordingOptions.Audio"/>, on the camera's
+        /// recording thread: handlers must return quickly.
+        /// </summary>
+        event EventHandler<CameraAudio> AudioReceived;
+
         #endregion
 
         #region Public Methods

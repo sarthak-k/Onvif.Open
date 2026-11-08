@@ -30,6 +30,7 @@ namespace Onvif.Open.Streaming.Implementation.Sdp
         public IReadOnlyList<SdpMediaDescription> Media => _media;
 
         public SdpMediaDescription Video => _media.FirstOrDefault(m => string.Equals(m.MediaType, "video", StringComparison.OrdinalIgnoreCase));
+        public SdpMediaDescription Audio => _media.FirstOrDefault(m => string.Equals(m.MediaType, "audio", StringComparison.OrdinalIgnoreCase));
 
         #endregion
 
@@ -133,6 +134,11 @@ namespace Onvif.Open.Streaming.Implementation.Sdp
                     if (encoding.Length > 1 && int.TryParse(encoding[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var clockRate) && clockRate > 0)
                     {
                         media.ClockRate = clockRate;
+                    }
+
+                    if (encoding.Length > 2 && int.TryParse(encoding[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out var channels) && channels > 0)
+                    {
+                        media.Channels = channels;
                     }
                 }
             }

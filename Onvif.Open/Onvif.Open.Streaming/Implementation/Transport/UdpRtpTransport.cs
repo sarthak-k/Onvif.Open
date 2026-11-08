@@ -55,12 +55,17 @@ namespace Onvif.Open.Streaming.Implementation.Transport
 
         #region Public Methods
 
-        public string GetRequestTransport()
+        public string GetRequestTransport(int track)
         {
+            if (track != 0)
+            {
+                throw new NotSupportedException("Several tracks (e.g. video and audio) need StreamTransport.Rtsp: RTP over UDP carries one track.");
+            }
+
             return $"RTP/AVP;unicast;client_port={ClientRtpPort}-{ClientRtcpPort}";
         }
 
-        public void Configure(string responseTransport)
+        public void Configure(int track, string responseTransport)
         {
             if (TransportHeader.GetParameter(responseTransport, "interleaved") != null)
             {
@@ -80,7 +85,7 @@ namespace Onvif.Open.Streaming.Implementation.Transport
             }
         }
 
-        public async Task ReceiveAsync(RtspConnection connection, Func<byte[], ValueTask> onRtpPacket, CancellationToken cancellationToken)
+        public async Task ReceiveAsync(RtspConnection connection, Func<int, byte[], ValueTask> onRtpPacket, CancellationToken cancellationToken)
         {
             await OpenNatBindingsAsync(cancellationToken).ConfigureAwait(false);
 
@@ -211,7 +216,7 @@ namespace Onvif.Open.Streaming.Implementation.Transport
             }
         }
 
-        private async Task ReceiveRtpAsync(Func<byte[], ValueTask> onRtpPacket, CancellationToken cancellationToken)
+        private async Task ReceiveRtpAsync(Func<int, byte[], ValueTask> onRtpPacket, CancellationToken cancellationToken)
         {
             var ready = new List<byte[]>();
 
@@ -229,7 +234,7 @@ namespace Onvif.Open.Streaming.Implementation.Transport
 
                 foreach (var packet in ready)
                 {
-                    await onRtpPacket(packet).ConfigureAwait(false);
+                    await onRtpPacket(0, packet).ConfigureAwait(false);
                 }
 
                 ready.Clear();

@@ -31,6 +31,22 @@ namespace Onvif.Open.Recording.Implementation.Format
             return new MpegTsMuxer(output ?? throw new ArgumentNullException(nameof(output)), codec);
         }
 
+        /// <summary>AAC, as ADTS (stream type 0x0F): playable by every MPEG-TS player. G.711 has no common MPEG-TS mapping.</summary>
+        public bool SupportsAudio(AudioFormat audio)
+        {
+            return audio != null && audio.Codec == AudioCodec.Aac && AdtsHeader.TryCreate(audio, out _);
+        }
+
+        public ISegmentMuxer CreateMuxer(Stream output, VideoCodec codec, AudioFormat audio)
+        {
+            if (!Supports(codec))
+            {
+                throw new NotSupportedException($"MPEG-TS recording does not support codec '{codec}'.");
+            }
+
+            return new MpegTsMuxer(output ?? throw new ArgumentNullException(nameof(output)), codec, SupportsAudio(audio) ? audio : null);
+        }
+
         #endregion
     }
 }

@@ -21,6 +21,18 @@ namespace Onvif.Open.Recording.Implementation.Format
 
         ISegmentMuxer CreateMuxer(Stream output, VideoCodec codec);
 
+        /// <summary>Whether audio of <paramref name="audio"/>'s format can be written along with the video. Default: no.</summary>
+        bool SupportsAudio(AudioFormat audio)
+        {
+            return false;
+        }
+
+        /// <summary>A muxer for video and, when <paramref name="audio"/> is supported, audio.</summary>
+        ISegmentMuxer CreateMuxer(Stream output, VideoCodec codec, AudioFormat audio)
+        {
+            return CreateMuxer(output, codec);
+        }
+
         #endregion
     }
 
@@ -32,6 +44,11 @@ namespace Onvif.Open.Recording.Implementation.Format
         #region Public Methods
 
         void Write(VideoFrame frame);
+
+        /// <summary>Writes an audio frame (muxers created without audio ignore it).</summary>
+        void Write(AudioFrame frame)
+        {
+        }
 
         #endregion
     }

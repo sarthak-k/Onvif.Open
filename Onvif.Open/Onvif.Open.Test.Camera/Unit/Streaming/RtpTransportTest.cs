@@ -55,7 +55,7 @@ namespace Onvif.Open.Test.Camera.Unit.Streaming
             {
                 Assert.Equal(0, udp.ClientRtpPort % 2);
                 Assert.Equal(udp.ClientRtpPort + 1, udp.ClientRtcpPort);
-                Assert.Equal($"RTP/AVP;unicast;client_port={udp.ClientRtpPort}-{udp.ClientRtcpPort}", udp.GetRequestTransport());
+                Assert.Equal($"RTP/AVP;unicast;client_port={udp.ClientRtpPort}-{udp.ClientRtcpPort}", udp.GetRequestTransport(0));
             }
         }
 
@@ -64,7 +64,7 @@ namespace Onvif.Open.Test.Camera.Unit.Streaming
         {
             using (var udp = new UdpRtpTransport(IPAddress.Loopback))
             {
-                Assert.Throws<NotSupportedException>(() => udp.Configure("RTP/AVP/TCP;unicast;interleaved=0-1"));
+                Assert.Throws<NotSupportedException>(() => udp.Configure(0, "RTP/AVP/TCP;unicast;interleaved=0-1"));
             }
         }
 

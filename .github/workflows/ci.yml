@@ -33,6 +33,10 @@ jobs:
       - name: Build
         run: dotnet build Onvif.Open.sln --configuration Release --no-restore
 
+      # ffmpeg decodes the recorded MPEG-TS (video + AAC) in Onvif.Open.Test.Recording; the test skips without it.
+      - name: Install ffmpeg
+        run: command -v ffmpeg || (sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends ffmpeg)
+
       # Emulators for the cloud storage provider tests (Onvif.Open.Test.Storage); the tests skip when they are absent.
       - name: Start storage emulators
         run: |

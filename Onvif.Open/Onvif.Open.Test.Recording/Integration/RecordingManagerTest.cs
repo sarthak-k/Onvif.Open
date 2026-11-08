@@ -461,6 +461,55 @@ namespace Onvif.Open.Test.Recording.Integration
             }
         }
 
+        [Theory]
+        [InlineData(true)]
+        [InlineData(false)]
+        public async Task AudioShouldBeRecordedWhenAacAndAlwaysForwarded(bool aac)
+        {
+            using (var temp = new TempDirectory())
+            {
+                var format = aac ? FakeLiveVideoStream.Aac16k : new Onvif.Open.Core.Streaming.AudioFormat(Onvif.Open.Core.Streaming.AudioCodec.Pcmu, 8000, 1);
+                var stream = new FakeLiveVideoStream(audio: format);
+                var forwarded = new ConcurrentQueue<CameraAudio>();
+                var completed = new ConcurrentQueue<RecordingSegment>();
+
+                for (var i = 0; i < 10; i++)
+                {
+                    stream.Push(1, gop: 5);
+                    stream.PushAudio(FakeLiveVideoStream.AudioAt(format, (i * 40) + 20));
+                }
+
+                await using (var manager = Builder(temp).SetRotationPolicy(RotationPolicies.When(p => p.FrameCount >= 5)).Build())
+                {
+                    manager.AudioReceived += (_, a) => forwarded.Enqueue(a);
+                    manager.SegmentCompleted += (_, segment) => completed.Enqueue(segment);
+                    manager.AddCamera("cam1", new FakeStreamSource().Add(stream).ConnectAsync, new CameraRecordingOptions { Audio = true });
+                    await manager.StartAsync();
+
+                    await Eventually.True(() => completed.Count >= 1 && forwarded.Count == 10, "a segment is completed and the audio forwarded");
+
+                    var status = manager.GetStatus().Single();
+                    Assert.Equal(format.Codec, status.AudioCodec);
+                    Assert.Equal(aac, status.RecordsAudio);
+                    Assert.All(forwarded, a => Assert.Equal("cam1", a.CameraId));
+                }
+
+                var ts = File.ReadAllBytes(completed.First().Path);
+                var audioPackets = Onvif.Open.Test.Recording.Unit.MpegTsAudioTest.Packets(ts).Count(p => Onvif.Open.Test.Recording.Unit.MpegTsAudioTest.Pid(p) == 0x101);
+                Assert.Equal(aac ? 5 : 0, audioPackets);
+            }
+        }
+
+        [Fact]
+        public void AudioOverUdpShouldBeRejected()
+        {
+            using (var temp = new TempDirectory())
+            {
+                var manager = Builder(temp).Build();
+                Assert.Throws<ArgumentException>(() => manager.AddCamera("cam1", new FakeStreamSource().ConnectAsync, new CameraRecordingOptions { Audio = true, Transport = StreamTransport.Udp }));
+            }
+        }
+
         [Fact]
         public async Task ContinuousModeShouldIgnoreTriggersButForwardEvents()
         {
@@ -555,6 +604,9 @@ namespace Onvif.Open.Test.Recording.Integration
 
             public Task<Onvif.Open.Core.Abstract.Interface.Analytics.IAnalyticsStream> StartAnalyticsStreamAsync(string profileToken = null, StreamTransport transport = StreamTransport.Rtsp, CancellationToken cancellationToken = default)
                 => throw new NotSupportedException();
+
+            public Task<ILiveVideoStream> StartLiveStreamAsync(string profileToken, StreamTransport transport, bool includeAudio, CancellationToken cancellationToken = default)
+                => StartLiveStreamAsync(profileToken, transport, cancellationToken);
 
             public Task<ILiveVideoStream> StartLiveStreamAsync(string profileToken = null, StreamTransport transport = StreamTransport.Rtsp, CancellationToken cancellationToken = default)
             {

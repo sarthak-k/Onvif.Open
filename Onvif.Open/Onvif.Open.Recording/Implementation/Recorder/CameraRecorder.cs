@@ -44,9 +44,12 @@ namespace Onvif.Open.Recording.Implementation.Recorder
             Func<CancellationToken, IAsyncEnumerable<CameraEvent>> eventSource = null,
             Action<CameraEvent> onEvent = null,
             Func<CancellationToken, IAsyncEnumerable<AnalyticsFrame>> analyticsSource = null,
-            Action<AnalyticsFrame> onAnalytics = null)
+            Action<AnalyticsFrame> onAnalytics = null,
+            Action<CameraAudio> onAudio = null)
         {
             recordingOptions = recordingOptions ?? new CameraRecordingOptions();
+            _audioEnabled = recordingOptions.Audio;
+            _onAudio = onAudio;
             _mode = recordingOptions.Mode;
             _trigger = new RecordingTrigger(recordingOptions.PostRoll);
             _preRoll = new PreRollBuffer(recordingOptions.PreRoll);
@@ -124,6 +127,10 @@ namespace Onvif.Open.Recording.Implementation.Recorder
         private string _segmentPath;
         private TimeSpan _segmentFirstTimestamp;
         private VideoCodec _codec;
+        private readonly bool _audioEnabled;
+        private readonly Action<CameraAudio> _onAudio;
+        private AudioFormat _audio;
+        private bool _audioRecordable;
 
         #endregion
 
@@ -246,9 +253,23 @@ namespace Onvif.Open.Recording.Implementation.Recorder
                         }
 
                         _codec = stream.Codec;
+                        _audio = _audioEnabled ? stream.Audio : null;
+                        _audioRecordable = _audio != null && _format.SupportsAudio(_audio);
+
+                        if (_audioEnabled && _audio == null)
+                        {
+                            _logger.LogWarning("Camera {CameraId}: no supported audio track (AAC or G.711) in the stream; recording video only", CameraId);
+                        }
+                        else if (_audio != null && !_audioRecordable)
+                        {
+                            _logger.LogWarning("Camera {CameraId}: {Audio} audio is passed to plugins but cannot be recorded in this format; set the camera's audio encoder to AAC to record it", CameraId, _audio);
+                        }
+
                         Update(s =>
                         {
                             s.Codec = stream.Codec;
+                            s.AudioCodec = _audio?.Codec ?? AudioCodec.Unknown;
+                            s.RecordsAudio = _audioRecordable;
                             s.Transport = stream.Transport;
                             s.StreamUri = stream.StreamUri;
                         });
@@ -316,10 +337,30 @@ namespace Onvif.Open.Recording.Implementation.Recorder
 
                 try
                 {
-                    await foreach (var frame in stream.ReadFramesAsync(watchdog.Token).ConfigureAwait(false))
+                    if (_audio == null)
                     {
-                        watchdog.CancelAfter(_options.StallTimeout);
-                        recorded |= WriteFrame(frame);
+                        await foreach (var frame in stream.ReadFramesAsync(watchdog.Token).ConfigureAwait(false))
+                        {
+                            watchdog.CancelAfter(_options.StallTimeout);
+                            recorded |= WriteFrame(frame);
+                        }
+                    }
+                    else
+                    {
+                        // Video and audio in arrival order; only video counts as a sign of life.
+                        await foreach (var frame in stream.ReadMediaFramesAsync(watchdog.Token).ConfigureAwait(false))
+                        {
+                            switch (frame)
+                            {
+                                case VideoFrame video:
+                                    watchdog.CancelAfter(_options.StallTimeout);
+                                    recorded |= WriteFrame(video);
+                                    break;
+                                case AudioFrame audio:
+                                    WriteAudio(audio);
+                                    break;
+                            }
+                        }
                     }
                 }
                 catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -371,6 +412,25 @@ namespace Onvif.Open.Recording.Implementation.Recorder
             return true;
         }
 
+        /// <summary>
+        /// Audio goes into the open segment (in triggered mode: while triggered; it is not part of the pre-roll), and
+        /// always to the audio observers, so audio analytics also run while nothing is recorded.
+        /// </summary>
+        private void WriteAudio(AudioFrame frame)
+        {
+            var now = _timeProvider.GetUtcNow();
+
+            if (_audioRecordable && _muxer != null)
+            {
+                var before = _segmentStream.Position;
+                _muxer.Write(frame);
+                var written = _segmentStream.Position - before;
+                Update(s => s.BytesRecorded += written);
+            }
+
+            Notify(_onAudio, new CameraAudio(CameraId, frame, now), "audio");
+        }
+
         private bool WriteToSegment(VideoFrame frame, DateTimeOffset now, DateTimeOffset? segmentStart = null)
         {
             if (_muxer == null)
@@ -420,7 +480,7 @@ namespace Onvif.Open.Recording.Implementation.Recorder
         private void OpenSegment(VideoFrame frame, DateTimeOffset now)
         {
             _segmentStream = _storage.CreateSegment(CameraId, now, _format.GetFileExtension(_codec), out _segmentPath);
-            _muxer = _format.CreateMuxer(_segmentStream, _codec);
+            _muxer = _audioRecordable ? _format.CreateMuxer(_segmentStream, _codec, _audio) : _format.CreateMuxer(_segmentStream, _codec);
             _segmentFirstTimestamp = frame.Timestamp;
 
             _progress.CameraId = CameraId;

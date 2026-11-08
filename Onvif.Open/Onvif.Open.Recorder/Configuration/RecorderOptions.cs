@@ -118,6 +118,19 @@ namespace Onvif.Open.Recorder.Configuration
         #endregion
     }
 
+    /// <summary>
+    /// "Audio": the camera's audio track. AAC is recorded with the video; G.711 (the default of most cameras) is passed
+    /// to plugins only, because MPEG-TS has no common G.711 mapping: set the camera's audio encoder to AAC to record it.
+    /// </summary>
+    public sealed class CameraAudioOptions
+    {
+        #region Public Variables
+
+        public bool Enabled { get; set; }
+
+        #endregion
+    }
+
     public sealed class CameraEventOptions
     {
         #region Public Variables
@@ -243,6 +256,8 @@ namespace Onvif.Open.Recorder.Configuration
         public CameraEventOptions Events { get; set; } = new CameraEventOptions();
 
         public CameraAnalyticsOptions Analytics { get; set; } = new CameraAnalyticsOptions();
+
+        public CameraAudioOptions Audio { get; set; } = new CameraAudioOptions();
 
         #endregion
     }

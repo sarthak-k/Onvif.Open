@@ -8,18 +8,23 @@ using Onvif.Open.Core.Streaming;
 namespace Onvif.Open.Recording.Implementation.Format
 {
     /// <summary>
-    /// Minimal MPEG-2 transport stream muxer (ISO/IEC 13818-1) for one H.264/H.265 video track:
-    /// PAT/PMT before every key frame, one PES per access unit with PTS, PCR on the video PID.
+    /// Minimal MPEG-2 transport stream muxer (ISO/IEC 13818-1) for one H.264/H.265 video track and optionally one
+    /// AAC audio track (ADTS): PAT/PMT before every key frame, one PES per access unit with PTS, PCR on the video PID.
     /// </summary>
     internal sealed class MpegTsMuxer : ISegmentMuxer
     {
         #region Constructor
 
-        public MpegTsMuxer(Stream output, VideoCodec codec)
+        public MpegTsMuxer(Stream output, VideoCodec codec, AudioFormat audio = null)
         {
             _output = output;
             _codec = codec;
             _streamType = codec == VideoCodec.H265 ? (byte)0x24 : (byte)0x1B;
+
+            if (audio != null && AdtsHeader.TryCreate(audio, out var adts))
+            {
+                _adts = adts;
+            }
         }
 
         #endregion
@@ -28,6 +33,9 @@ namespace Onvif.Open.Recording.Implementation.Format
 
         internal const int PacketSize = 188;
         internal const int VideoPid = 0x0100;
+        internal const int AudioPid = 0x0101;
+        private const byte AacStreamType = 0x0F;
+        private const int MaxPesLength = 0xFFFF;
         internal const int PmtPid = 0x1000;
 
         /// <summary>Timestamps start at one second so the PCR (which precedes the PTS) never goes negative.</summary>
@@ -44,6 +52,8 @@ namespace Onvif.Open.Recording.Implementation.Format
         private int _patCounter;
         private int _pmtCounter;
         private int _videoCounter;
+        private int _audioCounter;
+        private readonly AdtsHeader _adts;
         private bool _started;
         private TimeSpan _firstTimestamp;
 
@@ -69,6 +79,32 @@ namespace Onvif.Open.Recording.Implementation.Format
             var pts = PtsOffset + Math.Max(0, elapsed.Ticks * 90000 / TimeSpan.TicksPerSecond);
 
             WritePes(frame.Data.Span, pts, frame.IsKeyFrame);
+        }
+
+        public void Write(AudioFrame frame)
+        {
+            // Audio before the first video frame of the segment has no place on its timeline.
+            if (_adts == null || !_started || frame.Data.IsEmpty)
+            {
+                return;
+            }
+
+            var elapsed = frame.Timestamp - _firstTimestamp;
+            if (elapsed < TimeSpan.Zero)
+            {
+                return;
+            }
+
+            var pts = PtsOffset + (elapsed.Ticks * 90000 / TimeSpan.TicksPerSecond);
+            var payload = new byte[AdtsHeader.Size + frame.Data.Length];
+
+            if (!_adts.TryWrite(payload, frame.Data.Length))
+            {
+                return;
+            }
+
+            frame.Data.Span.CopyTo(payload.AsSpan(AdtsHeader.Size));
+            WriteAudioPes(payload, pts);
         }
 
         public void Dispose()
@@ -113,10 +149,14 @@ namespace Onvif.Open.Recording.Implementation.Format
 
         private byte[] BuildPmt()
         {
-            return Section(new byte[]
+            var audio = _adts != null;
+
+            // section_length: 9 bytes of fields after it, 5 per elementary stream, 4 for the CRC.
+            var sectionLength = 9 + (audio ? 10 : 5) + 4;
+            var body = new System.Collections.Generic.List<byte>
             {
                 0x02,                                  // table_id: TS_program_map_section
-                0xB0, 0x12,                            // section_length = 18
+                0xB0, (byte)sectionLength,
                 0x00, 0x01,                            // program_number 1
                 0xC1,
                 0x00, 0x00,
@@ -125,7 +165,14 @@ namespace Onvif.Open.Recording.Implementation.Format
                 _streamType,
                 (byte)(0xE0 | (VideoPid >> 8)), (byte)(VideoPid & 0xFF),
                 0xF0, 0x00                             // ES_info_length 0
-            });
+            };
+
+            if (audio)
+            {
+                body.AddRange(new byte[] { AacStreamType, (byte)(0xE0 | (AudioPid >> 8)), (byte)(AudioPid & 0xFF), 0xF0, 0x00 });
+            }
+
+            return Section(body.ToArray());
         }
 
         private static byte[] Section(byte[] body)
@@ -198,7 +245,51 @@ namespace Onvif.Open.Recording.Implementation.Format
             }
         }
 
+        private void WriteAudioPes(ReadOnlySpan<byte> adtsFrame, long pts)
+        {
+            var header = new byte[14];
+            header[2] = 0x01;
+            header[3] = 0xC0;                          // stream_id: audio stream 0
+
+            // Audio PES packets have an exact length: the 8 header bytes after the length field plus the data.
+            var pesLength = 8 + adtsFrame.Length;
+            if (pesLength > MaxPesLength)
+            {
+                return;
+            }
+
+            header[4] = (byte)(pesLength >> 8);
+            header[5] = (byte)pesLength;
+            header[6] = 0x80;
+            header[7] = 0x80;                          // PTS only
+            header[8] = 0x05;
+            header[9] = (byte)(0x21 | ((pts >> 29) & 0x0E));
+            header[10] = (byte)(pts >> 22);
+            header[11] = (byte)(((pts >> 14) & 0xFE) | 0x01);
+            header[12] = (byte)(pts >> 7);
+            header[13] = (byte)(((pts << 1) & 0xFE) | 0x01);
+
+            var pes = new byte[header.Length + adtsFrame.Length];
+            header.CopyTo(pes, 0);
+            adtsFrame.CopyTo(pes.AsSpan(header.Length));
+
+            var remaining = pes.AsSpan();
+            var first = true;
+
+            while (!remaining.IsEmpty)
+            {
+                var consumed = WritePacket(AudioPid, ref _audioCounter, remaining, first, null, false);
+                remaining = remaining.Slice(consumed);
+                first = false;
+            }
+        }
+
         private int WriteVideoPacket(ReadOnlySpan<byte> payload, bool payloadUnitStart, long? pcr, bool randomAccess)
+        {
+            return WritePacket(VideoPid, ref _videoCounter, payload, payloadUnitStart, pcr, randomAccess);
+        }
+
+        private int WritePacket(int pid, ref int counter, ReadOnlySpan<byte> payload, bool payloadUnitStart, long? pcr, bool randomAccess)
         {
             var adaptationBody = pcr.HasValue || randomAccess ? 1 + (pcr.HasValue ? 6 : 0) : 0;
             var hasAdaptation = adaptationBody > 0;
@@ -219,10 +310,10 @@ namespace Onvif.Open.Recording.Implementation.Format
             }
 
             _packet[0] = 0x47;
-            _packet[1] = (byte)((payloadUnitStart ? 0x40 : 0x00) | (VideoPid >> 8));
-            _packet[2] = (byte)(VideoPid & 0xFF);
-            _packet[3] = (byte)((hasAdaptation ? 0x30 : 0x10) | (_videoCounter & 0x0F));
-            _videoCounter++;
+            _packet[1] = (byte)((payloadUnitStart ? 0x40 : 0x00) | (pid >> 8));
+            _packet[2] = (byte)(pid & 0xFF);
+            _packet[3] = (byte)((hasAdaptation ? 0x30 : 0x10) | (counter & 0x0F));
+            counter++;
 
             var index = 4;
 

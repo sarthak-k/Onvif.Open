@@ -137,6 +137,26 @@ await foreach (var change in io.WatchDigitalInputsAsync())          // from the 
 }
 ```
 
+Audio: request the audio track along with the video. Frames of both arrive in order, on one timeline:
+
+```csharp
+await using (var stream = await camera.InitializeMedia().StartLiveStreamAsync(null, StreamTransport.Rtsp, includeAudio: true))
+{
+    Console.WriteLine(stream.Audio);                                  // e.g. "Aac 16000 Hz, 1 channel(s)", null without audio
+    await foreach (var frame in stream.ReadMediaFramesAsync())
+    {
+        if (frame is AudioFrame audio && audio.Codec == AudioCodec.Pcmu)
+        {
+            short[] pcm = G711.DecodeToPcm16(audio);                   // e.g. for audio analytics
+        }
+    }
+}
+```
+
+AAC (RTP `mpeg4-generic`) is recorded into the MPEG-TS segments with the video. G.711 (PCMU/PCMA, the default of most
+cameras) is delivered to the API and plugins but not recorded, because MPEG-TS has no widely playable G.711 mapping:
+switch the camera's audio encoder to AAC to record sound. Audio needs `StreamTransport.Rtsp`.
+
 What the camera's own analytics detect (ONVIF Profile M metadata): objects with class, confidence and position
 (image fractions, 0..1 from the top left). Uses the first profile with a metadata configuration:
 
@@ -295,7 +315,8 @@ var manager = RecordingManagerBuilder.GetBuilder()
       "Events": { "TriggerTopics": [ "RuleEngine/CellMotionDetector/Motion" ] } },
     { "Id": "entrance", "OnvifUrl": "http://192.168.1.13", "Username": "admin", "Password": "...",
       "Mode": "Triggered", "PostRoll": "00:00:10",
-      "Analytics": { "TriggerClasses": [ "Human", "Vehicle" ], "MinLikelihood": 0.6 } }
+      "Analytics": { "TriggerClasses": [ "Human", "Vehicle" ], "MinLikelihood": 0.6 },
+      "Audio": { "Enabled": true } }
   ]
 }
 ```
@@ -346,7 +367,7 @@ authentication before exposing it on a network.
 Domain features such as exam proctoring or "camera went offline during opening hours" alerts are written as plugins
 against a small SDK in `Onvif.Open.Core`. A plugin implements `IPlugin` plus any of `IFrameProcessor` (video frames),
 `ICameraStateObserver` (online/offline), `ISegmentObserver` (completed files), `ICameraEventObserver` (the cameras'
-own ONVIF events), `IAnalyticsObserver` (objects the cameras detect) and `IPluginEventObserver` (events from other plugins). Plugins can also trigger recording and
+own ONVIF events), `IAnalyticsObserver` (objects the cameras detect), `IAudioProcessor` (camera audio) and `IPluginEventObserver` (events from other plugins). Plugins can also trigger recording and
 control PTZ (e.g. turn to a preset on an alarm), imaging (e.g. day/night on a schedule) and relays (e.g. sound a
 siren on a detection), and read the camera's own recordings (e.g. footage from before an incident). The host gives it settings, a logger, snapshots and recording control for its assigned cameras only,
 and publishes its `PluginEvent`s through the API. Each plugin has its own queues, threads and load context, so a slow or

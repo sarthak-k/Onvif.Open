@@ -23,6 +23,8 @@ namespace Onvif.Open.Core.Plugin
 
         /// <summary>Frames discarded because the plugin could not keep up.</summary>
         public long FramesDropped { get; internal set; }
+        public long AudioDelivered { get; internal set; }
+        public long AudioDropped { get; internal set; }
 
         public long NotificationsDelivered { get; internal set; }
         public long NotificationsDropped { get; internal set; }

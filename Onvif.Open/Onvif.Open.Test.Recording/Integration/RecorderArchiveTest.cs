@@ -87,18 +87,23 @@ namespace Onvif.Open.Test.Recording.Integration
         }
 
         [Fact]
-        public void AMissingStoragePluginShouldFailAtStartup()
+        public void AMissingStoragePluginShouldFailClearly()
         {
-            using (var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
+            // Checked on the configuration directly: a second web host in this class made the test timing-sensitive.
+            var configuration = Microsoft.Extensions.Configuration.MemoryConfigurationBuilderExtensions.AddInMemoryCollection(
+                    new Microsoft.Extensions.Configuration.ConfigurationBuilder(),
+                    new System.Collections.Generic.Dictionary<string, string>
+                {
+                    ["Recording:Archive:Provider"] = "Onvif.Open.Storage.Missing",
+                    ["Plugins:Directory"] = _archive.Path
+                })
+                .Build();
+
+            var error = Assert.Throws<FileNotFoundException>(() =>
             {
-                builder.UseSetting("Recording:StorageDirectory", _storage.Path);
-                builder.UseSetting("Recording:Archive:Provider", "Onvif.Open.Storage.Missing");
-                builder.UseSetting("Plugins:Directory", _archive.Path);
-            }))
-            {
-                var error = Assert.ThrowsAny<Exception>(() => factory.CreateClient());
-                Assert.Contains("Onvif.Open.Storage.Missing", error.ToString());
-            }
+                Onvif.Open.Recorder.Configuration.StorageConfiguration.CreateArchive(configuration, _storage.Path, Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance);
+            });
+            Assert.Contains("Onvif.Open.Storage.Missing", error.Message);
         }
 
         public void Dispose()

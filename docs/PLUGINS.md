@@ -37,6 +37,7 @@ Every plugin implements `IPlugin` (`Name`, `StartAsync`, `StopAsync`) and any of
 | `ICameraStateObserver` | `CameraStateChange`: `Connecting`, `Recording`, `Reconnecting`, `Stopped`, with the error; `IsConnectionLost` / `IsConnectionEstablished` | Offline/tampering alerts |
 | `ISegmentObserver` | Each completed recording file | Upload, indexing, transcoding |
 | `ICameraEventObserver` | The cameras' own ONVIF events (`CameraEvent`: topic, state, source, data) | React to camera motion/tamper/input detections |
+| `IAudioProcessor` | The audio of your cameras (`CameraAudio`: AAC access units or G.711 samples, `G711.DecodeToPcm16`), for cameras with `"Audio": { "Enabled": true }`; also while a triggered camera is not recording | Glass break, gunshot or shouting detection |
 | `IAnalyticsObserver` | Objects the cameras' analytics detect (`AnalyticsFrame`: objects with class, likelihood, bounding box), for cameras with `"Analytics": { "Enabled": true }` | People counting, loitering, "person in a restricted area", without decoding video |
 | `IPluginEventObserver` | Events published by *other* plugins | E-mail/SMS/webhook notifications |
 

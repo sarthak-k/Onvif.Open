@@ -23,6 +23,12 @@ namespace Onvif.Open.Core.Recording
 
         public DateTimeOffset? LastTriggeredAt { get; internal set; }
         public VideoCodec Codec { get; internal set; }
+
+        /// <summary>Audio codec of the stream (Unknown without audio).</summary>
+        public AudioCodec AudioCodec { get; internal set; }
+
+        /// <summary>True when the audio is written into the recordings (AAC in MPEG-TS).</summary>
+        public bool RecordsAudio { get; internal set; }
         public StreamTransport? Transport { get; internal set; }
         public Uri StreamUri { get; internal set; }
 

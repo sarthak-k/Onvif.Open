@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using Onvif.Open.Core.Abstract.Interface.Camera;
 using Onvif.Open.Camera.Implementation;
 using Onvif.Open.Core.Abstract.Interface.Recording;
+using Onvif.Open.Core.Operations;
 using Onvif.Open.Core.Recording;
 using Onvif.Open.Recording.Implementation.Archive;
 using Onvif.Open.Recording.Implementation.Builder;
@@ -101,6 +102,11 @@ namespace Onvif.Open.Recorder.Configuration
                 if (string.IsNullOrWhiteSpace(camera.OnvifUrl) == string.IsNullOrWhiteSpace(camera.RtspUrl))
                 {
                     errors.Add($"Camera '{camera.Id}' needs exactly one of OnvifUrl or RtspUrl.");
+                }
+
+                if (camera.Audio?.Enabled == true && camera.Transport != StreamTransport.Rtsp)
+                {
+                    errors.Add($"Camera '{camera.Id}': Audio needs Transport Rtsp (RTP over UDP carries one track).");
                 }
 
                 var cameraAnalytics = camera.Analytics;
@@ -203,7 +209,8 @@ namespace Onvif.Open.Recorder.Configuration
                 Mode = camera.Mode,
                 PreRoll = camera.PreRoll,
                 PostRoll = camera.PostRoll,
-                SubscribeToEvents = camera.Events?.Enabled != false
+                SubscribeToEvents = camera.Events?.Enabled != false,
+                Audio = camera.Audio?.Enabled == true
             };
 
             var analytics = camera.Analytics ?? new CameraAnalyticsOptions();

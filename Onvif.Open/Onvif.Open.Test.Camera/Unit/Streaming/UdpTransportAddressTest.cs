@@ -31,11 +31,11 @@ namespace Onvif.Open.Test.Camera.Unit.Streaming
             using (var device = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0)))
             using (var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
             {
-                transport.Configure($"RTP/AVP;unicast;client_port={transport.ClientRtpPort}-{transport.ClientRtcpPort};server_port=1-2");
+                transport.Configure(0, $"RTP/AVP;unicast;client_port={transport.ClientRtpPort}-{transport.ClientRtcpPort};server_port=1-2");
                 var received = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
                 var packets = new List<byte[]>();
 
-                var receiving = transport.ReceiveAsync(rtsp.Connection, packet =>
+                var receiving = transport.ReceiveAsync(rtsp.Connection, (track, packet) =>
                 {
                     packets.Add(packet);
                     if (packets.Count == 4)

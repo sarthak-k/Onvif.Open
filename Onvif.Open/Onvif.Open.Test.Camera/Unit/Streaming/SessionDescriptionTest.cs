@@ -46,7 +46,7 @@ namespace Onvif.Open.Test.Camera.Unit.Streaming
         public void ShouldParseInterleavedChannel(string transport, int expected)
         {
             var tcp = new TcpInterleavedRtpTransport();
-            tcp.Configure(transport);
+            tcp.Configure(0, transport);
             Assert.Equal(expected, tcp.RtpChannel);
         }
 
