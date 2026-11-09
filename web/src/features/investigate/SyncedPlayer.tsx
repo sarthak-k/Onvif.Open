@@ -1,10 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { StoredEvent } from '../../api/types';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useEventsBetween } from '../../data/recordings';
-import { categoryLabels, startOf, windowOf } from '../playback/events';
 import type { Span } from '../playback/spans';
 import { Timeline } from '../playback/Timeline';
-import { formatClock } from '../playback/time';
+import { formatClock, formatDuration } from '../playback/time';
 import { CameraTile, type SeekCommand } from './CameraTile';
 
 export interface PlayerCamera {
@@ -12,42 +10,59 @@ export interface PlayerCamera {
   name: string;
 }
 
+/** The marked stretch: in and out points (ms since the epoch). */
+export interface ClipMarks {
+  from: number | null;
+  to: number | null;
+}
+
 interface Props {
-  event: StoredEvent;
-  /** The event's camera first, then the others shown with it. */
+  siteId: string | null;
+  /** The time window shown on the timeline. */
+  from: number;
+  to: number;
+  /** Where playback starts (and "Back to the start" goes); changing it starts over. */
+  start: number;
+  /** What `start` is, for the button: "the event", "the clip". */
+  startLabel: string;
+  /** The first camera leads; at most four. */
   cameras: readonly PlayerCamera[];
+  /** Marks to start with (a saved clip). */
+  initialMarks?: ClipMarks;
+  /** Mark in/out buttons and what to do with the marked clip (e.g. save it to a case); none: no marking. */
+  clipActions?(marks: { from: number; to: number }): ReactNode;
+  footer?: ReactNode;
 }
 
 const rates = [0.5, 1, 2, 4, 8];
 
-/** Seconds of video before the event when it is opened. */
-const openBeforeMs = 5000;
-
 /**
- * The cameras around an event, played in sync: one clock (the event's camera leads), one timeline with what each
- * recorded and the events of the site, shared play, pause, speed and jumps.
+ * Cameras played in sync over a time window: one clock (the first camera leads), one timeline with what each recorded
+ * and the site's events, shared play, pause, speed and jumps, and in/out marks for a clip.
  */
-export function SyncedPlayer({ event, cameras }: Props) {
-  const { from, to } = useMemo(() => windowOf(event), [event]);
-  const [seek, setSeek] = useState<SeekCommand>(() => ({ time: startOf(event) - openBeforeMs, n: 0 }));
+export function SyncedPlayer({ siteId, from, to, start, startLabel, cameras, initialMarks, clipActions, footer }: Props) {
+  const [seek, setSeek] = useState<SeekCommand>(() => ({ time: start, n: 0 }));
   const [playing, setPlaying] = useState(true);
   const [rate, setRate] = useState(1);
   const [position, setPosition] = useState<number | null>(null);
   const [spans, setSpans] = useState<Record<string, Span[]>>({});
-  const events = useEventsBetween(event.siteId, from, to);
+  const [marks, setMarks] = useState<ClipMarks>(initialMarks ?? { from: null, to: null });
+  const events = useEventsBetween(siteId, from, to);
 
-  // Another event: start over at it.
+  // Somewhere else: start over there.
   useEffect(() => {
-    setSeek((s) => ({ time: startOf(event) - openBeforeMs, n: s.n + 1 }));
+    setSeek((s) => ({ time: start, n: s.n + 1 }));
     setPlaying(true);
     setPosition(null);
-  }, [event]);
+    setMarks(initialMarks ?? { from: null, to: null });
+  }, [start]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const goTo = useCallback((time: number) => setSeek((s) => ({ time: Math.min(Math.max(time, from), to), n: s.n + 1 })), [from, to]);
   const onSpans = useCallback((cameraId: string, value: Span[]) => setSpans((all) => (all[cameraId] === value ? all : { ...all, [cameraId]: value })), []);
   const shown = new Set(cameras.map((c) => c.cameraId));
   const timelineEvents = (events.data ?? []).filter((e) => e.cameraId && shown.has(e.cameraId));
   const now = position ?? seek.time;
+  const marked = marks.from !== null && marks.to !== null && marks.to > marks.from ? { from: marks.from, to: marks.to } : null;
 
   return (
     <section className="stack" aria-label="Playback">
@@ -90,8 +105,8 @@ export function SyncedPlayer({ event, cameras }: Props) {
             ))}
           </select>
         </label>
-        <button type="button" onClick={() => goTo(startOf(event) - openBeforeMs)}>
-          Back to the event
+        <button type="button" onClick={() => goTo(start)}>
+          Back to {startLabel}
         </button>
         <span className="playback-clock" aria-live="polite">
           {formatClock(now)}
@@ -104,11 +119,29 @@ export function SyncedPlayer({ event, cameras }: Props) {
         rows={cameras.map((c) => ({ id: c.cameraId, label: c.name, spans: spans[c.cameraId] ?? [] }))}
         events={timelineEvents}
         position={position}
+        clip={marks}
         onSeek={goTo}
       />
-      <p className="muted small">
-        {categoryLabels[event.category]} at {formatClock(startOf(event))}: the video starts 5 s before it. Click the timeline or an event mark to move all cameras there.
-      </p>
+
+      {clipActions && (
+        <div className="toolbar clip-marks" aria-label="Clip">
+          <button type="button" onClick={() => setMarks((m) => ({ from: now, to: m.to !== null && m.to > now ? m.to : null }))}>
+            Mark in
+          </button>
+          <button type="button" onClick={() => setMarks((m) => ({ from: m.from !== null && m.from < now ? m.from : null, to: now }))}>
+            Mark out
+          </button>
+          <span className="muted small">
+            {marked
+              ? `Clip ${formatClock(marked.from)} – ${formatClock(marked.to)} (${formatDuration(marked.to - marked.from)})`
+              : marks.from !== null
+                ? `In at ${formatClock(marks.from)}: now mark the end`
+                : 'Mark where the clip starts and ends.'}
+          </span>
+          {marked && clipActions(marked)}
+        </div>
+      )}
+      {footer}
     </section>
   );
 }

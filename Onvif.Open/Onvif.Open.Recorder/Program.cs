@@ -68,6 +68,11 @@ builder.Services.AddSingleton<GatewayService>();
 builder.Services.AddSingleton<GatewayHeartbeat>();
 builder.Services.AddSingleton<GatewayPairing>();
 
+// Cases: clips of video with notes; the video of open cases is kept.
+builder.Services.AddSingleton<Onvif.Open.Recorder.Cases.ICaseStore, Onvif.Open.Recorder.Cases.EfCaseStore>();
+builder.Services.AddSingleton<Onvif.Open.Recorder.Cases.CaseHolds>();
+builder.Services.AddSingleton<Onvif.Open.Recorder.Cases.CaseService>();
+
 // With "ControlPlane:Url" this recorder is also a gateway of another one: it pairs with a code, then reports there.
 var controlPlane = builder.Configuration["ControlPlane:Url"];
 if (!string.IsNullOrWhiteSpace(controlPlane))
@@ -94,7 +99,8 @@ builder.Services.AddSingleton(sp => StartupSettings.LoadAsync(
     sp.GetRequiredService<ISettingsStore>(),
     sp.GetRequiredService<ITenancyStore>(),
     sp.GetRequiredService<CameraDirectory>(),
-    sp.GetRequiredService<GatewayService>()).GetAwaiter().GetResult());
+    sp.GetRequiredService<GatewayService>(),
+    sp.GetRequiredService<Onvif.Open.Recorder.Cases.CaseHolds>()).GetAwaiter().GetResult());
 builder.Services.AddSingleton(sp =>
     sp.GetRequiredService<IConfiguration>().GetSection(RecorderOptions.SectionName).Get<RecorderOptions>() ?? new RecorderOptions());
 builder.Services.AddSingleton(sp =>
@@ -163,6 +169,7 @@ app.MapLayoutApi();
 app.MapEventApi();
 app.MapAuditApi();
 app.MapGatewayApi();
+app.MapCaseApi();
 app.Run();
 
 public partial class Program

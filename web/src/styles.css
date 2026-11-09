@@ -234,3 +234,6 @@ details[open] > summary { margin-bottom: 8px; }
 .timeline-playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--text); }
 .timeline-ticks { position: relative; height: 16px; margin-left: 110px; font-size: 0.75rem; color: var(--muted); }
 .timeline-ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.timeline-clip { position: absolute; top: 0; bottom: 0; background: var(--accent); opacity: 0.35; pointer-events: none; }
+.clip-marks { align-items: center; }
+.clip-note { margin: 0; white-space: pre-wrap; }

@@ -33,7 +33,10 @@ describe('live view', () => {
 
     expect(await screen.findByRole('region', { name: 'Tile 1: back' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'Tile 4: empty' })).toBeInTheDocument();
-    expect(live().map((p) => p.url)).toEqual(['http://localhost:3000/api/cameras/back/live.m3u8', 'http://localhost:3000/api/cameras/front/live.m3u8', 'http://localhost:3000/api/cameras/yard/live.m3u8']);
+    // Each tile starts its player once it is laid out: wait for all of them.
+    await vi.waitFor(() =>
+      expect(live().map((p) => p.url)).toEqual(['http://localhost:3000/api/cameras/back/live.m3u8', 'http://localhost:3000/api/cameras/front/live.m3u8', 'http://localhost:3000/api/cameras/yard/live.m3u8']),
+    );
     expect(live().every((p) => p.token === 'access-1')).toBe(true);
 
     // The player reports its state; errors are shown on the tile.

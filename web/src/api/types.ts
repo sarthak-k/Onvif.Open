@@ -318,3 +318,48 @@ export interface EventQuery {
   before?: string;
   limit?: number;
 }
+
+export type CaseStatus = 'Open' | 'Closed';
+
+/** A bookmark in a case: a stretch of time on cameras of one site, with a note. */
+export interface CaseClip {
+  id: string;
+  siteId: string | null;
+  cameraIds: string[];
+  cameras: { id: string; name: string }[];
+  from: string;
+  to: string;
+  note: string | null;
+  eventId: string | null;
+  createdBy: string | null;
+  createdAt: string;
+}
+
+/** An incident being looked into; the video of its clips is kept while it is open. */
+export interface Case {
+  id: string;
+  name: string;
+  description: string | null;
+  status: CaseStatus;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  closedAt: string | null;
+  clipCount: number | null;
+  /** Only when reading one case: the clips of sites the user sees. */
+  clips: CaseClip[] | null;
+}
+
+export interface CaseRequest {
+  name?: string;
+  description?: string | null;
+  status?: CaseStatus;
+}
+
+export interface ClipRequest {
+  cameraIds: string[];
+  from: string;
+  to: string;
+  note: string | null;
+  eventId: string | null;
+}

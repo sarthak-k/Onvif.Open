@@ -16,6 +16,8 @@ interface Props {
   rows: readonly TimelineRow[];
   events: readonly StoredEvent[];
   position: number | null;
+  /** A marked stretch (in/out), shown over the bars. */
+  clip?: { from: number | null; to: number | null };
   onSeek(time: number): void;
 }
 
@@ -31,7 +33,7 @@ function tickStep(duration: number): number {
  * The time window as one bar per camera with what it recorded, the events as marks above, and the playhead. Click a
  * bar (or use the arrow keys: 10 s, with Shift 1 min) to move all cameras there.
  */
-export const Timeline = memo(function Timeline({ start, end, rows, events, position, onSeek }: Props) {
+export const Timeline = memo(function Timeline({ start, end, rows, events, position, clip, onSeek }: Props) {
   const duration = Math.max(end - start, 1);
   const clamp = (time: number) => Math.min(Math.max(time, start), end);
   const percent = (time: number) => `${((clamp(time) - start) / duration) * 100}%`;
@@ -96,6 +98,9 @@ export const Timeline = memo(function Timeline({ start, end, rows, events, posit
               .map((span) => (
                 <div key={span.start} className="timeline-span" style={{ left: percent(span.start), width: width(span.start, span.end) }} />
               ))}
+            {clip?.from != null && clip.to != null && clip.to > clip.from && (
+              <div className="timeline-clip" data-testid={`clip-${row.id}`} style={{ left: percent(clip.from), width: width(clip.from, clip.to) }} />
+            )}
             {position !== null && position >= start && position <= end && <div className="timeline-playhead" style={{ left: percent(position) }} />}
           </div>
         </div>

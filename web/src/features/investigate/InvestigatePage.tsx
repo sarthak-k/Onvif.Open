@@ -6,8 +6,11 @@ import { useEventSearch } from '../../data/recordings';
 import { useSites } from '../../data/tenancy';
 import { SelectField } from '../../shared/form/fields';
 import { ErrorMessage } from '../../shared/ui/ErrorMessage';
-import { categoryLabels, categoryOptions, endOf, severityClass, startOf } from '../playback/events';
-import { formatDuration } from '../playback/time';
+import { useUser } from '../auth/AuthContext';
+import { can } from '../auth/permissions';
+import { categoryLabels, categoryOptions, endOf, severityClass, startOf, windowOf } from '../playback/events';
+import { formatClock, formatDuration } from '../playback/time';
+import { SaveClipButton } from './SaveClipButton';
 import { SyncedPlayer, type PlayerCamera } from './SyncedPlayer';
 
 const ranges = [
@@ -19,6 +22,9 @@ const ranges = [
 
 /** At most this many cameras play together. */
 const maxCameras = 4;
+
+/** Seconds of video before the event when it is opened. */
+const openBeforeMs = 5000;
 
 function formatWhen(time: number): string {
   return new Date(time).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -37,6 +43,9 @@ export default function InvestigatePage() {
   const [refreshed, setRefreshed] = useState(() => Date.now());
   const [selected, setSelected] = useState<StoredEvent | null>(null);
   const [extra, setExtra] = useState<string[]>([]);
+  const canSave = can(useUser(), 'cameras.control');
+  // Fixed when the event is opened: an event still going on would otherwise move the window at every render.
+  const shownWindow = useMemo(() => (selected ? windowOf(selected) : null), [selected]);
 
   const sites = useSites();
   const statuses = useCameraStatus();
@@ -139,7 +148,21 @@ export default function InvestigatePage() {
                   ))}
                 </fieldset>
               )}
-              <SyncedPlayer event={selected} cameras={playing} />
+              <SyncedPlayer
+                siteId={selected.siteId}
+                from={shownWindow!.from}
+                to={shownWindow!.to}
+                start={startOf(selected) - openBeforeMs}
+                startLabel="the event"
+                cameras={playing}
+                clipActions={canSave ? (marks) => <SaveClipButton cameraIds={playing.map((c) => c.cameraId)} marks={marks} eventId={selected.id} /> : undefined}
+                footer={
+                  <p className="muted small">
+                    {categoryLabels[selected.category]} at {formatClock(startOf(selected))}: the video starts 5 s before it. Click the timeline or an event mark to
+                    move all cameras there.
+                  </p>
+                }
+              />
             </>
           )}
         </div>

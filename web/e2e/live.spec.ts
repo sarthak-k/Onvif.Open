@@ -70,6 +70,21 @@ test('live view plays through the recorder and keeps saved layouts', async ({ pa
   await page.getByRole('checkbox', { name: 'yard' }).check();
   await expect(page.getByRole('figure', { name: 'yard' })).toBeVisible();
 
+  // Ten seconds of it go into a new case, kept with a note.
+  await page.getByRole('button', { name: 'Mark in' }).click();
+  await page.getByRole('button', { name: 'Forward 10 seconds' }).click();
+  await page.getByRole('button', { name: 'Mark out' }).click();
+  await page.getByRole('button', { name: 'Save to case' }).click();
+  await page.getByRole('dialog').getByLabel('Name of the new case').fill('Gate went dark');
+  await page.getByRole('dialog').getByLabel('Note').fill('Both cameras lost');
+  await page.getByRole('dialog').getByRole('button', { name: 'Save' }).click();
+  await page.getByRole('status').getByRole('link', { name: 'Gate went dark' }).click();
+  await expect(page.getByRole('heading', { name: /Gate went dark/ })).toBeVisible();
+  await expect(page.getByText('Both cameras lost')).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Clips' })).toContainText('gate, yard');
+  await page.getByRole('button', { name: 'Close case' }).click();
+  await expect(page.getByRole('button', { name: 'Reopen case' })).toBeVisible();
+
   // Clean up for the other tests: they expect no cameras.
   for (const id of ['gate', 'yard']) {
     await page.goto('/cameras');
