@@ -7,6 +7,7 @@ export const settingsSections: readonly { path: string; label: string; permissio
   { path: '/settings/sites', label: 'Sites', permission: 'settings.manage' },
   { path: '/settings/policies', label: 'Recording policies', permission: 'settings.manage' },
   { path: '/settings/users', label: 'Users', permission: 'users.manage' },
+  { path: '/settings/audit', label: 'Audit log', permission: 'audit.view' },
   { path: '/settings/organization', label: 'Organization', permission: 'cameras.view' },
 ];
 

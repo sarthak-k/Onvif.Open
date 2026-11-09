@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Onvif.Open.Recorder.Layouts;
+using Onvif.Open.Recorder.Audit;
 using Onvif.Open.Recorder.Security;
 
 namespace Onvif.Open.Recorder.Api
@@ -32,16 +33,19 @@ namespace Onvif.Open.Recorder.Api
                 return result.Status == LayoutStatus.Ok
                     ? Results.Created($"/api/layouts/{result.Layout.Id}", result.Layout)
                     : ToResult(result);
-            });
+            })
+                .Audit(AuditActions.LayoutCreate, AuditTargets.Layout);
 
             layouts.MapPut("/{id}", async (string id, LayoutRequest request, ClaimsPrincipal principal, LayoutService service, CancellationToken ct) =>
-                ToResult(await service.UpdateAsync(User(principal), id, request, ct)));
+                ToResult(await service.UpdateAsync(User(principal), id, request, ct)))
+                .Audit(AuditActions.LayoutUpdate, AuditTargets.Layout);
 
             layouts.MapDelete("/{id}", async (string id, ClaimsPrincipal principal, LayoutService service, CancellationToken ct) =>
             {
                 var result = await service.DeleteAsync(User(principal), id, ct);
                 return result.Status == LayoutStatus.Ok ? Results.NoContent() : ToResult(result);
-            });
+            })
+                .Audit(AuditActions.LayoutDelete, AuditTargets.Layout);
 
             return app;
         }

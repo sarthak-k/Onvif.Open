@@ -18,7 +18,9 @@ using Microsoft.Extensions.Logging;
 using Onvif.Open.Core.Abstract.Interface.Plugin;
 using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Recorder.Api;
+using Onvif.Open.Recorder.Audit;
 using Onvif.Open.Recorder.Configuration;
+using Onvif.Open.Recorder.Events;
 using Onvif.Open.Recorder.Hosting;
 using Onvif.Open.Recorder.Layouts;
 using Onvif.Open.Recorder.Security;
@@ -45,6 +47,18 @@ builder.Services.AddDataProtection()
 // Organizations, sites and recording policies; the cameras' owners and retention, kept in memory.
 builder.Services.AddSingleton<ITenancyStore, EfTenancyStore>();
 builder.Services.AddSingleton<CameraDirectory>();
+
+// Events (stored, searchable) and the retention that keeps the video around them; the audit log.
+builder.Services.AddSingleton<IEventStore, EfEventStore>();
+builder.Services.AddSingleton<EventIndex>();
+builder.Services.AddSingleton<PolicyRetention>();
+builder.Services.AddSingleton<IAuditStore, EfAuditStore>();
+builder.Services.AddSingleton(sp => new AuditLog(
+    sp.GetRequiredService<IAuditStore>(),
+    sp.GetRequiredService<ILogger<AuditLog>>(),
+    sp.GetRequiredService<TimeProvider>(),
+    TimeSpan.FromDays(sp.GetRequiredService<IConfiguration>().GetValue("Audit:RetentionDays", 365))));
+builder.Services.AddHostedService(sp => sp.GetRequiredService<AuditLog>());
 builder.Services.AddSingleton<TenancyService>();
 
 // Read once at startup: the cameras to record and the plugins to load. Later changes go through the API.
@@ -64,12 +78,11 @@ builder.Services.AddSingleton(sp =>
             sp.GetRequiredService<IConfiguration>(),
             sp.GetRequiredService<IHostEnvironment>().ContentRootPath,
             sp.GetRequiredService<ILoggerFactory>()),
-        sp.GetRequiredService<CameraDirectory>().RetentionFor));
+        sp.GetRequiredService<PolicyRetention>().IsExpired));
 builder.Services.AddSingleton<IRecordingManager>(sp => sp.GetRequiredService<ConfiguredRecording>().Manager);
 builder.Services.AddSingleton<CameraConfigurationService>();
 builder.Services.AddSingleton<ILayoutStore, EfLayoutStore>();
 builder.Services.AddSingleton<LayoutService>();
-builder.Services.AddSingleton(sp => new CameraEventStore(sp.GetRequiredService<IRecordingManager>()));
 builder.Services.AddSingleton(sp => new LiveViewService(
     sp.GetRequiredService<IRecordingManager>(),
     sp.GetRequiredService<IConfiguration>().GetSection(LiveViewOptions.SectionName).Get<LiveViewOptions>()));
@@ -84,8 +97,9 @@ builder.Services.AddSingleton<IPluginHost>(sp => PluginConfiguration.CreateHost(
     sp.GetRequiredService<ConfiguredRecording>(),
     sp.GetRequiredService<ILoggerFactory>()));
 
-// Created eagerly so it sees events from the start.
-builder.Services.AddHostedService(sp => new EagerSingleton<CameraEventStore>(sp));
+
+// Stores what cameras, detections, recording and plugins report (subscribes before recording starts).
+builder.Services.AddHostedService<EventRecorder>();
 
 // Order matters: plugins start before and stop after recording.
 builder.Services.AddHostedService<PluginHostedService>();
@@ -108,6 +122,8 @@ app.MapDeviceIoApi();
 app.MapDeviceRecordingsApi();
 app.MapPlaybackApi();
 app.MapLayoutApi();
+app.MapEventApi();
+app.MapAuditApi();
 app.Run();
 
 public partial class Program

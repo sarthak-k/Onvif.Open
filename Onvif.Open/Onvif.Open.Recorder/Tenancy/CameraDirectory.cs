@@ -11,7 +11,10 @@ using Onvif.Open.Recorder.Store;
 namespace Onvif.Open.Recorder.Tenancy
 {
     /// <summary>Where a camera belongs and how long its video is kept.</summary>
-    public sealed record CameraEntry(string Id, string OrganizationId, string SiteId, string PolicyId, string Name, TimeSpan Retention);
+    /// <param name="EventsOnly">Records only around events: everything it records is event video.</param>
+    /// <param name="ContinuousRetention">How long video without events is kept.</param>
+    /// <param name="EventRetention">How long video around events (and the events themselves) is kept.</param>
+    public sealed record CameraEntry(string Id, string OrganizationId, string SiteId, string PolicyId, string Name, bool EventsOnly, TimeSpan ContinuousRetention, TimeSpan EventRetention);
 
     /// <summary>
     /// The configured cameras in memory: who owns each (organization, site), its name and its retention. Answers the
@@ -23,7 +26,11 @@ namespace Onvif.Open.Recorder.Tenancy
 
         public void Set(CameraOptions camera, string organizationId, RecordingPolicyRecord policy)
         {
-            _cameras[camera.Id] = new CameraEntry(camera.Id, organizationId, camera.SiteId, camera.PolicyId, camera.Name ?? camera.Id, RecordingPolicyRules.RetentionOf(policy));
+            _cameras[camera.Id] = new CameraEntry(
+                camera.Id, organizationId, camera.SiteId, camera.PolicyId, camera.Name ?? camera.Id,
+                policy.Mode == RecordingModes.EventsOnly,
+                TimeSpan.FromDays(Math.Max(1, policy.ContinuousRetentionDays)),
+                TimeSpan.FromDays(Math.Max(1, policy.EventRetentionDays)));
         }
 
         public void Remove(string cameraId)
@@ -38,11 +45,8 @@ namespace Onvif.Open.Recorder.Tenancy
 
         public IReadOnlyList<CameraEntry> All => _cameras.Values.ToList();
 
-        /// <summary>How long the camera's video is kept; null for a camera this directory does not know.</summary>
-        public TimeSpan? RetentionFor(string cameraId)
-        {
-            return Find(cameraId)?.Retention;
-        }
+        /// <summary>How long video around events is kept, the longest of all cameras (for loading and pruning events).</summary>
+        public TimeSpan LongestEventRetention => _cameras.Values.Select(c => c.EventRetention).DefaultIfEmpty(TimeSpan.FromDays(30)).Max();
     }
 
     /// <summary>
@@ -59,14 +63,5 @@ namespace Onvif.Open.Recorder.Tenancy
             return camera;
         }
 
-        /// <summary>
-        /// What a camera keeps: everything a camera recording only around events records is event video; continuous
-        /// recordings keep their continuous retention (video around events is kept longer once events are stored).
-        /// </summary>
-        public static TimeSpan RetentionOf(RecordingPolicyRecord policy)
-        {
-            var days = policy.Mode == RecordingModes.EventsOnly ? policy.EventRetentionDays : policy.ContinuousRetentionDays;
-            return TimeSpan.FromDays(Math.Max(1, days));
-        }
     }
 }

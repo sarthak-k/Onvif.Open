@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Routing;
 using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Core.Recording;
 
+using Onvif.Open.Recorder.Audit;
 using Onvif.Open.Recorder.Security;
 using Onvif.Open.Recorder.Tenancy;
 
@@ -47,7 +48,8 @@ namespace Onvif.Open.Recorder.Api
 
                 await manager.StartCameraAsync(id, ct);
                 return Results.Accepted($"/api/cameras/{id}");
-            }).RequireAuthorization(Policies.Operator);
+            }).RequireAuthorization(Policies.Operator)
+                .Audit(AuditActions.RecordingStart, AuditTargets.Camera);
 
             api.MapPost("/cameras/{id}/stop", async (string id, IRecordingManager manager, CameraDirectory directory, CancellationToken ct) =>
             {
@@ -58,7 +60,8 @@ namespace Onvif.Open.Recorder.Api
 
                 await manager.StopCameraAsync(id, ct);
                 return Results.Ok(ToDto(Find(manager, id), directory));
-            }).RequireAuthorization(Policies.Operator);
+            }).RequireAuthorization(Policies.Operator)
+                .Audit(AuditActions.RecordingStop, AuditTargets.Camera);
 
             api.MapPost("/cameras/{id}/trigger", (string id, IRecordingManager manager, CameraDirectory directory, double? seconds) =>
             {
@@ -75,20 +78,8 @@ namespace Onvif.Open.Recorder.Api
 
                 manager.TriggerRecording(status.CameraId, TimeSpan.FromSeconds(Math.Clamp(seconds ?? 30, 0, 3600)));
                 return Results.Accepted($"/api/cameras/{status.CameraId}", ToDto(Find(manager, id), directory));
-            }).RequireAuthorization(Policies.Operator);
-
-            api.MapGet("/camera-events", (Onvif.Open.Recorder.Hosting.CameraEventStore store, ClaimsPrincipal user, CameraDirectory directory, string cameraId, string topic, int? limit) =>
-                store.Query(cameraId, topic, Math.Clamp(limit ?? 100, 1, 1000)).Where(e => user.CanSeeCamera(directory, e.CameraId)).Select(e => new
-                {
-                    e.CameraId,
-                    e.Topic,
-                    e.TopicPath,
-                    e.UtcTime,
-                    e.PropertyOperation,
-                    state = e.GetState(),
-                    e.Source,
-                    e.Data
-                }));
+            }).RequireAuthorization(Policies.Operator)
+                .Audit(AuditActions.RecordingTrigger, AuditTargets.Camera);
 
             api.MapGet("/cameras/{id}/segments", (string id, IRecordingManager manager, DateTimeOffset? from, DateTimeOffset? to) =>
                 manager.GetSegments(id)
@@ -115,7 +106,8 @@ namespace Onvif.Open.Recorder.Api
                 return stream == null
                     ? Results.NotFound()
                     : Results.Stream(stream, ContentType(segment.FileName), segment.FileName, enableRangeProcessing: stream.CanSeek);
-            });
+            })
+                .Audit(AuditActions.VideoExport, AuditTargets.Camera, details: c => new { file = c.HttpContext.GetRouteValue("fileName") });
 
             api.MapDelete("/cameras/{id}/segments/{fileName}", async (string id, string fileName, IRecordingManager manager, CancellationToken ct) =>
             {
@@ -132,7 +124,8 @@ namespace Onvif.Open.Recorder.Api
                 }
 
                 return Results.NoContent();
-            }).RequireAuthorization(Policies.Admin);
+            }).RequireAuthorization(Policies.Admin)
+                .Audit(AuditActions.RecordingDelete, AuditTargets.Camera, details: c => new { file = c.HttpContext.GetRouteValue("fileName") });
 
             api.MapGet("/storage", (IRecordingManager manager) =>
             {

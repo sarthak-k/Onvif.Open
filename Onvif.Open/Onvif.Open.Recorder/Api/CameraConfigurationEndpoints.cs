@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Onvif.Open.Recorder.Configuration;
 
+using Onvif.Open.Recorder.Audit;
 using Onvif.Open.Recorder.Security;
 using Onvif.Open.Recorder.Tenancy;
 
@@ -54,7 +55,8 @@ namespace Onvif.Open.Recorder.Api
                 return !user.CanSeeSite(user.OrganizationId(), camera.SiteId)
                     ? SiteNotAllowed()
                     : ToResult(await service.AddAsync(user.OrganizationId(), camera, ct), created: true);
-            });
+            })
+                .Audit(AuditActions.CameraCreate, AuditTargets.Camera);
 
             cameras.MapPut("/{id}", async (string id, CameraOptions camera, ClaimsPrincipal user, CameraConfigurationService service, CancellationToken ct) =>
             {
@@ -62,7 +64,8 @@ namespace Onvif.Open.Recorder.Api
                 return !user.CanSeeSite(user.OrganizationId(), camera.SiteId)
                     ? SiteNotAllowed()
                     : ToResult(await service.UpdateAsync(user.OrganizationId(), id, camera, ct), created: false);
-            });
+            })
+                .Audit(AuditActions.CameraUpdate, AuditTargets.Camera);
 
             // Tests settings before they are saved; with "id" of a saved camera, its stored password is used when none is given.
             cameras.MapPost("/test", async (CameraOptions camera, ClaimsPrincipal user, CameraDirectory directory, CameraConfigurationService service, CancellationToken ct) =>
@@ -86,7 +89,8 @@ namespace Onvif.Open.Recorder.Api
             {
                 var result = await service.RemoveAsync(user.OrganizationId(), id, ct);
                 return result.Status == ConfigurationStatus.Ok ? Results.NoContent() : ToResult(result, created: false);
-            });
+            })
+                .Audit(AuditActions.CameraDelete, AuditTargets.Camera);
 
             return app;
         }

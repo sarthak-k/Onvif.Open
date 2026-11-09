@@ -19,6 +19,7 @@ describe('App', () => {
       users: { list: fail, create: fail, update: fail, remove: fail },
       layouts: { list: async () => [], create: fail, update: fail, remove: fail },
       media: { liveUrl: (id) => `memory://${id}`, token: () => null },
+      audit: { list: fail },
     };
     const client = new ApiClient('', memoryStorage('refresh-0'), (async () => new Response(JSON.stringify(tokens(1)))) as typeof fetch);
 

@@ -71,6 +71,16 @@ test('an administrator manages sites and cameras', async ({ page }) => {
   await page.getByRole('row', { name: /Warehouse/ }).getByRole('button', { name: 'Delete' }).click();
   await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
   await expect(page.getByRole('row', { name: /Warehouse/ })).toHaveCount(0);
+
+  // All of it is in the audit log, newest first.
+  await page.getByRole('link', { name: 'Audit log' }).click();
+  await expect(page.getByRole('row', { name: /Removed a site.*Warehouse/ })).toBeVisible();
+  await expect(page.getByRole('row', { name: /Removed a camera.*Loading gate/ })).toBeVisible();
+  await expect(page.getByRole('row', { name: /Changed a camera.*Loading gate/ })).toBeVisible();
+  await expect(page.getByRole('row', { name: /Added a camera.*Gate/ })).toBeVisible();
+  await page.getByLabel('Show').selectOption('auth');
+  await expect(page.getByRole('row', { name: /Signed in/ }).first()).toBeVisible();
+  await expect(page.getByRole('row', { name: /a site/ })).toHaveCount(0);
 });
 
 test('a new user chooses a password and sees only their pages', async ({ page }) => {

@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Onvif.Open.Recorder.Store;
 
+using Onvif.Open.Recorder.Audit;
 using Onvif.Open.Recorder.Security;
 
 namespace Onvif.Open.Recorder.Api
@@ -74,10 +75,12 @@ namespace Onvif.Open.Recorder.Api
 
                 await store.SavePluginAsync(plugin, ct);
                 return Results.Ok(ToDto(plugin));
-            });
+            })
+                .Audit(AuditActions.PluginUpdate, AuditTargets.Plugin, routeId: "folder");
 
             plugins.MapDelete("/{folder}", async (string folder, ISettingsStore store, CancellationToken ct) =>
-                await store.DeletePluginAsync(folder, ct) ? Results.NoContent() : Results.NotFound());
+                await store.DeletePluginAsync(folder, ct) ? Results.NoContent() : Results.NotFound())
+                .Audit(AuditActions.PluginDelete, AuditTargets.Plugin, routeId: "folder");
 
             return app;
         }

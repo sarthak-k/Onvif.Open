@@ -7,6 +7,7 @@ using System.Threading;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Onvif.Open.Recorder.Audit;
 using Onvif.Open.Recorder.Security;
 using Onvif.Open.Recorder.Store;
 using Onvif.Open.Recorder.Tenancy;
@@ -31,9 +32,14 @@ namespace Onvif.Open.Recorder.Api
             }).AllowAnonymous();
 
             // Creates the organization, first site, default policies and owner, and signs the owner in.
-            app.MapPost("/api/setup", async (SetupRequest request, TenancyService tenancy, CancellationToken ct) =>
+            app.MapPost("/api/setup", async (SetupRequest request, TenancyService tenancy, AuditLog audit, HttpContext http, CancellationToken ct) =>
             {
                 var result = await tenancy.CompleteSetupAsync(request, ct);
+                if (result.Status == ServiceStatus.Ok)
+                {
+                    audit.Record(http, result.Value, null, null, AuditActions.Setup, new { region = request.Region });
+                }
+
                 return result.Status == ServiceStatus.Ok ? AuthEndpoints.SignIn(result.Value) : ToResult(result);
             }).AllowAnonymous().RequireRateLimiting(SecurityConfiguration.SignInLimit);
 
@@ -50,7 +56,8 @@ namespace Onvif.Open.Recorder.Api
 
             app.MapPut("/api/organization", async (OrganizationRequest request, ClaimsPrincipal user, TenancyService tenancy, CancellationToken ct) =>
                 ToResult(await tenancy.RenameOrganizationAsync(user.OrganizationId(), request?.Name, ct), ToDto))
-                .RequireAuthorization(Policies.Owner);
+                .RequireAuthorization(Policies.Owner)
+                .Audit(AuditActions.OrganizationRename, AuditTargets.Organization);
 
             // Every signed-in user sees the sites they may see; administrators who see all sites manage them.
             var sites = app.MapGroup("/api/sites");
@@ -62,17 +69,20 @@ namespace Onvif.Open.Recorder.Api
             {
                 var result = await tenancy.CreateSiteAsync(user.OrganizationId(), request, ct);
                 return result.Status == ServiceStatus.Ok ? Results.Created($"/api/sites/{result.Value.Id}", ToDto(result.Value)) : ToResult(result);
-            }).RequireAuthorization(Policies.OrganizationAdmin);
+            }).RequireAuthorization(Policies.OrganizationAdmin)
+                .Audit(AuditActions.SiteCreate, AuditTargets.Site);
 
             sites.MapPut("/{id}", async (string id, SiteRequest request, ClaimsPrincipal user, TenancyService tenancy, CancellationToken ct) =>
                 ToResult(await tenancy.UpdateSiteAsync(user.OrganizationId(), id, request, ct), ToDto))
-                .RequireAuthorization(Policies.OrganizationAdmin);
+                .RequireAuthorization(Policies.OrganizationAdmin)
+                .Audit(AuditActions.SiteUpdate, AuditTargets.Site);
 
             sites.MapDelete("/{id}", async (string id, ClaimsPrincipal user, TenancyService tenancy, CancellationToken ct) =>
             {
                 var result = await tenancy.DeleteSiteAsync(user.OrganizationId(), id, ct);
                 return result.Status == ServiceStatus.Ok ? Results.NoContent() : ToResult(result);
-            }).RequireAuthorization(Policies.OrganizationAdmin);
+            }).RequireAuthorization(Policies.OrganizationAdmin)
+                .Audit(AuditActions.SiteDelete, AuditTargets.Site);
 
             // Recording policies: administrators choose them for cameras; organization administrators change them.
             var policies = app.MapGroup("/api/recording-policies").RequireAuthorization(Policies.Admin);
@@ -84,17 +94,20 @@ namespace Onvif.Open.Recorder.Api
             {
                 var result = await tenancy.CreatePolicyAsync(user.OrganizationId(), request, ct);
                 return result.Status == ServiceStatus.Ok ? Results.Created($"/api/recording-policies/{result.Value.Id}", ToDto(result.Value)) : ToResult(result);
-            }).RequireAuthorization(Policies.OrganizationAdmin);
+            }).RequireAuthorization(Policies.OrganizationAdmin)
+                .Audit(AuditActions.PolicyCreate, AuditTargets.Policy);
 
             policies.MapPut("/{id}", async (string id, PolicyRequest request, ClaimsPrincipal user, TenancyService tenancy, CancellationToken ct) =>
                 ToResult(await tenancy.UpdatePolicyAsync(user.OrganizationId(), id, request, ct), ToDto))
-                .RequireAuthorization(Policies.OrganizationAdmin);
+                .RequireAuthorization(Policies.OrganizationAdmin)
+                .Audit(AuditActions.PolicyUpdate, AuditTargets.Policy);
 
             policies.MapDelete("/{id}", async (string id, ClaimsPrincipal user, TenancyService tenancy, CancellationToken ct) =>
             {
                 var result = await tenancy.DeletePolicyAsync(user.OrganizationId(), id, ct);
                 return result.Status == ServiceStatus.Ok ? Results.NoContent() : ToResult(result);
-            }).RequireAuthorization(Policies.OrganizationAdmin);
+            }).RequireAuthorization(Policies.OrganizationAdmin)
+                .Audit(AuditActions.PolicyDelete, AuditTargets.Policy);
 
             return app;
         }

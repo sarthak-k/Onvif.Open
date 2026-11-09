@@ -7,6 +7,7 @@ export type Permission =
   | 'cameras.manage'
   | 'users.manage'
   | 'settings.manage'
+  | 'audit.view'
   | 'organization.manage';
 
 const rank: Record<Role, number> = { Viewer: 0, Operator: 1, Admin: 2, Owner: 3 };
@@ -24,6 +25,7 @@ const rules: Record<Permission, Rule> = {
   'cameras.manage': { role: 'Admin' },
   'users.manage': { role: 'Admin', allSites: true },
   'settings.manage': { role: 'Admin', allSites: true },
+  'audit.view': { role: 'Admin', allSites: true },
   'organization.manage': { role: 'Owner' },
 };
 

@@ -399,6 +399,18 @@ recording. RTSP-only cameras use `rtspUrl` (optionally `"transport": "Udp"`). `a
 (ONVIF Profile M): `triggerClasses` records while such an object is in view (instead of on every motion event), and
 `"enabled": true` passes detected objects to plugins.
 
+**Events and how long video is kept.** Everything a camera reports is stored as an event (it survives restarts and
+can be searched with `/api/events`): stateful camera events from their start to their end, detections of the same kind
+merged while they keep being seen (ending 5 s after the last sighting), the time a camera was offline, and what plugins
+report. A camera's policy keeps all its video for `continuousRetentionDays` (7 by default) and video around events
+(30 s before and after) for `eventRetentionDays` (30 by default); cameras that record only around events keep their
+video for `eventRetentionDays`. Events are kept as long as their camera's `eventRetentionDays`; those about no camera or a removed one for a year.
+
+**Audit log.** Changes (cameras, sites, policies, users, layouts, plugins, the organization), sign-ins, password
+changes, starting and stopping recording, relay switching, and who watched live video, played recordings or exported
+video (a view is recorded once per user and camera every 10 minutes) go to the audit log, kept for
+`Audit:RetentionDays` (365 by default). Refused requests are not recorded, failed sign-ins are.
+
 ```
 dotnet run --project Onvif.Open/Onvif.Open.Recorder
 ```
@@ -409,7 +421,6 @@ dotnet run --project Onvif.Open/Onvif.Open.Recorder
 | `GET /api/cameras`, `GET /api/cameras/{id}` | State, codec, frames/bytes recorded, current file, last error |
 | `POST /api/cameras/{id}/start`, `POST /api/cameras/{id}/stop` | Control one camera |
 | `POST /api/cameras/{id}/trigger?seconds=30` | Triggered mode: record now (plus post-roll) |
-| `GET /api/camera-events?cameraId=&topic=&limit=` | Recent ONVIF events from the cameras |
 | `GET /api/cameras/{id}/segments?from=&to=` | Recorded files with download URLs |
 | `GET /api/cameras/{id}/segments/{file}` | Download, from the local disk or the archive (supports HTTP range requests) |
 | `DELETE /api/cameras/{id}/segments/{file}` | Delete a completed file (locally and from the archive) |
@@ -445,7 +456,8 @@ dotnet run --project Onvif.Open/Onvif.Open.Recorder
 | `GET /api/discovery` | ONVIF devices on the network (WS-Discovery), with `configuredCameraId` for those already set up |
 | `GET /api/layouts`, `POST /api/layouts` `{name, grid, cameras, shared}`, `PUT .../{id}`, `DELETE .../{id}` | Live view layouts: each user's own, plus shared ones (managed by administrators); the grid is the web app's template id and `cameras` the camera of each tile |
 | `GET /api/plugins` | Plugin state, delivered/dropped frames, errors |
-| `GET /api/events?cameraId=&type=&source=&since=&severity=&limit=` | Plugin events, each linked to the recording covering it |
+| `GET /api/events?cameraId=&siteId=&category=&from=&to=&before=&limit=` | Stored events, newest first: what cameras report (motion, tamper, inputs), detections (person, vehicle, object), cameras going offline, and plugin findings; each with its start and end. `category` is one of motion, person, vehicle, object, intrusion, tamper, input, offline, plugin, other; `before` pages |
+| `GET /api/audit?userId=&action=&from=&to=&before=&limit=` | The audit log (administrators who see all sites): changes, sign-ins (also failed ones), who watched live or recorded video and who exported it; `action` is an action (`camera.update`) or an area (`camera`) |
 | `GET /health` | Liveness |
 
 The API listens on `http://localhost:5080` by default. Put it behind a reverse proxy with HTTPS before exposing it on
@@ -457,7 +469,7 @@ a network: bearer tokens and passwords must not travel in clear text.
 5 × 5, or one large tile with smaller ones; arrange cameras by picking or dragging, enlarge one with a double click,
 full screen; layouts saved per user or shared by administrators), cameras (status for everyone; adding, editing and
 removing for administrators, with discovery and a connection test), settings (sites, recording policies, users with
-roles and site access, the organization) and the own account. It is a
+roles and site access, the audit log, the organization) and the own account. It is a
 static site served separately from the recorder:
 
 ```

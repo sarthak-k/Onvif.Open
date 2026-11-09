@@ -16,6 +16,7 @@ using Onvif.Open.Core.Replay;
 using Onvif.Open.Recorder.Configuration;
 using Onvif.Open.Recording.Implementation.Export;
 
+using Onvif.Open.Recorder.Audit;
 using Onvif.Open.Recorder.Security;
 
 namespace Onvif.Open.Recorder.Api
@@ -91,7 +92,8 @@ namespace Onvif.Open.Recorder.Api
                     }
 
                     return Results.Empty;
-                }));
+                }))
+                .Audit(AuditActions.VideoExport, AuditTargets.Camera, details: c => new { deviceRecording = c.HttpContext.GetRouteValue("token"), from = c.HttpContext.Request.Query["from"].ToString(), to = c.HttpContext.Request.Query["to"].ToString() });
 
             return app;
         }

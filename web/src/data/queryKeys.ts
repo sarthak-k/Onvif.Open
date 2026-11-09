@@ -16,4 +16,5 @@ export const queryKeys = {
   organization: ['organization'] as const,
   sites: ['sites'] as const,
   policies: ['recording-policies'] as const,
+  audit: (filter: object) => ['audit', filter] as const,
 };
