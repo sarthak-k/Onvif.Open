@@ -1,5 +1,5 @@
 import type { ApiClient } from './client';
-import type { CameraConfig, CameraStatus, DiscoveredDevice, AuditEntry, AuditQuery, Gateway, GatewayRequest, Layout, LayoutRequest, Me, Organization, ProbeResult, RecordingPolicy, RecordingPolicyRequest, SetupStatus, Site, SiteRequest, User, UserRequest } from './types';
+import type { CameraConfig, CameraStatus, DiscoveredDevice, AuditEntry, AuditQuery, EventQuery, RecordingSegment, StoredEvent, Gateway, GatewayRequest, Layout, LayoutRequest, Me, Organization, ProbeResult, RecordingPolicy, RecordingPolicyRequest, SetupStatus, Site, SiteRequest, User, UserRequest } from './types';
 
 // The recorder's API by area. Pages depend on these interfaces, not on HTTP, so tests and later back ends can
 // provide their own implementation (dependency inversion, interface segregation).
@@ -45,6 +45,8 @@ export interface CamerasApi {
 
 export interface RecordingApi {
   status(): Promise<CameraStatus[]>;
+  /** Recorded files overlapping [from, to]. */
+  segments(cameraId: string, from: Date, to: Date): Promise<RecordingSegment[]>;
   start(cameraId: string): Promise<void>;
   stop(cameraId: string): Promise<void>;
 }
@@ -73,6 +75,11 @@ export interface GatewaysApi {
   controlPlaneUrl(): string;
 }
 
+export interface EventsApi {
+  /** Newest first. */
+  list(query?: EventQuery): Promise<StoredEvent[]>;
+}
+
 export interface AuditApi {
   /** Newest first. */
   list(query?: AuditQuery): Promise<AuditEntry[]>;
@@ -82,6 +89,8 @@ export interface AuditApi {
 export interface MediaApi {
   /** Live HLS playlist of a camera (absolute URL). */
   liveUrl(cameraId: string): string;
+  /** HLS playlist of the recordings from the file holding `from` up to `to` (absolute URL). */
+  recordingsUrl(cameraId: string, from: Date, to: Date): string;
   /** The current access token, read at each request so renewals are picked up. */
   token(): string | null;
 }
@@ -99,6 +108,7 @@ export interface RecorderApi {
   media: MediaApi;
   audit: AuditApi;
   gateways: GatewaysApi;
+  events: EventsApi;
 }
 
 const segment = encodeURIComponent;
@@ -150,6 +160,7 @@ export function createRecorderApi(client: ApiClient): RecorderApi {
     },
     recording: {
       status: () => client.get('/api/cameras'),
+      segments: (id, from, to) => client.get(`/api/cameras/${segment(id)}/segments${queryString({ from: from.toISOString(), to: to.toISOString() })}`),
       start: (id) => client.post(`/api/cameras/${segment(id)}/start`),
       stop: (id) => client.post(`/api/cameras/${segment(id)}/stop`),
     },
@@ -161,6 +172,8 @@ export function createRecorderApi(client: ApiClient): RecorderApi {
     },
     media: {
       liveUrl: (id) => new URL(`${client.baseUrl}/api/cameras/${segment(id)}/live.m3u8`, window.location.origin).toString(),
+      recordingsUrl: (id, from, to) =>
+        new URL(`${client.baseUrl}/api/cameras/${segment(id)}/recordings.m3u8${queryString({ from: from.toISOString(), to: to.toISOString() })}`, window.location.origin).toString(),
       token: () => client.token,
     },
     users: {
@@ -168,6 +181,9 @@ export function createRecorderApi(client: ApiClient): RecorderApi {
       create: (user) => client.post('/api/users', user),
       update: (id, user) => client.put(`/api/users/${segment(id)}`, user),
       remove: (id) => client.delete(`/api/users/${segment(id)}`),
+    },
+    events: {
+      list: (query = {}) => client.get(`/api/events${queryString({ ...query })}`),
     },
     audit: {
       list: (query = {}) => client.get(`/api/audit${queryString({ ...query })}`),

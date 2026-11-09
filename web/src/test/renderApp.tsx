@@ -4,10 +4,11 @@ import { MemoryRouter } from 'react-router-dom';
 import { ApiClient } from '../api/client';
 import { App, createQueryClient } from '../app/App';
 import type { PlayerFactory } from '../features/live/player/types';
+import type { PlaybackEngineFactory } from '../features/playback/engine/types';
 import { fakeFetch, memoryStorage } from './fakeRecorder';
 
 /** The whole app at a URL, against a fake recorder; a stored refresh token signs in. */
-export function renderApp(path: string, routes: Parameters<typeof fakeFetch>[0], refreshToken: string | null = 'refresh-0', player?: PlayerFactory) {
+export function renderApp(path: string, routes: Parameters<typeof fakeFetch>[0], refreshToken: string | null = 'refresh-0', player?: PlayerFactory, playback?: PlaybackEngineFactory) {
   const { fetcher, calls } = fakeFetch(routes);
   const client = new ApiClient('', memoryStorage(refreshToken), fetcher);
   const queryClient = createQueryClient();
@@ -16,7 +17,7 @@ export function renderApp(path: string, routes: Parameters<typeof fakeFetch>[0],
   const user = userEvent.setup();
   const view = render(
     <MemoryRouter initialEntries={[path]}>
-      <App client={client} queryClient={queryClient} player={player} />
+      <App client={client} queryClient={queryClient} player={player} playback={playback} />
     </MemoryRouter>,
   );
   return { ...view, user, calls, client };
