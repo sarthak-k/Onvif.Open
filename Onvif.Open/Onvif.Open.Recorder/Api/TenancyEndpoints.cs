@@ -132,7 +132,8 @@ namespace Onvif.Open.Recorder.Api
             postRollSeconds = policy.PostRollSeconds,
             continuousRetentionDays = policy.ContinuousRetentionDays,
             eventRetentionDays = policy.EventRetentionDays,
-            isDefault = policy.IsDefault
+            isDefault = policy.IsDefault,
+            schedule = Tenancy.RecordingSchedule.Deserialize(policy.Schedule)
         };
 
         internal static IResult ToResult<T>(ServiceResult<T> result, System.Func<T, object> toDto)

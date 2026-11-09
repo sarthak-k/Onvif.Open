@@ -45,6 +45,9 @@ namespace Onvif.Open.Recorder.Tenancy
         public int? ContinuousRetentionDays { get; set; }
         public int? EventRetentionDays { get; set; }
         public bool? IsDefault { get; set; }
+
+        /// <summary>The weekly hours of a "Schedule" policy; null keeps the stored ones.</summary>
+        public List<ScheduleWindow> Schedule { get; set; }
     }
 
     /// <summary>
@@ -377,6 +380,12 @@ namespace Onvif.Open.Recorder.Tenancy
                 Id = NewId(), OrganizationId = organizationId, Name = "Events only", Mode = RecordingModes.EventsOnly, PreRollSeconds = 5, PostRollSeconds = 10,
                 ContinuousRetentionDays = DefaultContinuousRetentionDays, EventRetentionDays = DefaultEventRetentionDays, CreatedAt = now, UpdatedAt = now
             };
+            yield return new RecordingPolicyRecord
+            {
+                Id = NewId(), OrganizationId = organizationId, Name = "Business hours", Mode = RecordingModes.Schedule, PreRollSeconds = 5, PostRollSeconds = 10,
+                ContinuousRetentionDays = DefaultContinuousRetentionDays, EventRetentionDays = DefaultEventRetentionDays,
+                Schedule = RecordingSchedule.Serialize(RecordingSchedule.BusinessHours), CreatedAt = now, UpdatedAt = now
+            };
         }
 
         /// <summary>One default per organization: making this one the default unmarks the previous one.</summary>
@@ -420,6 +429,16 @@ namespace Onvif.Open.Recorder.Tenancy
             Range(request.ContinuousRetentionDays, 1, MaxRetentionDays, "Continuous retention days", errors);
             Range(request.EventRetentionDays, 1, MaxRetentionDays, "Event retention days", errors);
 
+            var schedule = request.Schedule ?? RecordingSchedule.Deserialize(policy.Schedule);
+            if (mode == RecordingModes.Schedule)
+            {
+                errors.AddRange(RecordingSchedule.Check(schedule));
+            }
+            else if (request.Schedule?.Count > 0)
+            {
+                errors.AddRange(RecordingSchedule.Check(schedule));
+            }
+
             if (errors.Count > 0)
             {
                 return errors;
@@ -432,9 +451,10 @@ namespace Onvif.Open.Recorder.Tenancy
             policy.ContinuousRetentionDays = request.ContinuousRetentionDays ?? policy.ContinuousRetentionDays;
             policy.EventRetentionDays = request.EventRetentionDays ?? policy.EventRetentionDays;
             policy.IsDefault = request.IsDefault ?? policy.IsDefault;
+            policy.Schedule = RecordingSchedule.Serialize(schedule);
             policy.UpdatedAt = now;
 
-            if (policy.EventRetentionDays < policy.ContinuousRetentionDays && policy.Mode == RecordingModes.Always)
+            if (policy.EventRetentionDays < policy.ContinuousRetentionDays && policy.Mode != RecordingModes.EventsOnly)
             {
                 errors.Add("Video around events is kept at least as long as continuous video.");
             }

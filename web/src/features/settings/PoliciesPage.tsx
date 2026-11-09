@@ -1,15 +1,17 @@
 import { useState, type FormEvent } from 'react';
-import type { PolicyMode, RecordingPolicy } from '../../api/types';
+import type { PolicyMode, RecordingPolicy, ScheduleWindow, Weekday } from '../../api/types';
 import { useDeletePolicy, usePolicies, useSavePolicy } from '../../data/tenancy';
 import { CheckboxField, NumberField, RadioGroup, TextField } from '../../shared/form/fields';
 import { useForm } from '../../shared/form/useForm';
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog';
 import { ErrorMessage } from '../../shared/ui/ErrorMessage';
 import { describePolicy } from '../cameras/editor/RecordingSection';
+import { businessHours, scheduleProblem, weekdays } from './schedule';
 
 const modeOptions = [
   { value: 'Always' as PolicyMode, label: 'Record always' },
   { value: 'EventsOnly' as PolicyMode, label: 'Record around events only' },
+  { value: 'Schedule' as PolicyMode, label: 'Record always during set hours, around events otherwise' },
 ];
 
 /** How cameras record and how long video is kept; a change applies to its cameras at once. */
@@ -94,6 +96,7 @@ function PolicyDialog({ policy, onClose }: { policy?: RecordingPolicy; onClose()
     continuousRetentionDays: String(policy?.continuousRetentionDays ?? 7),
     eventRetentionDays: String(policy?.eventRetentionDays ?? 30),
     isDefault: policy?.isDefault ?? false,
+    schedule: policy?.schedule?.length ? policy.schedule : businessHours,
   });
 
   function submit(event?: FormEvent) {
@@ -109,19 +112,24 @@ function PolicyDialog({ policy, onClose }: { policy?: RecordingPolicy; onClose()
           continuousRetentionDays: number(values.continuousRetentionDays),
           eventRetentionDays: number(values.eventRetentionDays),
           isDefault: values.isDefault,
+          schedule: values.mode === 'Schedule' ? values.schedule : (policy?.schedule ?? []),
         },
       },
       { onSuccess: onClose },
     );
   }
 
-  const events = values.mode === 'EventsOnly';
+  const events = values.mode !== 'Always';
+  const scheduled = values.mode === 'Schedule';
+  const problem = scheduled ? scheduleProblem(values.schedule) : null;
 
   return (
-    <ConfirmDialog title={policy ? `Edit ${policy.name}` : 'Add policy'} confirmLabel="Save" busy={save.isPending || !values.name.trim()} onCancel={onClose} onConfirm={() => submit()}>
+    <ConfirmDialog title={policy ? `Edit ${policy.name}` : 'Add policy'} confirmLabel="Save" busy={save.isPending || !values.name.trim() || problem !== null} onCancel={onClose} onConfirm={() => submit()}>
       <form className="stack" onSubmit={submit} aria-label="Recording policy">
         <TextField label="Name" required maxLength={64} value={values.name} onChange={(v) => set('name', v)} />
         <RadioGroup legend="Recording" value={values.mode} options={modeOptions} onChange={(v) => set('mode', v)} />
+        {scheduled && <ScheduleEditor schedule={values.schedule} onChange={(v) => set('schedule', v)} />}
+        {problem && <p className="muted small">{problem}</p>}
         {events && (
           <div className="row">
             <NumberField label="Seconds before an event" value={values.preRollSeconds} onChange={(v) => set('preRollSeconds', v)} step="1" />
@@ -129,7 +137,7 @@ function PolicyDialog({ policy, onClose }: { policy?: RecordingPolicy; onClose()
           </div>
         )}
         <div className="row">
-          {!events && <NumberField label="Keep video (days)" value={values.continuousRetentionDays} onChange={(v) => set('continuousRetentionDays', v)} step="1" />}
+          {values.mode !== 'EventsOnly' && <NumberField label="Keep video (days)" value={values.continuousRetentionDays} onChange={(v) => set('continuousRetentionDays', v)} step="1" />}
           <NumberField label="Keep video around events (days)" value={values.eventRetentionDays} onChange={(v) => set('eventRetentionDays', v)} step="1" />
         </div>
         <CheckboxField label="Default for new cameras" checked={values.isDefault} disabled={policy?.isDefault} onChange={(v) => set('isDefault', v)} />
@@ -137,5 +145,51 @@ function PolicyDialog({ policy, onClose }: { policy?: RecordingPolicy; onClose()
         <ErrorMessage error={save.error} />
       </form>
     </ConfirmDialog>
+  );
+}
+
+/** Weekly hours, in each camera's site time zone: days and a time range per row. */
+function ScheduleEditor({ schedule, onChange }: { schedule: ScheduleWindow[]; onChange(schedule: ScheduleWindow[]): void }) {
+  const change = (index: number, window: Partial<ScheduleWindow>) => onChange(schedule.map((w, i) => (i === index ? { ...w, ...window } : w)));
+  const toggle = (index: number, day: Weekday) => {
+    const days = schedule[index].days;
+    change(index, { days: days.includes(day) ? days.filter((d) => d !== day) : [...days, day] });
+  };
+
+  return (
+    <fieldset className="stack" aria-label="Hours">
+      <legend>Hours (in the site's time zone)</legend>
+      {schedule.map((window, index) => (
+        <div key={index} className="stack schedule-row" role="group" aria-label={`Time range ${index + 1}`}>
+          <div className="day-toggles">
+            {weekdays.map(({ day, short }) => (
+              <label key={day} className="check" title={day}>
+                <input type="checkbox" aria-label={day} checked={window.days.includes(day)} onChange={() => toggle(index, day)} />
+                {short}
+              </label>
+            ))}
+          </div>
+          <div className="row">
+            <label>
+              From
+              <input type="time" value={window.start} onChange={(e) => change(index, { start: e.target.value })} />
+            </label>
+            <label>
+              To
+              <input type="time" value={window.end} onChange={(e) => change(index, { end: e.target.value })} />
+            </label>
+            {schedule.length > 1 && (
+              <button type="button" onClick={() => onChange(schedule.filter((_, i) => i !== index))}>
+                Remove
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+      <button type="button" className="link" onClick={() => onChange([...schedule, { days: ['Saturday'], start: '10:00', end: '14:00' }])}>
+        Add hours
+      </button>
+      <p className="muted small">An end before the start runs past midnight. Outside these hours the camera records around events.</p>
+    </fieldset>
   );
 }

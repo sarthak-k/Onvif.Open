@@ -226,7 +226,7 @@ namespace Onvif.Open.Recorder.Store
         public string OrganizationId { get; set; }
         public string Name { get; set; }
 
-        /// <summary>"Always" or "EventsOnly" (see <see cref="Tenancy.RecordingModes"/>).</summary>
+        /// <summary>"Always", "EventsOnly" or "Schedule" (see <see cref="Tenancy.RecordingModes"/>).</summary>
         public string Mode { get; set; }
 
         public int PreRollSeconds { get; set; }
@@ -239,6 +239,9 @@ namespace Onvif.Open.Recorder.Store
         public int EventRetentionDays { get; set; }
 
         /// <summary>The policy new cameras get unless another is chosen; one per organization.</summary>
+        /// <summary>JSON: the weekly hours of a "Schedule" policy (see <see cref="Tenancy.ScheduleWindow"/>).</summary>
+        public string Schedule { get; set; }
+
         public bool IsDefault { get; set; }
 
         public DateTime CreatedAt { get; set; }
