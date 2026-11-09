@@ -27,7 +27,11 @@ namespace Onvif.Open.Recorder.Configuration
 
         #region Public Methods
 
-        public static async Task<ProbeResult> ProbeAsync(CameraOptions camera, CancellationToken cancellationToken)
+        /// <summary>A snapshot is fetched within this time, or left out.</summary>
+        public static readonly TimeSpan SnapshotTimeout = TimeSpan.FromSeconds(5);
+
+        /// <param name="snapshot">Also fetch a picture (ONVIF cameras, from the sub-stream when there is one).</param>
+        public static async Task<ProbeResult> ProbeAsync(CameraOptions camera, CancellationToken cancellationToken, bool snapshot = false)
         {
             using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
             {
@@ -37,7 +41,7 @@ namespace Onvif.Open.Recorder.Configuration
                 {
                     return string.IsNullOrWhiteSpace(camera.OnvifUrl)
                         ? await ProbeRtspAsync(camera, timeout.Token).ConfigureAwait(false)
-                        : await ProbeOnvifAsync(camera, timeout.Token).ConfigureAwait(false);
+                        : await ProbeOnvifAsync(camera, snapshot, timeout.Token).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
                 {
@@ -62,7 +66,7 @@ namespace Onvif.Open.Recorder.Configuration
 
         #region Private Methods
 
-        private static async Task<ProbeResult> ProbeOnvifAsync(CameraOptions options, CancellationToken cancellationToken)
+        private static async Task<ProbeResult> ProbeOnvifAsync(CameraOptions options, bool snapshot, CancellationToken cancellationToken)
         {
             var builder = CameraBuilder.GetBuilder().SetUrl(options.OnvifUrl).SetMediaVersion(options.MediaVersion);
 
@@ -86,9 +90,10 @@ namespace Onvif.Open.Recorder.Configuration
                 var info = device.GetDeviceInfo();
                 cancellationToken.ThrowIfCancellationRequested();
 
-                var profiles = await camera.InitializeMedia().GetMediaService().GetProfilesAsync(cancellationToken).ConfigureAwait(false);
+                var media = camera.InitializeMedia();
+                var profiles = await media.GetMediaService().GetProfilesAsync(cancellationToken).ConfigureAwait(false);
 
-                return new ProbeResult
+                var result = new ProbeResult
                 {
                     Ok = true,
                     Device = new ProbeDevice
@@ -119,7 +124,34 @@ namespace Onvif.Open.Recorder.Configuration
                         DeviceIo = device.FindServiceUri(OnvifServiceNamespaces.DeviceIo) != null
                     }
                 };
+
+                result.Recommended = StreamSelection.Recommend(result.Profiles);
+                if (snapshot)
+                {
+                    result.Snapshot = await SnapshotAsync(media, result.Recommended.SubProfile ?? result.Recommended.MainProfile, SnapshotTimeout, cancellationToken).ConfigureAwait(false);
+                }
+
+                return result;
             }, cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>The picture as a data URL, or null when the camera has none to give in time.</summary>
+        internal static async Task<string> SnapshotAsync(Core.Abstract.Interface.Camera.ICameraMedia media, string profileToken, TimeSpan within, CancellationToken cancellationToken)
+        {
+            using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+            {
+                timeout.CancelAfter(within);
+                try
+                {
+                    var jpeg = await media.GetSnapshotAsync(profileToken, timeout.Token).ConfigureAwait(false);
+                    return jpeg == null || jpeg.Length == 0 ? null : "data:image/jpeg;base64," + Convert.ToBase64String(jpeg);
+                }
+                catch (Exception ex) when (!cancellationToken.IsCancellationRequested && !(ex is OutOfMemoryException))
+                {
+                    // A camera without snapshots still works; the picture is a convenience.
+                    return null;
+                }
+            }
         }
 
         private static async Task<ProbeResult> ProbeRtspAsync(CameraOptions options, CancellationToken cancellationToken)
@@ -160,6 +192,12 @@ namespace Onvif.Open.Recorder.Configuration
         public List<ProbeProfile> Profiles { get; set; }
         public ProbeCapabilities Capabilities { get; set; }
         public ProbeStream Stream { get; set; }
+
+        /// <summary>The streams to use (ONVIF cameras), chosen by <see cref="StreamSelection"/>.</summary>
+        public StreamRecommendation Recommended { get; set; }
+
+        /// <summary>A picture from the camera as a data URL (when asked for and available).</summary>
+        public string Snapshot { get; set; }
 
         public static ProbeResult Failed(string kind, string error) => new ProbeResult { Ok = false, Kind = kind, Error = error };
     }

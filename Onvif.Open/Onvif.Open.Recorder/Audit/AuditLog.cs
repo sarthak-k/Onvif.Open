@@ -39,6 +39,7 @@ namespace Onvif.Open.Recorder.Audit
         private readonly ILogger _logger;
         private readonly TimeProvider _timeProvider;
         private readonly TimeSpan _retention;
+        private readonly SemaphoreSlim _flush = new SemaphoreSlim(1, 1);
         private readonly Channel<AuditRecord> _queue = Channel.CreateBounded<AuditRecord>(new BoundedChannelOptions(10_000) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });
         private readonly ConcurrentDictionary<string, DateTimeOffset> _recentViews = new ConcurrentDictionary<string, DateTimeOffset>(StringComparer.Ordinal);
 
@@ -124,8 +125,24 @@ namespace Onvif.Open.Recorder.Audit
             }
         }
 
-        /// <summary>Writes everything queued so far (also used by tests to wait for entries).</summary>
+        /// <summary>
+        /// Writes everything queued so far (also used by tests to wait for entries). One flush at a time: a caller
+        /// waits for a write already under way, so entries queued before the call are stored when it returns.
+        /// </summary>
         public async Task FlushAsync(CancellationToken cancellationToken = default)
+        {
+            await _flush.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await FlushQueuedAsync(cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                _flush.Release();
+            }
+        }
+
+        private async Task FlushQueuedAsync(CancellationToken cancellationToken)
         {
             var batch = new List<AuditRecord>();
             while (_queue.Reader.TryRead(out var entry))

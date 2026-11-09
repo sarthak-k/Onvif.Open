@@ -68,7 +68,7 @@ namespace Onvif.Open.Recorder.Api
                 .Audit(AuditActions.CameraUpdate, AuditTargets.Camera);
 
             // Tests settings before they are saved; with "id" of a saved camera, its stored password is used when none is given.
-            cameras.MapPost("/test", async (CameraOptions camera, ClaimsPrincipal user, CameraDirectory directory, CameraConfigurationService service, CancellationToken ct) =>
+            cameras.MapPost("/test", async (CameraOptions camera, bool? snapshot, ClaimsPrincipal user, CameraDirectory directory, CameraConfigurationService service, CancellationToken ct) =>
             {
                 camera = camera ?? new CameraOptions();
 
@@ -82,7 +82,7 @@ namespace Onvif.Open.Recorder.Api
                     camera.Password = (await service.GetCameraAsync(user.OrganizationId(), camera.Id, ct))?.Password;
                 }
 
-                return Results.Ok(await CameraProbe.ProbeAsync(camera, ct));
+                return Results.Ok(await CameraProbe.ProbeAsync(camera, ct, snapshot == true));
             });
 
             cameras.MapDelete("/{id}", async (string id, ClaimsPrincipal user, CameraConfigurationService service, CancellationToken ct) =>

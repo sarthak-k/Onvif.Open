@@ -31,15 +31,15 @@ export default function CamerasPage() {
       <div className="heading">
         <h1>Cameras</h1>
         {canManage && (
-          <Link className="button primary" to="/cameras/new">
-            Add camera
+          <Link className="button primary" to="/cameras/add">
+            Add cameras
           </Link>
         )}
       </div>
       <ErrorMessage error={configs.error ?? statuses.error ?? remove.error ?? control.error} />
 
       {rows.length === 0 && !loading ? (
-        <p className="empty">No cameras yet.{canManage && ' Add one, or find cameras on the network from the new camera page.'}</p>
+        <p className="empty">No cameras yet.{canManage && ' Add cameras to find the ones on your network.'}</p>
       ) : (
         <div className="table-scroll">
           <table>

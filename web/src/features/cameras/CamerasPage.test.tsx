@@ -37,7 +37,7 @@ describe('cameras', () => {
     expect(within(row).getByText('ONVIF 10.0.0.5')).toBeInTheDocument();
     expect(within(row).getByText('Recording')).toBeInTheDocument();
     expect(within(row).getByText('2.0 KB')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Add camera' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Add cameras' })).toBeInTheDocument();
     client.signOut();
   });
 
@@ -45,7 +45,7 @@ describe('cameras', () => {
     const { calls, client } = renderApp('/cameras', signedIn('Viewer'));
 
     expect(await screen.findByText('Recording')).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Add camera' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Add cameras' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument();
     
     expect(calls.some((c) => c.path === '/api/config/cameras')).toBe(false);

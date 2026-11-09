@@ -16,6 +16,11 @@ export class ApiError extends Error {
   }
 }
 
+/** A failed call in one line, for places with room for one message. */
+export function messageOf(error: unknown): string {
+  return error instanceof ApiError ? error.errors.join(' ') || error.message : error instanceof Error ? error.message : String(error);
+}
+
 export const isUnauthorized = (error: unknown): boolean => error instanceof ApiError && error.status === 401;
 
 /** Reads every error shape the recorder answers with into plain messages. */

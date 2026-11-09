@@ -28,7 +28,19 @@ test('an administrator manages sites and cameras', async ({ page }) => {
   await expect(page.getByRole('row', { name: /Warehouse/ })).toContainText('Europe/Paris');
 
   await page.getByRole('link', { name: 'Cameras', exact: true }).click();
-  await page.getByRole('link', { name: 'Add camera' }).click();
+  // The wizard tests what it is given; a camera that does not answer is left out.
+  await page.getByRole('link', { name: 'Add cameras' }).click();
+  await expect(page.getByRole('heading', { name: 'Add cameras' })).toBeVisible();
+  await page.getByLabel('Camera address').fill('127.0.0.1:9');
+  await page.getByRole('button', { name: 'Add to the list' }).click();
+  await page.getByRole('button', { name: 'Continue with 1 camera' }).click();
+  await page.getByLabel('Password', { exact: true }).fill('camera-secret');
+  await page.getByRole('button', { name: 'Test cameras' }).click();
+  await expect(page.getByText('Cannot be reached')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('button', { name: 'Test the cameras first' })).toBeDisabled();
+
+  // An RTSP-only camera is added manually.
+  await page.getByRole('link', { name: 'Add one manually' }).click();
   await page.getByLabel('Name', { exact: true }).fill('Gate');
   await page.getByLabel('Site').selectOption({ label: 'Warehouse' });
   await page.getByLabel('RTSP stream only').check();
@@ -124,7 +136,7 @@ test('a new user chooses a password and sees only their pages', async ({ page })
   await expect(page.getByRole('heading', { name: 'Gateways' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Users' })).toHaveCount(0);
   await page.getByRole('link', { name: 'Cameras', exact: true }).click();
-  await expect(page.getByRole('link', { name: 'Add camera' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Add cameras' })).toHaveCount(0);
 
   // The session survives a reload only with "keep me signed in" or in the same tab.
   await page.reload();
