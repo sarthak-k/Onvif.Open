@@ -10,8 +10,12 @@ describe('App', () => {
     const fail = () => Promise.reject(new Error('not used'));
     const api: RecorderApi = {
       auth: { me: async () => admin },
+      setup: { status: fail },
+      organization: { get: fail, rename: fail },
+      sites: { list: async () => [], create: fail, update: fail, remove: fail },
+      policies: { list: fail, create: fail, update: fail, remove: fail },
       cameras: { list: async () => [], get: fail, create: fail, update: fail, remove: fail, test: fail, discover: fail },
-      recording: { status: async () => [{ cameraId: 'in-memory', state: 'Recording', mode: 'Continuous', isTriggered: false, codec: 'H265', recordsAudio: false, framesRecorded: 0, bytesRecorded: 0, segmentsCompleted: 0 }], start: fail, stop: fail },
+      recording: { status: async () => [{ cameraId: 'in-memory', name: 'In memory', state: 'Recording', mode: 'Continuous', isTriggered: false, codec: 'H265', recordsAudio: false, framesRecorded: 0, bytesRecorded: 0, segmentsCompleted: 0 }], start: fail, stop: fail },
       users: { list: fail, create: fail, update: fail, remove: fail },
       layouts: { list: async () => [], create: fail, update: fail, remove: fail },
       media: { liveUrl: (id) => `memory://${id}`, token: () => null },
@@ -24,7 +28,7 @@ describe('App', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByRole('link', { name: 'in-memory' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'In memory' })).toBeInTheDocument();
     expect(screen.getByText('H265')).toBeInTheDocument();
     client.signOut();
   });

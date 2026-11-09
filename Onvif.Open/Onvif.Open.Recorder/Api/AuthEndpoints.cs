@@ -45,6 +45,9 @@ namespace Onvif.Open.Recorder.Api
             public string Password { get; set; }
             public string Role { get; set; }
             public bool? Enabled { get; set; }
+
+            /// <summary>The sites the user may see; empty: all sites. Null on a change: unchanged.</summary>
+            public System.Collections.Generic.List<string> Sites { get; set; }
         }
 
         #endregion
@@ -58,10 +61,10 @@ namespace Onvif.Open.Recorder.Api
             // { "tokenType": "Bearer", "accessToken": "...", "expiresIn": 900, "refreshToken": "..." }
             auth.MapPost("/login", async (SignInRequest request, UserService users, CancellationToken ct) =>
             {
-                var user = await users.SignInAsync(request?.UserName, request?.Password, ct);
-                return user == null
+                var member = await users.SignInAsync(request?.UserName, request?.Password, ct);
+                return member == null
                     ? Results.Problem("Wrong user name or password, or the account is disabled or locked for a few minutes.", statusCode: StatusCodes.Status401Unauthorized)
-                    : Results.SignIn(UserService.CreatePrincipal(user, SecurityConfiguration.Scheme), authenticationScheme: SecurityConfiguration.Scheme);
+                    : SignIn(member);
             }).AllowAnonymous().RequireRateLimiting(SecurityConfiguration.SignInLimit);
 
             auth.MapPost("/refresh", async (RefreshRequest request, IOptionsMonitor<BearerTokenOptions> bearer, UserService users, TimeProvider clock, CancellationToken ct) =>
@@ -73,20 +76,40 @@ namespace Onvif.Open.Recorder.Api
                     return Results.Problem("Sign in again.", statusCode: StatusCodes.Status401Unauthorized);
                 }
 
-                // The user may have been disabled, or changed role or password, since the token was issued.
-                var user = await users.FindAsync(ticket.Principal.FindFirstValue(ClaimTypes.NameIdentifier), ct);
-                if (user == null || !user.Enabled || !string.Equals(user.SecurityStamp, ticket.Principal.FindFirstValue(RecorderClaims.SecurityStamp), StringComparison.Ordinal))
+                // The user may have been disabled, or changed role, sites or password, since the token was issued.
+                var member = await users.FindMemberAsync(ticket.Principal.FindFirstValue(RecorderClaims.Organization), ticket.Principal.FindFirstValue(ClaimTypes.NameIdentifier), ct);
+                if (member == null || !member.User.Enabled || !string.Equals(member.User.SecurityStamp, ticket.Principal.FindFirstValue(RecorderClaims.SecurityStamp), StringComparison.Ordinal))
                 {
                     return Results.Problem("Sign in again.", statusCode: StatusCodes.Status401Unauthorized);
                 }
 
-                return Results.SignIn(UserService.CreatePrincipal(user, SecurityConfiguration.Scheme), authenticationScheme: SecurityConfiguration.Scheme);
+                return SignIn(member);
             }).AllowAnonymous().RequireRateLimiting(SecurityConfiguration.SignInLimit);
 
-            auth.MapGet("/me", async (ClaimsPrincipal principal, UserService users, CancellationToken ct) =>
+            // The signed-in user, their role and sites, and their organization.
+            auth.MapGet("/me", async (ClaimsPrincipal principal, UserService users, Tenancy.TenancyService tenancy, CancellationToken ct) =>
             {
-                var user = await users.FindAsync(principal.FindFirstValue(ClaimTypes.NameIdentifier), ct);
-                return user == null ? Results.Unauthorized() : Results.Ok(ToDto(user));
+                var member = await users.FindMemberAsync(principal.FindFirstValue(RecorderClaims.Organization), principal.FindFirstValue(ClaimTypes.NameIdentifier), ct);
+                if (member == null)
+                {
+                    return Results.Unauthorized();
+                }
+
+                var organization = await tenancy.GetOrganizationAsync(member.Membership.OrganizationId, ct);
+                var dto = ToDto(member);
+                return Results.Ok(new
+                {
+                    dto.id,
+                    dto.userName,
+                    dto.role,
+                    dto.sites,
+                    dto.enabled,
+                    dto.mustChangePassword,
+                    dto.lockedUntil,
+                    dto.lastLoginAt,
+                    dto.createdAt,
+                    organization = new { id = organization.Id, name = organization.Name, region = organization.Region }
+                });
             }).RequireAuthorization(Policies.SignedIn);
 
             // Returns new tokens: the change ends every session, also this one.
@@ -96,32 +119,35 @@ namespace Onvif.Open.Recorder.Api
                 var result = await users.ChangePasswordAsync(id, request?.CurrentPassword, request?.NewPassword, ct);
                 validator.Invalidate(id);
 
-                return result.Status == UserStatus.Ok
-                    ? Results.SignIn(UserService.CreatePrincipal(result.User, SecurityConfiguration.Scheme), authenticationScheme: SecurityConfiguration.Scheme)
-                    : ToResult(result);
+                return result.Status == UserStatus.Ok ? SignIn(result.Member) : ToResult(result);
             }).RequireAuthorization(Policies.SignedIn);
 
-            var usersApi = app.MapGroup("/api/users").RequireAuthorization(Policies.Admin);
+            // Members of the signed-in user's organization; managed by administrators who see all sites.
+            var usersApi = app.MapGroup("/api/users").RequireAuthorization(Policies.OrganizationAdmin);
 
-            usersApi.MapGet("", async (UserService users, CancellationToken ct) => (await users.GetUsersAsync(ct)).Select(ToDto));
+            usersApi.MapGet("", async (ClaimsPrincipal principal, UserService users, CancellationToken ct) =>
+                (await users.GetMembersAsync(principal.FindFirstValue(RecorderClaims.Organization), ct)).Select(ToDto));
 
-            usersApi.MapPost("", async (UserRequest request, UserService users, CancellationToken ct) =>
+            usersApi.MapPost("", async (UserRequest request, ClaimsPrincipal principal, UserService users, CancellationToken ct) =>
             {
-                // Created by an admin: the user chooses an own password at the first sign-in.
-                var result = await users.CreateAsync(request?.UserName, request?.Password, request?.Role ?? Roles.Viewer, mustChangePassword: true, ct);
-                return result.Status == UserStatus.Ok ? Results.Created($"/api/users/{result.User.Id}", ToDto(result.User)) : ToResult(result);
+                // Created by an administrator: the user chooses an own password at the first sign-in.
+                var result = await users.CreateMemberAsync(principal.FindFirstValue(RecorderClaims.Organization), principal.FindFirstValue(ClaimTypes.Role),
+                    request?.UserName, request?.Password, request?.Role ?? Roles.Viewer, request?.Sites, mustChangePassword: true, ct);
+                return result.Status == UserStatus.Ok ? Results.Created($"/api/users/{result.Member.User.Id}", ToDto(result.Member)) : ToResult(result);
             });
 
-            usersApi.MapPut("/{id}", async (string id, UserRequest request, UserService users, UserValidator validator, CancellationToken ct) =>
+            usersApi.MapPut("/{id}", async (string id, UserRequest request, ClaimsPrincipal principal, UserService users, UserValidator validator, CancellationToken ct) =>
             {
-                var result = await users.UpdateAsync(id, request?.Role, request?.Enabled, request?.Password, ct);
+                var result = await users.UpdateMemberAsync(principal.FindFirstValue(RecorderClaims.Organization), principal.FindFirstValue(ClaimTypes.Role),
+                    id, request?.Role, request?.Sites, request?.Enabled, request?.Password, ct);
                 validator.Invalidate(id);
-                return result.Status == UserStatus.Ok ? Results.Ok(ToDto(result.User)) : ToResult(result);
+                return result.Status == UserStatus.Ok ? Results.Ok(ToDto(result.Member)) : ToResult(result);
             });
 
             usersApi.MapDelete("/{id}", async (string id, ClaimsPrincipal principal, UserService users, UserValidator validator, CancellationToken ct) =>
             {
-                var result = await users.DeleteAsync(id, principal.FindFirstValue(ClaimTypes.NameIdentifier), ct);
+                var result = await users.DeleteMemberAsync(principal.FindFirstValue(RecorderClaims.Organization), principal.FindFirstValue(ClaimTypes.Role),
+                    id, principal.FindFirstValue(ClaimTypes.NameIdentifier), ct);
                 validator.Invalidate(id);
                 return result.Status == UserStatus.Ok ? Results.NoContent() : ToResult(result);
             });
@@ -129,24 +155,32 @@ namespace Onvif.Open.Recorder.Api
             return app;
         }
 
+        /// <summary>Issues tokens for the member (access + refresh).</summary>
+        public static IResult SignIn(Member member)
+        {
+            return Results.SignIn(UserService.CreatePrincipal(member, SecurityConfiguration.Scheme), authenticationScheme: SecurityConfiguration.Scheme);
+        }
+
         #endregion
 
         #region Private Methods
 
-        private static object ToDto(UserRecord user)
+        private static UserDto ToDto(Member member)
         {
-            return new
-            {
-                id = user.Id,
-                userName = user.UserName,
-                role = user.Role,
-                enabled = user.Enabled,
-                mustChangePassword = user.MustChangePassword,
-                lockedUntil = user.LockedUntil.HasValue && user.LockedUntil.Value > DateTime.UtcNow ? new DateTimeOffset(DateTime.SpecifyKind(user.LockedUntil.Value, DateTimeKind.Utc)) : (DateTimeOffset?)null,
-                lastLoginAt = user.LastLoginAt.HasValue ? new DateTimeOffset(DateTime.SpecifyKind(user.LastLoginAt.Value, DateTimeKind.Utc)) : (DateTimeOffset?)null,
-                createdAt = new DateTimeOffset(DateTime.SpecifyKind(user.CreatedAt, DateTimeKind.Utc))
-            };
+            var user = member.User;
+            return new UserDto(
+                user.Id,
+                user.UserName,
+                member.Membership.Role,
+                member.Sites,
+                user.Enabled,
+                user.MustChangePassword,
+                user.LockedUntil.HasValue && user.LockedUntil.Value > DateTime.UtcNow ? new DateTimeOffset(DateTime.SpecifyKind(user.LockedUntil.Value, DateTimeKind.Utc)) : null,
+                user.LastLoginAt.HasValue ? new DateTimeOffset(DateTime.SpecifyKind(user.LastLoginAt.Value, DateTimeKind.Utc)) : null,
+                new DateTimeOffset(DateTime.SpecifyKind(user.CreatedAt, DateTimeKind.Utc)));
         }
+
+        private sealed record UserDto(string id, string userName, string role, System.Collections.Generic.IReadOnlyList<string> sites, bool enabled, bool mustChangePassword, DateTimeOffset? lockedUntil, DateTimeOffset? lastLoginAt, DateTimeOffset createdAt);
 
         private static IResult ToResult(UserResult result)
         {
@@ -156,6 +190,8 @@ namespace Onvif.Open.Recorder.Api
                     return Results.NotFound();
                 case UserStatus.Conflict:
                     return Results.Conflict(new { errors = result.Errors });
+                case UserStatus.Forbidden:
+                    return Results.Json(new { errors = result.Errors }, statusCode: StatusCodes.Status403Forbidden);
                 default:
                     return Results.BadRequest(new { errors = result.Errors });
             }

@@ -2,7 +2,7 @@ import { isUnauthorized } from './errors';
 import { HttpTransport, type HttpMethod } from './http';
 import { Session } from './session';
 import { browserTokenStorage, type TokenStorage } from './tokenStorage';
-import type { Tokens } from './types';
+import type { SetupRequest, Tokens } from './types';
 
 export { ApiError } from './errors';
 export type { TokenStorage } from './tokenStorage';
@@ -41,6 +41,16 @@ export class ApiClient {
 
   async signIn(userName: string, password: string, persistent: boolean): Promise<void> {
     this.session.start(await this.http.send<Tokens>({ method: 'POST', path: '/api/auth/login', body: { userName, password } }), persistent);
+  }
+
+  /** First-run setup: creates the organization and its owner, and signs the owner in. */
+  async completeSetup(request: SetupRequest): Promise<void> {
+    this.session.start(await this.http.send<Tokens>({ method: 'POST', path: '/api/setup', body: request }), false);
+  }
+
+  /** A call that needs no session (setup status). */
+  anonymous<T>(method: HttpMethod, path: string, body?: unknown): Promise<T> {
+    return this.http.send<T>({ method, path, body });
   }
 
   /** The password change ends every session; the recorder answers with new tokens for this one. */

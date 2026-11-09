@@ -15,8 +15,8 @@ namespace Onvif.Open.Recorder.Store
     /// </summary>
     public interface ILayoutStore
     {
-        /// <summary>The user's own layouts and the shared ones, by name.</summary>
-        Task<IReadOnlyList<LayoutRecord>> GetVisibleAsync(string userId, CancellationToken cancellationToken = default);
+        /// <summary>The user's own layouts and the organization's shared ones, by name.</summary>
+        Task<IReadOnlyList<LayoutRecord>> GetVisibleAsync(string organizationId, string userId, CancellationToken cancellationToken = default);
 
         Task<LayoutRecord> FindAsync(string id, CancellationToken cancellationToken = default);
 
@@ -50,12 +50,12 @@ namespace Onvif.Open.Recorder.Store
 
         #region Public Methods
 
-        public async Task<IReadOnlyList<LayoutRecord>> GetVisibleAsync(string userId, CancellationToken cancellationToken = default)
+        public async Task<IReadOnlyList<LayoutRecord>> GetVisibleAsync(string organizationId, string userId, CancellationToken cancellationToken = default)
         {
             await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
             {
                 var layouts = await db.Layouts.AsNoTracking()
-                    .Where(l => l.OwnerId == userId || l.OwnerId == null)
+                    .Where(l => l.OrganizationId == organizationId && (l.OwnerId == userId || l.OwnerId == null))
                     .ToListAsync(cancellationToken).ConfigureAwait(false);
 
                 return layouts.OrderBy(l => l.Name, StringComparer.CurrentCultureIgnoreCase).ThenBy(l => l.CreatedAt).ToList();

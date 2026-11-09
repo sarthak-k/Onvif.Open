@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Onvif.Open.Recorder.Store;
+using Onvif.Open.Recorder.Tenancy;
 
 namespace Onvif.Open.Recorder.Configuration
 {
@@ -20,9 +21,11 @@ namespace Onvif.Open.Recorder.Configuration
     {
         #region Constructor
 
-        public CameraConfigurationService(ISettingsStore store, ConfiguredRecording recording, ILogger<CameraConfigurationService> logger)
+        public CameraConfigurationService(ISettingsStore store, ITenancyStore tenancy, CameraDirectory directory, ConfiguredRecording recording, ILogger<CameraConfigurationService> logger)
         {
             _store = store ?? throw new ArgumentNullException(nameof(store));
+            _tenancy = tenancy ?? throw new ArgumentNullException(nameof(tenancy));
+            _directory = directory ?? throw new ArgumentNullException(nameof(directory));
             _recording = recording ?? throw new ArgumentNullException(nameof(recording));
             _logger = logger;
         }
@@ -31,7 +34,11 @@ namespace Onvif.Open.Recorder.Configuration
 
         #region Private Variables
 
+        public const int MaxNameLength = 100;
+
         private readonly ISettingsStore _store;
+        private readonly ITenancyStore _tenancy;
+        private readonly CameraDirectory _directory;
         private readonly ConfiguredRecording _recording;
         private readonly ILogger _logger;
         private readonly SemaphoreSlim _changes = new SemaphoreSlim(1, 1);
@@ -40,32 +47,32 @@ namespace Onvif.Open.Recorder.Configuration
 
         #region Public Methods
 
-        /// <summary>All configured cameras (also disabled ones), with their passwords: never return those to clients.</summary>
-        public Task<IReadOnlyList<CameraOptions>> GetCamerasAsync(CancellationToken cancellationToken = default)
+        /// <summary>The organization's cameras (also disabled ones), with their passwords: never return those to clients.</summary>
+        public async Task<IReadOnlyList<CameraOptions>> GetCamerasAsync(string organizationId, CancellationToken cancellationToken = default)
         {
-            return _store.GetCamerasAsync(cancellationToken);
+            return (await _store.GetCamerasAsync(cancellationToken).ConfigureAwait(false)).Where(c => c.OrganizationId == organizationId).ToList();
         }
 
-        public Task<CameraOptions> GetCameraAsync(string cameraId, CancellationToken cancellationToken = default)
+        /// <summary>The camera when it belongs to the organization, else null.</summary>
+        public async Task<CameraOptions> GetCameraAsync(string organizationId, string cameraId, CancellationToken cancellationToken = default)
         {
-            return _store.GetCameraAsync(cameraId, cancellationToken);
+            var camera = await _store.GetCameraAsync(cameraId, cancellationToken).ConfigureAwait(false);
+            return camera?.OrganizationId == organizationId ? camera : null;
         }
 
-        public async Task<ConfigurationResult> AddAsync(CameraOptions camera, CancellationToken cancellationToken = default)
+        /// <summary>Adds a camera to a site of the organization; the recorder assigns its id.</summary>
+        public async Task<ConfigurationResult> AddAsync(string organizationId, CameraOptions camera, CancellationToken cancellationToken = default)
         {
             await _changes.WaitAsync(cancellationToken).ConfigureAwait(false);
-
             try
             {
-                var errors = RecordingConfiguration.ValidateCamera(camera);
+                camera.Id = Guid.NewGuid().ToString("D");
+                camera.OrganizationId = organizationId;
+
+                var (policy, errors) = await PrepareAsync(organizationId, camera, cancellationToken).ConfigureAwait(false);
                 if (errors.Count > 0)
                 {
                     return ConfigurationResult.Invalid(errors);
-                }
-
-                if (await _store.GetCameraAsync(camera.Id, cancellationToken).ConfigureAwait(false) != null)
-                {
-                    return ConfigurationResult.Conflict($"Camera '{camera.Id}' already exists.");
                 }
 
                 // Start it first: a camera the recorder rejects is not saved.
@@ -75,11 +82,12 @@ namespace Onvif.Open.Recorder.Configuration
                 }
                 catch (Exception ex) when (ex is ArgumentException || ex is UriFormatException || ex is InvalidOperationException || ex is NotSupportedException)
                 {
-                    return ConfigurationResult.Invalid(new[] { $"Camera '{camera.Id}': {ex.Message}" });
+                    return ConfigurationResult.Invalid(new[] { $"Camera '{camera.Name}': {ex.Message}" });
                 }
 
                 await _store.SaveCameraAsync(camera, cancellationToken).ConfigureAwait(false);
-                _logger.LogInformation("Camera {CameraId} added", camera.Id);
+                _directory.Set(camera, organizationId, policy);
+                _logger.LogInformation("Camera {CameraId} ({Name}) added", camera.Id, camera.Name);
                 return ConfigurationResult.Ok(camera);
             }
             finally
@@ -89,50 +97,39 @@ namespace Onvif.Open.Recorder.Configuration
         }
 
         /// <summary>
-        /// Replaces a camera's configuration. A null <see cref="CameraOptions.Password"/> keeps the stored password,
-        /// an empty one removes it.
+        /// Replaces a camera's configuration (name, site, policy, connection). A null <see cref="CameraOptions.Password"/>
+        /// keeps the stored password, an empty one removes it. The id never changes.
         /// </summary>
-        public async Task<ConfigurationResult> UpdateAsync(string cameraId, CameraOptions camera, CancellationToken cancellationToken = default)
+        public async Task<ConfigurationResult> UpdateAsync(string organizationId, string cameraId, CameraOptions camera, CancellationToken cancellationToken = default)
         {
             await _changes.WaitAsync(cancellationToken).ConfigureAwait(false);
-
             try
             {
-                var existing = await _store.GetCameraAsync(cameraId, cancellationToken).ConfigureAwait(false);
+                var existing = await GetCameraAsync(organizationId, cameraId, cancellationToken).ConfigureAwait(false);
                 if (existing == null)
                 {
                     return ConfigurationResult.NotFound();
                 }
 
-                if (camera.Id != null && !string.Equals(camera.Id, existing.Id, StringComparison.OrdinalIgnoreCase))
-                {
-                    return ConfigurationResult.Invalid(new[] { "The camera id cannot be changed: add a new camera instead." });
-                }
-
                 camera.Id = existing.Id;
+                camera.OrganizationId = organizationId;
                 camera.Password = camera.Password == null ? existing.Password : camera.Password.Length == 0 ? null : camera.Password;
 
-                var errors = RecordingConfiguration.ValidateCamera(camera);
+                var (policy, errors) = await PrepareAsync(organizationId, camera, cancellationToken).ConfigureAwait(false);
                 if (errors.Count > 0)
                 {
                     return ConfigurationResult.Invalid(errors);
                 }
 
-                // Restart the camera's recorder with the new settings; on failure, the old ones are restored.
-                await _recording.RemoveCameraAsync(existing.Id, cancellationToken).ConfigureAwait(false);
-
-                try
+                var result = await RestartAsync(existing, camera, cancellationToken).ConfigureAwait(false);
+                if (result != null)
                 {
-                    _recording.AddCamera(camera);
-                }
-                catch (Exception ex) when (ex is ArgumentException || ex is UriFormatException || ex is InvalidOperationException || ex is NotSupportedException)
-                {
-                    _recording.AddCamera(existing);
-                    return ConfigurationResult.Invalid(new[] { $"Camera '{camera.Id}': {ex.Message}" });
+                    return result;
                 }
 
                 await _store.SaveCameraAsync(camera, cancellationToken).ConfigureAwait(false);
-                _logger.LogInformation("Camera {CameraId} changed", camera.Id);
+                _directory.Set(camera, organizationId, policy);
+                _logger.LogInformation("Camera {CameraId} ({Name}) changed", camera.Id, camera.Name);
                 return ConfigurationResult.Ok(camera);
             }
             finally
@@ -142,13 +139,13 @@ namespace Onvif.Open.Recorder.Configuration
         }
 
         /// <summary>Removes a camera; its recordings stay until retention removes them. Refused while plugins use it.</summary>
-        public async Task<ConfigurationResult> RemoveAsync(string cameraId, CancellationToken cancellationToken = default)
+        public async Task<ConfigurationResult> RemoveAsync(string organizationId, string cameraId, CancellationToken cancellationToken = default)
         {
             await _changes.WaitAsync(cancellationToken).ConfigureAwait(false);
 
             try
             {
-                var existing = await _store.GetCameraAsync(cameraId, cancellationToken).ConfigureAwait(false);
+                var existing = await GetCameraAsync(organizationId, cameraId, cancellationToken).ConfigureAwait(false);
                 if (existing == null)
                 {
                     return ConfigurationResult.NotFound();
@@ -158,18 +155,129 @@ namespace Onvif.Open.Recorder.Configuration
                 var plugins = (await _store.GetPluginsAsync(cancellationToken).ConfigureAwait(false)).Where(p => p.Cameras.Contains(existing.Id, StringComparer.OrdinalIgnoreCase)).Select(p => p.Folder).ToList();
                 if (plugins.Count > 0)
                 {
-                    return ConfigurationResult.Conflict($"Camera '{existing.Id}' is assigned to plugin(s) {string.Join(", ", plugins)}: remove it from them first.");
+                    return ConfigurationResult.Conflict($"Camera '{existing.Name}' is assigned to plugin(s) {string.Join(", ", plugins)}: remove it from them first.");
                 }
 
                 await _recording.RemoveCameraAsync(existing.Id, cancellationToken).ConfigureAwait(false);
                 await _store.DeleteCameraAsync(existing.Id, cancellationToken).ConfigureAwait(false);
-                _logger.LogInformation("Camera {CameraId} removed", existing.Id);
+                _directory.Remove(existing.Id);
+                _logger.LogInformation("Camera {CameraId} ({Name}) removed", existing.Id, existing.Name);
                 return ConfigurationResult.Ok(existing);
             }
             finally
             {
                 _changes.Release();
             }
+        }
+
+        /// <summary>A recording policy changed: its cameras take the new mode and pre-/post-roll, and its retention.</summary>
+        public async Task ApplyPolicyAsync(RecordingPolicyRecord policy, CancellationToken cancellationToken = default)
+        {
+            await _changes.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+            try
+            {
+                foreach (var existing in (await _store.GetCamerasAsync(cancellationToken).ConfigureAwait(false)).Where(c => c.PolicyId == policy.Id))
+                {
+                    var camera = RecordingPolicyRules.Apply(Copy(existing), policy);
+                    if (camera.Mode != existing.Mode || camera.PreRoll != existing.PreRoll || camera.PostRoll != existing.PostRoll)
+                    {
+                        await RestartAsync(existing, camera, cancellationToken).ConfigureAwait(false);
+                    }
+
+                    _directory.Set(camera, camera.OrganizationId, policy);
+                }
+            }
+            finally
+            {
+                _changes.Release();
+            }
+        }
+
+        /// <summary>The cameras as the recorder runs them: each with its policy applied, and the directory filled.</summary>
+        public static IReadOnlyList<CameraOptions> Resolve(IReadOnlyList<CameraOptions> cameras, IReadOnlyList<RecordingPolicyRecord> policies, CameraDirectory directory)
+        {
+            var byId = policies.ToDictionary(p => p.Id, StringComparer.Ordinal);
+            var resolved = new List<CameraOptions>();
+
+            foreach (var camera in cameras)
+            {
+                if (camera.PolicyId == null || !byId.TryGetValue(camera.PolicyId, out var policy))
+                {
+                    continue;
+                }
+
+                RecordingPolicyRules.Apply(camera, policy);
+                directory.Set(camera, camera.OrganizationId, policy);
+                resolved.Add(camera);
+            }
+
+            return resolved;
+        }
+
+        #endregion
+
+        #region Private Methods
+
+        /// <summary>Validates name, site and policy (both of this organization; the default policy when none is given) and applies the policy.</summary>
+        private async Task<(RecordingPolicyRecord Policy, List<string> Errors)> PrepareAsync(string organizationId, CameraOptions camera, CancellationToken cancellationToken)
+        {
+            var errors = new List<string>();
+
+            if (string.IsNullOrWhiteSpace(camera.Name) || camera.Name.Trim().Length > MaxNameLength)
+            {
+                errors.Add($"Name must be 1 to {MaxNameLength} characters.");
+            }
+            else
+            {
+                camera.Name = camera.Name.Trim();
+            }
+
+            var site = string.IsNullOrEmpty(camera.SiteId) ? null : await _tenancy.FindSiteAsync(camera.SiteId, cancellationToken).ConfigureAwait(false);
+            if (site?.OrganizationId != organizationId)
+            {
+                errors.Add("Choose one of your sites for the camera.");
+            }
+
+            var policies = await _tenancy.GetPoliciesAsync(organizationId, cancellationToken).ConfigureAwait(false);
+            var policy = string.IsNullOrEmpty(camera.PolicyId) ? policies.FirstOrDefault(p => p.IsDefault) : policies.FirstOrDefault(p => p.Id == camera.PolicyId);
+            if (policy == null)
+            {
+                errors.Add("Choose one of your recording policies for the camera.");
+            }
+            else
+            {
+                camera.PolicyId = policy.Id;
+                RecordingPolicyRules.Apply(camera, policy);
+            }
+
+            errors.AddRange(RecordingConfiguration.ValidateCamera(camera));
+            return (policy, errors);
+        }
+
+        /// <summary>Restarts the camera's recorder with new settings; on failure, the old ones are restored and the reason returned.</summary>
+        private async Task<ConfigurationResult> RestartAsync(CameraOptions existing, CameraOptions camera, CancellationToken cancellationToken)
+        {
+            await _recording.RemoveCameraAsync(existing.Id, cancellationToken).ConfigureAwait(false);
+
+            try
+            {
+                _recording.AddCamera(camera);
+                return null;
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is UriFormatException || ex is InvalidOperationException || ex is NotSupportedException)
+            {
+                _recording.AddCamera(existing);
+                return ConfigurationResult.Invalid(new[] { $"Camera '{camera.Name}': {ex.Message}" });
+            }
+        }
+
+        private static CameraOptions Copy(CameraOptions camera)
+        {
+            var json = JsonSerializer.Serialize(camera);
+            var copy = JsonSerializer.Deserialize<CameraOptions>(json);
+            copy.Password = camera.Password;
+            return copy;
         }
 
         #endregion

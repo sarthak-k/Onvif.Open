@@ -12,4 +12,8 @@ export const queryKeys = {
   layouts: {
     all: ['layouts'] as const,
   },
+  setup: ['setup'] as const,
+  organization: ['organization'] as const,
+  sites: ['sites'] as const,
+  policies: ['recording-policies'] as const,
 };

@@ -1,6 +1,7 @@
 // Sarthak Killedar
 // 2026-11-08
 
+using System.Linq;
 using System.Security.Claims;
 using System.Threading;
 using Microsoft.AspNetCore.Builder;
@@ -51,7 +52,10 @@ namespace Onvif.Open.Recorder.Api
 
         private static LayoutUser User(ClaimsPrincipal principal)
         {
-            return new LayoutUser(principal.FindFirstValue(ClaimTypes.NameIdentifier), principal.IsInRole(Roles.Admin));
+            return new LayoutUser(
+                principal.FindFirstValue(ClaimTypes.NameIdentifier),
+                principal.FindFirstValue(RecorderClaims.Organization),
+                Roles.AtLeast(Roles.Admin).Any(principal.IsInRole) && !principal.HasClaim(c => c.Type == RecorderClaims.Sites));
         }
 
         private static IResult ToResult(LayoutResult result)

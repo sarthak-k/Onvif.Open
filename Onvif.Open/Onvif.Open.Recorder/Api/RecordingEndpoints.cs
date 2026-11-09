@@ -2,6 +2,7 @@
 // 2026-11-07
 
 using System;
+using System.Security.Claims;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -12,6 +13,7 @@ using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Core.Recording;
 
 using Onvif.Open.Recorder.Security;
+using Onvif.Open.Recorder.Tenancy;
 
 namespace Onvif.Open.Recorder.Api
 {
@@ -26,12 +28,14 @@ namespace Onvif.Open.Recorder.Api
         {
             var api = app.MapGroup("/api").RequireAuthorization(Policies.Viewer);
 
-            api.MapGet("/cameras", (IRecordingManager manager) => manager.GetStatus().Select(ToDto));
+            // Only the cameras of the sites the user may see; each with its name and site.
+            api.MapGet("/cameras", (IRecordingManager manager, ClaimsPrincipal user, CameraDirectory directory) =>
+                manager.GetStatus().Where(s => user.CanSeeCamera(directory, s.CameraId)).Select(s => ToDto(s, directory)));
 
-            api.MapGet("/cameras/{id}", (string id, IRecordingManager manager) =>
+            api.MapGet("/cameras/{id}", (string id, IRecordingManager manager, CameraDirectory directory) =>
             {
                 var status = Find(manager, id);
-                return status == null ? Results.NotFound() : Results.Ok(ToDto(status));
+                return status == null ? Results.NotFound() : Results.Ok(ToDto(status, directory));
             });
 
             api.MapPost("/cameras/{id}/start", async (string id, IRecordingManager manager, CancellationToken ct) =>
@@ -45,7 +49,7 @@ namespace Onvif.Open.Recorder.Api
                 return Results.Accepted($"/api/cameras/{id}");
             }).RequireAuthorization(Policies.Operator);
 
-            api.MapPost("/cameras/{id}/stop", async (string id, IRecordingManager manager, CancellationToken ct) =>
+            api.MapPost("/cameras/{id}/stop", async (string id, IRecordingManager manager, CameraDirectory directory, CancellationToken ct) =>
             {
                 if (Find(manager, id) == null)
                 {
@@ -53,10 +57,10 @@ namespace Onvif.Open.Recorder.Api
                 }
 
                 await manager.StopCameraAsync(id, ct);
-                return Results.Ok(ToDto(Find(manager, id)));
+                return Results.Ok(ToDto(Find(manager, id), directory));
             }).RequireAuthorization(Policies.Operator);
 
-            api.MapPost("/cameras/{id}/trigger", (string id, IRecordingManager manager, double? seconds) =>
+            api.MapPost("/cameras/{id}/trigger", (string id, IRecordingManager manager, CameraDirectory directory, double? seconds) =>
             {
                 var status = Find(manager, id);
                 if (status == null)
@@ -70,11 +74,11 @@ namespace Onvif.Open.Recorder.Api
                 }
 
                 manager.TriggerRecording(status.CameraId, TimeSpan.FromSeconds(Math.Clamp(seconds ?? 30, 0, 3600)));
-                return Results.Accepted($"/api/cameras/{status.CameraId}", ToDto(Find(manager, id)));
+                return Results.Accepted($"/api/cameras/{status.CameraId}", ToDto(Find(manager, id), directory));
             }).RequireAuthorization(Policies.Operator);
 
-            api.MapGet("/camera-events", (Onvif.Open.Recorder.Hosting.CameraEventStore store, string cameraId, string topic, int? limit) =>
-                store.Query(cameraId, topic, Math.Clamp(limit ?? 100, 1, 1000)).Select(e => new
+            api.MapGet("/camera-events", (Onvif.Open.Recorder.Hosting.CameraEventStore store, ClaimsPrincipal user, CameraDirectory directory, string cameraId, string topic, int? limit) =>
+                store.Query(cameraId, topic, Math.Clamp(limit ?? 100, 1, 1000)).Where(e => user.CanSeeCamera(directory, e.CameraId)).Select(e => new
                 {
                     e.CameraId,
                     e.Topic,
@@ -189,11 +193,14 @@ namespace Onvif.Open.Recorder.Api
             return manager.GetSegments(id).FirstOrDefault(s => string.Equals(s.FileName, fileName, StringComparison.Ordinal));
         }
 
-        private static object ToDto(CameraRecordingStatus status)
+        private static object ToDto(CameraRecordingStatus status, CameraDirectory directory)
         {
+            var camera = directory.Find(status.CameraId);
             return new
             {
                 cameraId = status.CameraId,
+                name = camera?.Name ?? status.CameraId,
+                siteId = camera?.SiteId,
                 state = status.State.ToString(),
                 mode = status.Mode.ToString(),
                 status.IsTriggered,

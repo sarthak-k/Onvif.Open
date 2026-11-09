@@ -2,8 +2,8 @@ import { CheckboxField, NumberField, Section, TextAreaField, TextField } from '.
 import type { SectionProps } from './cameraForm';
 
 /** ONVIF events and Profile M detections; only for ONVIF cameras. */
-export function EventsSection({ form, set }: SectionProps) {
-  const triggered = form.mode === 'Triggered';
+/** `triggered`: the camera's policy records only around events, so trigger topics and classes apply. */
+export function EventsSection({ form, set, triggered }: SectionProps & { triggered: boolean }) {
   return (
     <Section title="Events and analytics">
       <CheckboxField label="Receive camera events (motion, tampering, inputs)" checked={form.eventsEnabled} onChange={(v) => set('eventsEnabled', v)} />

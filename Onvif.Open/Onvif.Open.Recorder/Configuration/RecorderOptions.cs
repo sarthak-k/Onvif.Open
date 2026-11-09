@@ -205,8 +205,20 @@ namespace Onvif.Open.Recorder.Configuration
     {
         #region Public Variables
 
-        /// <summary>Folder and file name prefix: letters, digits, '-' and '_'.</summary>
+        /// <summary>Folder and file name prefix: letters, digits, '-' and '_'. Assigned by the recorder (a UUID).</summary>
         public string Id { get; set; }
+
+        /// <summary>The organization that owns the camera (set by the recorder from the site).</summary>
+        public string OrganizationId { get; set; }
+
+        /// <summary>What people call the camera; can change at any time.</summary>
+        public string Name { get; set; }
+
+        /// <summary>The site the camera is at.</summary>
+        public string SiteId { get; set; }
+
+        /// <summary>The recording policy: it sets <see cref="Mode"/>, <see cref="PreRoll"/>, <see cref="PostRoll"/> and retention.</summary>
+        public string PolicyId { get; set; }
 
         public bool Enabled { get; set; } = true;
 

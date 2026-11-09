@@ -1,12 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { User } from '../../api/types';
+import type { Me, SetupRequest } from '../../api/types';
 import { useApi, useApiClient } from '../../data/ApiContext';
 import { can, type Permission } from './permissions';
 
 interface AuthState {
   /** null: signed out. undefined: still resuming the stored session. */
-  user: User | null | undefined;
+  user: Me | null | undefined;
+  /** First-run setup: creates the organization and owner, and signs the owner in. */
+  completeSetup(request: SetupRequest): Promise<void>;
   signIn(userName: string, password: string, keepSignedIn: boolean): Promise<void>;
   signOut(): void;
   changePassword(currentPassword: string, newPassword: string): Promise<void>;
@@ -18,7 +20,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const api = useApi();
   const client = useApiClient();
   const queries = useQueryClient();
-  const [user, setUser] = useState<User | null | undefined>(client.hasSession ? undefined : null);
+  const [user, setUser] = useState<Me | null | undefined>(client.hasSession ? undefined : null);
 
   // Signed out (here, or because the refresh token was rejected): forget the user and every cached answer.
   useEffect(
@@ -59,9 +61,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [api, client],
   );
 
+  const completeSetup = useCallback(
+    async (request: SetupRequest) => {
+      await client.completeSetup(request);
+      setUser(await api.auth.me());
+    },
+    [api, client],
+  );
+
   const signOut = useCallback(() => client.signOut(), [client]);
 
-  const value = useMemo(() => ({ user, signIn, signOut, changePassword }), [user, signIn, signOut, changePassword]);
+  const value = useMemo(() => ({ user, signIn, signOut, changePassword, completeSetup }), [user, signIn, signOut, changePassword, completeSetup]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
@@ -72,7 +82,7 @@ export function useAuth(): AuthState {
 }
 
 /** The signed-in user; only for pages behind RequireAuth. */
-export function useUser(): User {
+export function useUser(): Me {
   const { user } = useAuth();
   if (!user) throw new Error('No user is signed in.');
   return user;

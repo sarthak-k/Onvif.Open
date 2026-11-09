@@ -34,12 +34,16 @@ namespace Onvif.Open.Recorder.Store
 
         #region Public Methods
 
-        public static async Task<StartupSettings> LoadAsync(IDbContextFactory<RecorderDbContext> contexts, ISettingsStore store, CancellationToken cancellationToken = default)
+        /// <summary>Creates missing tables, then reads the cameras (with their policies applied, filling <paramref name="directory"/>) and plugins.</summary>
+        public static async Task<StartupSettings> LoadAsync(IDbContextFactory<RecorderDbContext> contexts, ISettingsStore store, Tenancy.ITenancyStore tenancy, Tenancy.CameraDirectory directory, CancellationToken cancellationToken = default)
         {
             await DatabaseConfiguration.EnsureCreatedAsync(contexts, cancellationToken).ConfigureAwait(false);
-            return new StartupSettings(
+            var cameras = Configuration.CameraConfigurationService.Resolve(
                 await store.GetCamerasAsync(cancellationToken).ConfigureAwait(false),
-                await store.GetPluginsAsync(cancellationToken).ConfigureAwait(false));
+                await tenancy.GetPoliciesAsync(null, cancellationToken).ConfigureAwait(false),
+                directory);
+
+            return new StartupSettings(cameras, await store.GetPluginsAsync(cancellationToken).ConfigureAwait(false));
         }
 
         #endregion

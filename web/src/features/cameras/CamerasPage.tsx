@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useCameraConfigs, useCameraStatus, useDeleteCamera, useRecordingControl } from '../../data/cameras';
+import { useSites } from '../../data/tenancy';
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog';
 import { ErrorMessage } from '../../shared/ui/ErrorMessage';
 import { useCan } from '../auth/AuthContext';
@@ -15,12 +16,15 @@ export default function CamerasPage() {
   const statuses = useCameraStatus();
   const remove = useDeleteCamera();
   const control = useRecordingControl();
-  const [deleting, setDeleting] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<{ id: string; name: string } | null>(null);
 
-  const rows = useMemo(() => mergeCameras(configs.data, statuses.data), [configs.data, statuses.data]);
+  const sites = useSites();
+  const siteNames = useMemo(() => new Map((sites.data ?? []).map((s) => [s.id, s.name])), [sites.data]);
+  const rows = useMemo(() => mergeCameras(configs.data, statuses.data, siteNames), [configs.data, statuses.data, siteNames]);
   const { mutate: toggle } = control;
   const onToggleRecording = useCallback((id: string, action: 'start' | 'stop') => toggle({ id, action }), [toggle]);
   const loading = configs.isLoading || statuses.isLoading;
+  const onDelete = useCallback((id: string) => setDeleting({ id, name: rows.find((r) => r.id === id)?.name ?? id }), [rows]);
 
   return (
     <section className="stack">
@@ -42,6 +46,7 @@ export default function CamerasPage() {
             <thead>
               <tr>
                 <th>Camera</th>
+                <th>Site</th>
                 {canManage && <th>Source</th>}
                 <th>Mode</th>
                 <th>State</th>
@@ -55,7 +60,15 @@ export default function CamerasPage() {
             </thead>
             <tbody>
               {rows.map((row) => (
-                <CameraTableRow key={row.id} row={row} canManage={canManage} canControl={canControl} onToggleRecording={onToggleRecording} onDelete={setDeleting} />
+                <CameraTableRow
+                  key={row.id}
+                  row={row}
+                  siteName={row.siteId ? siteNames.get(row.siteId) : undefined}
+                  canManage={canManage}
+                  canControl={canControl}
+                  onToggleRecording={onToggleRecording}
+                  onDelete={onDelete}
+                />
               ))}
             </tbody>
           </table>
@@ -64,12 +77,12 @@ export default function CamerasPage() {
 
       {deleting && (
         <ConfirmDialog
-          title={`Delete camera ${deleting}?`}
+          title={`Delete camera ${deleting.name}?`}
           confirmLabel="Delete"
           danger
           onCancel={() => setDeleting(null)}
           onConfirm={() => {
-            remove.mutate(deleting);
+            remove.mutate(deleting.id);
             setDeleting(null);
           }}
         >

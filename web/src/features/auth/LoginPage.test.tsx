@@ -1,12 +1,13 @@
 import { screen } from '@testing-library/react';
 import { renderApp } from '../../test/renderApp';
-import { admin, tokens } from '../../test/fakeRecorder';
+import { admin, tenancyRoutes, tokens } from '../../test/fakeRecorder';
 
 describe('sign in', () => {
   it('signs in and opens the cameras', async () => {
     const { user, calls, client } = renderApp(
       '/cameras',
       {
+        ...tenancyRoutes,
         'POST /api/auth/login': ({ body }) => ((body as { password: string }).password === 'right' ? { body: tokens(1) } : { status: 401, body: { detail: 'Wrong user name or password.' } }),
         'GET /api/auth/me': () => ({ body: admin }),
         'GET /api/config/cameras': () => ({ body: [] }),
@@ -25,7 +26,7 @@ describe('sign in', () => {
     await user.click(screen.getByRole('button', { name: 'Sign in' }));
 
     expect(await screen.findByRole('heading', { name: 'Cameras' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Users' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Settings' })).toBeInTheDocument();
     expect(calls.some((c) => c.path === '/api/cameras' && c.token === 'access-1')).toBe(true);
     client.signOut();
   });
@@ -33,6 +34,7 @@ describe('sign in', () => {
   it('requires a new password first when the administrator set it', async () => {
     let mustChange = true;
     const { user, client } = renderApp('/cameras', {
+      ...tenancyRoutes,
       'POST /api/auth/refresh': () => ({ body: tokens(1) }),
       'GET /api/auth/me': () => ({ body: { ...admin, mustChangePassword: mustChange } }),
       'POST /api/auth/password': ({ body }) => {
@@ -56,6 +58,7 @@ describe('sign in', () => {
 
   it('signs out', async () => {
     const { user } = renderApp('/account', {
+      ...tenancyRoutes,
       'POST /api/auth/refresh': () => ({ body: tokens(1) }),
       'GET /api/auth/me': () => ({ body: admin }),
     });

@@ -32,7 +32,8 @@ namespace Onvif.Open.Recorder.Configuration
         /// Creates the manager with <paramref name="cameras"/> (from the settings database) and keeps the ONVIF cameras,
         /// which also provide snapshots, PTZ, imaging, ...
         /// </summary>
-        public static ConfiguredRecording Create(RecorderOptions options, IReadOnlyList<CameraOptions> cameras, ILoggerFactory loggerFactory, ArchiveStore archive = null)
+        /// <param name="cameraRetention">How long each camera's video is kept (from its recording policy); null: no per-camera limit.</param>
+        public static ConfiguredRecording Create(RecorderOptions options, IReadOnlyList<CameraOptions> cameras, ILoggerFactory loggerFactory, ArchiveStore archive = null, Func<string, TimeSpan?> cameraRetention = null)
         {
             Validate(options);
             ValidateCameras(cameras);
@@ -56,7 +57,7 @@ namespace Onvif.Open.Recorder.Configuration
                 .SetStorageDirectory(options.StorageDirectory)
                 .SetFormat(ToFormat(options.Format))
                 .SetRotationPolicy(ToRotationPolicy(options.Rotation) ?? RotationPolicies.Default)
-                .SetRetentionPolicy(ToRetentionPolicy(options.Retention))
+                .SetRetentionPolicy(WithCameraRetention(ToRetentionPolicy(options.Retention), cameraRetention))
                 .SetRetentionInterval(options.RetentionInterval)
                 .SetStallTimeout(options.StallTimeout)
                 .SetReconnectDelay(options.MinReconnectDelay, options.MaxReconnectDelay)
@@ -75,6 +76,21 @@ namespace Onvif.Open.Recorder.Configuration
             }
 
             return new ConfiguredRecording(manager, onvifCameras);
+        }
+
+        /// <summary>
+        /// The recorder-wide limits (free space, total size) plus each camera's own retention, looked up at every run so
+        /// a changed recording policy applies at the next one.
+        /// </summary>
+        public static IRetentionPolicy WithCameraRetention(IRetentionPolicy recorderWide, Func<string, TimeSpan?> cameraRetention)
+        {
+            if (cameraRetention == null)
+            {
+                return recorderWide;
+            }
+
+            var perCamera = RetentionPolicies.When(context => context.Segments.Where(s => cameraRetention(s.CameraId) is TimeSpan keep && context.Now - s.LastWriteTime > keep));
+            return ReferenceEquals(recorderWide, RetentionPolicies.KeepAll) ? perCamera : RetentionPolicies.All(recorderWide, perCamera);
         }
 
         /// <summary>Problems with one camera's configuration (empty when it is valid).</summary>

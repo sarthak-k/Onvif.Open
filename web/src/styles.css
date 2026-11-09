@@ -173,3 +173,22 @@ caption { text-align: left; font-weight: 600; padding: 4px 8px; }
   .live-grid { height: auto; grid-auto-rows: 56vw; grid-template-columns: 1fr !important; grid-template-rows: none !important; }
   .live-grid .tile { grid-column: auto !important; grid-row: auto !important; }
 }
+
+/* Settings: a sub-navigation beside the section (above it on phones). */
+.settings { display: grid; grid-template-columns: 200px 1fr; gap: 24px; align-items: start; }
+.subnav { display: flex; flex-direction: column; gap: 2px; position: sticky; top: 16px; }
+.subnav a { padding: 8px 10px; border-radius: 6px; text-decoration: none; color: var(--text); }
+.subnav a.active { background: var(--surface); color: var(--accent); font-weight: 600; box-shadow: inset 3px 0 0 var(--accent); }
+.settings-body { min-width: 0; }
+fieldset.plain { border: none; padding: 0; margin: 0; }
+fieldset.plain > legend { font-weight: 600; padding: 0; margin-bottom: 4px; }
+fieldset.choice.column { flex-direction: column; gap: 6px; }
+.setup { width: 100%; max-width: 560px; }
+.link.small-gap { margin-left: 8px; }
+details > summary { cursor: pointer; color: var(--muted); }
+details[open] > summary { margin-bottom: 8px; }
+
+@media (max-width: 640px) {
+  .settings { grid-template-columns: 1fr; gap: 12px; }
+  .subnav { flex-direction: row; flex-wrap: wrap; position: static; }
+}

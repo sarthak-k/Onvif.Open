@@ -38,7 +38,8 @@ export default function LivePage() {
   const save = useSaveLayout();
   const remove = useDeleteLayout();
 
-  const cameraIds = useMemo(() => (statuses.data ?? []).map((s) => s.cameraId).sort((a, b) => a.localeCompare(b)), [statuses.data]);
+  const cameras = useMemo(() => (statuses.data ?? []).map((s) => ({ id: s.cameraId, name: s.name })).sort((a, b) => a.name.localeCompare(b.name)), [statuses.data]);
+  const cameraIds = useMemo(() => cameras.map((c) => c.id), [cameras]);
   const [state, dispatch] = useReducer(liveLayoutReducer, [], newLayout);
   const [editing, setEditing] = useState(false);
   const [focused, setFocused] = useState<number | null>(null);
@@ -124,7 +125,7 @@ export default function LivePage() {
                 index={index}
                 cameraId={state.cameras[index]}
                 placement={placement}
-                cameraIds={cameraIds}
+                cameras={cameras}
                 editing={editing}
                 focused={focused === index}
                 onAssign={onAssign}

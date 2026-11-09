@@ -82,6 +82,12 @@ namespace Onvif.Open.Recorder.Security
                         .AddRequirements(new PasswordChangedRequirement()));
                 }
 
+                authorization.AddPolicy(Policies.OrganizationAdmin, policy => policy
+                    .RequireAuthenticatedUser()
+                    .RequireRole(Roles.AtLeast(Roles.Admin))
+                    .RequireAssertion(context => !context.User.HasClaim(c => c.Type == RecorderClaims.Sites))
+                    .AddRequirements(new PasswordChangedRequirement()));
+
                 // Secure by default: an endpoint without its own policy needs a signed-in user.
                 authorization.FallbackPolicy = authorization.GetPolicy(Policies.Viewer);
             });
@@ -226,17 +232,17 @@ namespace Onvif.Open.Recorder.Security
         }
     }
 
-    /// <summary>Creates the first admin at startup when there are no users.</summary>
+    /// <summary>Automated installs: creates the configured owner at startup when there are no users (else the web application's setup does).</summary>
     internal sealed class SecurityStartup : IHostedService
     {
-        public SecurityStartup(StartupSettings settings, UserService users)
+        public SecurityStartup(StartupSettings settings, Tenancy.TenancyService tenancy)
         {
-            _users = users;
+            _tenancy = tenancy;
         }
 
-        private readonly UserService _users;
+        private readonly Tenancy.TenancyService _tenancy;
 
-        public Task StartAsync(CancellationToken cancellationToken) => _users.EnsureInitialAdminAsync(cancellationToken);
+        public Task StartAsync(CancellationToken cancellationToken) => _tenancy.EnsureConfiguredOwnerAsync(cancellationToken);
 
         public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     }

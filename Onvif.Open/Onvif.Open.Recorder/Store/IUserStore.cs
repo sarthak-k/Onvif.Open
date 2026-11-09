@@ -22,7 +22,21 @@ namespace Onvif.Open.Recorder.Store
         /// <summary>Inserts or updates the user (by id).</summary>
         Task SaveAsync(UserRecord user, CancellationToken cancellationToken = default);
 
+        /// <summary>Deletes the user with their memberships and private layouts.</summary>
         Task<bool> DeleteAsync(string id, CancellationToken cancellationToken = default);
+
+        Task<bool> AnyAsync(CancellationToken cancellationToken = default);
+
+        /// <summary>The organizations the user belongs to, oldest membership first.</summary>
+        Task<IReadOnlyList<MembershipRecord>> GetMembershipsAsync(string userId, CancellationToken cancellationToken = default);
+
+        /// <summary>The members of an organization.</summary>
+        Task<IReadOnlyList<MembershipRecord>> GetMembersAsync(string organizationId, CancellationToken cancellationToken = default);
+
+        Task<MembershipRecord> FindMembershipAsync(string userId, string organizationId, CancellationToken cancellationToken = default);
+
+        /// <summary>Inserts or updates the membership (by id).</summary>
+        Task SaveMembershipAsync(MembershipRecord membership, CancellationToken cancellationToken = default);
     }
 
     /// <summary>
@@ -103,9 +117,60 @@ namespace Onvif.Open.Recorder.Store
         {
             await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
             {
-                // The user's own layouts go with the user.
+                // The user's memberships and private layouts go with the user.
                 await db.Layouts.Where(l => l.OwnerId == id).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+                await db.Memberships.Where(m => m.UserId == id).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
                 return await db.Users.Where(u => u.Id == id).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false) > 0;
+            }
+        }
+
+        public async Task<bool> AnyAsync(CancellationToken cancellationToken = default)
+        {
+            await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
+            {
+                return await db.Users.AnyAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        public async Task<IReadOnlyList<MembershipRecord>> GetMembershipsAsync(string userId, CancellationToken cancellationToken = default)
+        {
+            await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
+            {
+                var memberships = await db.Memberships.AsNoTracking().Where(m => m.UserId == userId).ToListAsync(cancellationToken).ConfigureAwait(false);
+                return memberships.OrderBy(m => m.CreatedAt).ToList();
+            }
+        }
+
+        public async Task<IReadOnlyList<MembershipRecord>> GetMembersAsync(string organizationId, CancellationToken cancellationToken = default)
+        {
+            await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
+            {
+                return await db.Memberships.AsNoTracking().Where(m => m.OrganizationId == organizationId).ToListAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        public async Task<MembershipRecord> FindMembershipAsync(string userId, string organizationId, CancellationToken cancellationToken = default)
+        {
+            await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
+            {
+                return await db.Memberships.AsNoTracking().FirstOrDefaultAsync(m => m.UserId == userId && m.OrganizationId == organizationId, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        public async Task SaveMembershipAsync(MembershipRecord membership, CancellationToken cancellationToken = default)
+        {
+            await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
+            {
+                if (await db.Memberships.AnyAsync(m => m.Id == membership.Id, cancellationToken).ConfigureAwait(false))
+                {
+                    db.Memberships.Update(membership);
+                }
+                else
+                {
+                    db.Memberships.Add(membership);
+                }
+
+                await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
             }
         }
 

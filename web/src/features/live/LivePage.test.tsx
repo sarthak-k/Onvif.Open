@@ -14,7 +14,7 @@ function fakePlayers() {
   return { factory, players, live: () => players.filter((p) => !p.destroyed) };
 }
 
-const status = (cameraId: string) => ({ cameraId, state: 'Recording', mode: 'Continuous', isTriggered: false, codec: 'H264', recordsAudio: false, framesRecorded: 0, bytesRecorded: 0, segmentsCompleted: 0 });
+const status = (cameraId: string) => ({ cameraId, name: cameraId, state: 'Recording', mode: 'Continuous', isTriggered: false, codec: 'H264', recordsAudio: false, framesRecorded: 0, bytesRecorded: 0, segmentsCompleted: 0 });
 const saved = { id: 'l1', name: 'Doors', grid: '2x1', cameras: ['back', 'front'], shared: true, editable: false, updatedAt: '2026-11-08T00:00:00Z' };
 
 function routes(role: string, layouts: unknown[] = [saved]) {

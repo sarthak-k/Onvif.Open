@@ -2,6 +2,7 @@
 // 2026-11-08
 
 using System;
+using System.Security.Claims;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -12,6 +13,7 @@ using Microsoft.AspNetCore.Routing;
 using Onvif.Open.Recorder.Configuration;
 
 using Onvif.Open.Recorder.Security;
+using Onvif.Open.Recorder.Tenancy;
 
 namespace Onvif.Open.Recorder.Api
 {
@@ -34,24 +36,36 @@ namespace Onvif.Open.Recorder.Api
 
         public static IEndpointRouteBuilder MapCameraConfigurationApi(this IEndpointRouteBuilder app)
         {
+            // Administrators configure the cameras of the sites they see (the access middleware hides the others' ids).
             var cameras = app.MapGroup("/api/config/cameras").RequireAuthorization(Policies.Admin);
 
-            cameras.MapGet("", async (CameraConfigurationService service, CancellationToken ct) => (await service.GetCamerasAsync(ct)).Select(ToDto));
+            cameras.MapGet("", async (ClaimsPrincipal user, CameraConfigurationService service, CancellationToken ct) =>
+                (await service.GetCamerasAsync(user.OrganizationId(), ct)).Where(c => user.CanSeeSite(c.OrganizationId, c.SiteId)).Select(ToDto));
 
-            cameras.MapGet("/{id}", async (string id, CameraConfigurationService service, CancellationToken ct) =>
+            cameras.MapGet("/{id}", async (string id, ClaimsPrincipal user, CameraConfigurationService service, CancellationToken ct) =>
             {
-                var camera = await service.GetCameraAsync(id, ct);
+                var camera = await service.GetCameraAsync(user.OrganizationId(), id, ct);
                 return camera == null ? Results.NotFound() : Results.Ok(ToDto(camera));
             });
 
-            cameras.MapPost("", async (CameraOptions camera, CameraConfigurationService service, CancellationToken ct) =>
-                ToResult(await service.AddAsync(camera ?? new CameraOptions(), ct), created: true));
+            cameras.MapPost("", async (CameraOptions camera, ClaimsPrincipal user, CameraConfigurationService service, CancellationToken ct) =>
+            {
+                camera ??= new CameraOptions();
+                return !user.CanSeeSite(user.OrganizationId(), camera.SiteId)
+                    ? SiteNotAllowed()
+                    : ToResult(await service.AddAsync(user.OrganizationId(), camera, ct), created: true);
+            });
 
-            cameras.MapPut("/{id}", async (string id, CameraOptions camera, CameraConfigurationService service, CancellationToken ct) =>
-                ToResult(await service.UpdateAsync(id, camera ?? new CameraOptions(), ct), created: false));
+            cameras.MapPut("/{id}", async (string id, CameraOptions camera, ClaimsPrincipal user, CameraConfigurationService service, CancellationToken ct) =>
+            {
+                camera ??= new CameraOptions();
+                return !user.CanSeeSite(user.OrganizationId(), camera.SiteId)
+                    ? SiteNotAllowed()
+                    : ToResult(await service.UpdateAsync(user.OrganizationId(), id, camera, ct), created: false);
+            });
 
             // Tests settings before they are saved; with "id" of a saved camera, its stored password is used when none is given.
-            cameras.MapPost("/test", async (CameraOptions camera, CameraConfigurationService service, CancellationToken ct) =>
+            cameras.MapPost("/test", async (CameraOptions camera, ClaimsPrincipal user, CameraDirectory directory, CameraConfigurationService service, CancellationToken ct) =>
             {
                 camera = camera ?? new CameraOptions();
 
@@ -60,17 +74,17 @@ namespace Onvif.Open.Recorder.Api
                     return Results.BadRequest(new { errors = new[] { "Give exactly one of onvifUrl or rtspUrl." } });
                 }
 
-                if (camera.Password == null && !string.IsNullOrWhiteSpace(camera.Id))
+                if (camera.Password == null && !string.IsNullOrWhiteSpace(camera.Id) && user.CanSeeCamera(directory, camera.Id))
                 {
-                    camera.Password = (await service.GetCameraAsync(camera.Id, ct))?.Password;
+                    camera.Password = (await service.GetCameraAsync(user.OrganizationId(), camera.Id, ct))?.Password;
                 }
 
                 return Results.Ok(await CameraProbe.ProbeAsync(camera, ct));
             });
 
-            cameras.MapDelete("/{id}", async (string id, CameraConfigurationService service, CancellationToken ct) =>
+            cameras.MapDelete("/{id}", async (string id, ClaimsPrincipal user, CameraConfigurationService service, CancellationToken ct) =>
             {
-                var result = await service.RemoveAsync(id, ct);
+                var result = await service.RemoveAsync(user.OrganizationId(), id, ct);
                 return result.Status == ConfigurationStatus.Ok ? Results.NoContent() : ToResult(result, created: false);
             });
 
@@ -80,6 +94,8 @@ namespace Onvif.Open.Recorder.Api
         #endregion
 
         #region Private Methods
+
+        private static IResult SiteNotAllowed() => Results.BadRequest(new { errors = new[] { "Choose one of your sites for the camera." } });
 
         private static IResult ToResult(ConfigurationResult result, bool created)
         {
@@ -103,6 +119,7 @@ namespace Onvif.Open.Recorder.Api
         {
             var element = JsonSerializer.SerializeToNode(camera, Json).AsObject();
             element.Remove("password");
+            element.Remove("organizationId");
             element["hasPassword"] = !string.IsNullOrEmpty(camera.Password);
             return JsonSerializer.SerializeToElement(element, Json);
         }

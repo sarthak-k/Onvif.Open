@@ -18,11 +18,50 @@ namespace Onvif.Open.Test.Recording.Fakes
     /// </summary>
     internal sealed class TestSettings : IDisposable
     {
-        public TestSettings()
+        /// <param name="seeded">False: an empty database, as before the first-run setup.</param>
+        public TestSettings(bool seeded = true)
         {
             Root = Path.Combine(Path.GetTempPath(), "onvif-open-settings", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(Root);
-            Store = CreateStore(Database, Keys);
+            Store = CreateStore("Sqlite", $"Data Source={Database}", Keys, out var contexts);
+            Tenancy = new Onvif.Open.Recorder.Tenancy.EfTenancyStore(contexts);
+            Users = new EfUserStore(contexts);
+
+            if (seeded)
+            {
+                SeedTenancy();
+            }
+        }
+
+        // The organization a seeded recorder starts with: one site, the two default policies and the owner "admin".
+        public const string OrganizationId = "00000000-0000-0000-0000-00000000a001";
+        public const string SiteId = "00000000-0000-0000-0000-00000000b001";
+        public const string AlwaysPolicyId = "00000000-0000-0000-0000-00000000c001";
+        public const string EventsPolicyId = "00000000-0000-0000-0000-00000000c002";
+
+        public Onvif.Open.Recorder.Tenancy.ITenancyStore Tenancy { get; }
+        public IUserStore Users { get; }
+
+        /// <summary>A second site of the organization, for site access tests.</summary>
+        public string AddSite(string name)
+        {
+            var id = Guid.NewGuid().ToString("D");
+            Tenancy.SaveSiteAsync(new SiteRecord { Id = id, OrganizationId = OrganizationId, Name = name, TimeZone = "UTC", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow }).GetAwaiter().GetResult();
+            return id;
+        }
+
+        private void SeedTenancy()
+        {
+            var now = DateTime.UtcNow;
+            Tenancy.SaveOrganizationAsync(new OrganizationRecord { Id = OrganizationId, Name = "Test organization", Region = "us", CreatedAt = now }).GetAwaiter().GetResult();
+            Tenancy.SaveSiteAsync(new SiteRecord { Id = SiteId, OrganizationId = OrganizationId, Name = "Main site", TimeZone = "UTC", CreatedAt = now, UpdatedAt = now }).GetAwaiter().GetResult();
+            Tenancy.SavePolicyAsync(new RecordingPolicyRecord { Id = AlwaysPolicyId, OrganizationId = OrganizationId, Name = "Always record", Mode = "Always", PreRollSeconds = 5, PostRollSeconds = 10, ContinuousRetentionDays = 7, EventRetentionDays = 30, IsDefault = true, CreatedAt = now, UpdatedAt = now }).GetAwaiter().GetResult();
+            Tenancy.SavePolicyAsync(new RecordingPolicyRecord { Id = EventsPolicyId, OrganizationId = OrganizationId, Name = "Events only", Mode = "EventsOnly", PreRollSeconds = 5, PostRollSeconds = 10, ContinuousRetentionDays = 7, EventRetentionDays = 30, CreatedAt = now, UpdatedAt = now }).GetAwaiter().GetResult();
+
+            var owner = new UserRecord { Id = "00000000-0000-0000-0000-00000000d001", UserName = AdminName, Enabled = true, SecurityStamp = Guid.NewGuid().ToString("N"), CreatedAt = now };
+            owner.PasswordHash = new Microsoft.AspNetCore.Identity.PasswordHasher<UserRecord>().HashPassword(owner, AdminPassword);
+            Users.SaveAsync(owner).GetAwaiter().GetResult();
+            Users.SaveMembershipAsync(new MembershipRecord { Id = Guid.NewGuid().ToString("D"), UserId = owner.Id, OrganizationId = OrganizationId, Role = "Owner", Sites = "[]", CreatedAt = now }).GetAwaiter().GetResult();
         }
 
         public string Root { get; }
@@ -33,14 +72,12 @@ namespace Onvif.Open.Test.Recording.Fakes
         public const string AdminName = "admin";
         public const string AdminPassword = "Test-Admin-Pass-1";
 
-        /// <summary>Points the recorder at this database and these keys, with a known first admin.</summary>
+        /// <summary>Points the recorder at this database (already set up, with the owner "admin") and these keys.</summary>
         public void Apply(IWebHostBuilder builder)
         {
             builder.UseSetting("Database:Provider", "Sqlite");
             builder.UseSetting("Database:ConnectionString", $"Data Source={Database}");
             builder.UseSetting("DataProtection:KeysDirectory", Keys);
-            builder.UseSetting("Security:InitialAdmin:UserName", AdminName);
-            builder.UseSetting("Security:InitialAdmin:Password", AdminPassword);
             builder.UseSetting("Security:SignInsPerMinute", "1000");
         }
 
@@ -61,8 +98,13 @@ namespace Onvif.Open.Test.Recording.Fakes
 
         public sealed record Tokens(string AccessToken, string RefreshToken);
 
+        /// <summary>Seeds a camera; by default at the main site, recording always (or only on events in triggered mode).</summary>
         public TestSettings Camera(CameraOptions camera)
         {
+            camera.OrganizationId ??= OrganizationId;
+            camera.SiteId ??= SiteId;
+            camera.PolicyId ??= camera.Mode == Onvif.Open.Core.Recording.RecordingMode.Triggered ? EventsPolicyId : AlwaysPolicyId;
+            camera.Name ??= camera.Id;
             Store.SaveCameraAsync(camera).GetAwaiter().GetResult();
             return this;
         }
@@ -97,9 +139,6 @@ namespace Onvif.Open.Test.Recording.Fakes
             }
         }
 
-        private static ISettingsStore CreateStore(string database, string keys)
-        {
-            return CreateStore("Sqlite", $"Data Source={database}", keys, out _);
-        }
+
     }
 }

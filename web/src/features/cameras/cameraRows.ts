@@ -3,15 +3,22 @@ import type { CameraConfig, CameraStatus } from '../../api/types';
 /** One camera in the list: its configuration (administrators) and recording status (everyone). */
 export interface CameraRow {
   id: string;
+  name: string;
+  siteId?: string | null;
   config?: CameraConfig;
   status?: CameraStatus;
 }
 
-export function mergeCameras(configs: CameraConfig[] | undefined, statuses: CameraStatus[] | undefined): CameraRow[] {
+/** Configuration (administrators) and status (everyone) of each camera, by site name, then camera name. */
+export function mergeCameras(configs: CameraConfig[] | undefined, statuses: CameraStatus[] | undefined, siteNames: ReadonlyMap<string, string> = new Map()): CameraRow[] {
   const rows = new Map<string, CameraRow>();
-  configs?.forEach((config) => rows.set(config.id, { id: config.id, config }));
-  statuses?.forEach((status) => rows.set(status.cameraId, { ...rows.get(status.cameraId), id: status.cameraId, status }));
-  return [...rows.values()].sort((a, b) => a.id.localeCompare(b.id));
+  configs?.forEach((config) => config.id && rows.set(config.id, { id: config.id, name: config.name, siteId: config.siteId, config }));
+  statuses?.forEach((status) => {
+    const row = rows.get(status.cameraId);
+    rows.set(status.cameraId, { id: status.cameraId, name: row?.name ?? status.name, siteId: row?.siteId ?? status.siteId, config: row?.config, status });
+  });
+  const site = (row: CameraRow) => (row.siteId ? (siteNames.get(row.siteId) ?? '') : '');
+  return [...rows.values()].sort((a, b) => site(a).localeCompare(site(b)) || a.name.localeCompare(b.name));
 }
 
 export function describeSource(config: CameraConfig | undefined): string {

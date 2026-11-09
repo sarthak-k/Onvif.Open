@@ -24,10 +24,11 @@ namespace Onvif.Open.Recorder.Api
 
         public static IEndpointRouteBuilder MapDiscoveryApi(this IEndpointRouteBuilder app)
         {
-            app.MapGet("/api/discovery", async (ICameraDiscovery discovery, Store.ISettingsStore settings, CancellationToken ct) =>
+            app.MapGet("/api/discovery", async (ICameraDiscovery discovery, Store.ISettingsStore settings, System.Security.Claims.ClaimsPrincipal user, CancellationToken ct) =>
             {
                 var devices = await discovery.FindAsync(ct);
-                var cameras = await settings.GetCamerasAsync(ct);
+                var organizationId = Tenancy.CameraAccess.OrganizationId(user);
+                var cameras = (await settings.GetCamerasAsync(ct)).Where(c => c.OrganizationId == organizationId).ToList();
 
                 return devices
                     .OrderBy(d => d.DeviceServiceUri?.Host, StringComparer.Ordinal)
@@ -41,7 +42,8 @@ namespace Onvif.Open.Recorder.Api
                         deviceServiceUri = d.DeviceServiceUri?.ToString(),
                         serviceAddresses = d.ServiceAddresses.Select(a => a.ToString()),
                         respondedFrom = d.RespondedFrom?.ToString(),
-                        configuredCameraId = FindConfiguredCamera(cameras, d)
+                        configuredCameraId = FindConfiguredCamera(cameras, d),
+                        configuredCameraName = cameras.FirstOrDefault(c => c.Id == FindConfiguredCamera(cameras, d))?.Name
                     });
             }).RequireAuthorization(Policies.Admin);
 

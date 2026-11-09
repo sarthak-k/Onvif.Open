@@ -71,6 +71,10 @@ namespace Onvif.Open.Test.Recording.Integration
         private static CameraOptions Camera(string id, string password = "s3cret-pass") => new CameraOptions
         {
             Id = id,
+            Name = "Camera " + id,
+            OrganizationId = TestSettings.OrganizationId,
+            SiteId = TestSettings.SiteId,
+            PolicyId = TestSettings.AlwaysPolicyId,
             OnvifUrl = "http://192.168.1.10",
             Username = "admin",
             Password = password,
@@ -108,6 +112,8 @@ namespace Onvif.Open.Test.Recording.Integration
             Assert.Equal("other", cameras[0].Password);
             Assert.Equal(new[] { "Human" }, cameras[1].Analytics.TriggerClasses);
             Assert.Equal("s3cret-pass", (await store.GetCameraAsync("A-CAM")).Password);
+            Assert.Equal("Camera B-CAM", cameras[0].Name);
+            Assert.Equal((TestSettings.OrganizationId, TestSettings.SiteId, TestSettings.AlwaysPolicyId), (cameras[0].OrganizationId, cameras[0].SiteId, cameras[0].PolicyId));
 
             Assert.True(await store.DeleteCameraAsync("a-cam"));
             Assert.False(await store.DeleteCameraAsync("a-cam"));
@@ -150,7 +156,7 @@ namespace Onvif.Open.Test.Recording.Integration
             var raw = Encoding.UTF8.GetString(File.ReadAllBytes(Path.Combine(_root, "settings.db")));
             Assert.DoesNotContain("s3cret-pass", raw);
             Assert.DoesNotContain("mail-secret", raw);
-            Assert.Contains("onvif_cameras", raw);
+            Assert.Contains("oo_cameras", raw);
 
             // Without the keys, the secrets cannot be read.
             var (otherKeys, _) = Open("Sqlite", keys: "other-keys");
@@ -171,15 +177,15 @@ namespace Onvif.Open.Test.Recording.Integration
             // A database from before layouts existed.
             await using (var db = await contexts.CreateDbContextAsync())
             {
-                await db.Database.ExecuteSqlRawAsync("DROP TABLE onvif_layouts");
+                await db.Database.ExecuteSqlRawAsync("DROP TABLE oo_layouts");
             }
 
             await DatabaseConfiguration.EnsureCreatedAsync(contexts);
 
             var layouts = new EfLayoutStore(contexts);
-            await layouts.SaveAsync(new LayoutRecord { Id = Guid.NewGuid().ToString(), Name = "Lobby", Grid = "2x2", Cameras = "[\"kept\"]", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
+            await layouts.SaveAsync(new LayoutRecord { Id = Guid.NewGuid().ToString(), OrganizationId = TestSettings.OrganizationId, Name = "Lobby", Grid = "2x2", Cameras = "[\"kept\"]", CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow });
 
-            Assert.Equal("Lobby", Assert.Single(await layouts.GetVisibleAsync("anyone")).Name);
+            Assert.Equal("Lobby", Assert.Single(await layouts.GetVisibleAsync(TestSettings.OrganizationId, "anyone")).Name);
             Assert.Equal("kept", Assert.Single(await store.GetCamerasAsync()).Id);
         }
 

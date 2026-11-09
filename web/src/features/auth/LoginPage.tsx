@@ -4,6 +4,7 @@ import { useMutation } from '@tanstack/react-query';
 import { CheckboxField, TextField } from '../../shared/form/fields';
 import { useForm } from '../../shared/form/useForm';
 import { ErrorMessage } from '../../shared/ui/ErrorMessage';
+import { useSetupStatus } from '../../data/tenancy';
 import { useAuth } from './AuthContext';
 
 export default function LoginPage() {
@@ -12,8 +13,11 @@ export default function LoginPage() {
   const from = (useLocation().state as { from?: string } | null)?.from ?? '/cameras';
   const { values, set } = useForm({ userName: '', password: '', keep: false });
   const login = useMutation({ mutationFn: () => signIn(values.userName, values.password, values.keep) });
+  const setup = useSetupStatus();
 
   if (user) return <Navigate to={from} replace />;
+  // A recorder without users is set up first.
+  if (setup.data?.required) return <Navigate to="/setup" replace />;
 
   function submit(event: FormEvent) {
     event.preventDefault();
