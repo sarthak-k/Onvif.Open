@@ -512,7 +512,10 @@ a network: bearer tokens and passwords must not travel in clear text.
 
 `web/` is a React + TypeScript app for the recorder: first-run setup, sign-in, live view (several cameras in a grid: single, 2 × 2 up to
 5 × 5, or one large tile with smaller ones; arrange cameras by picking or dragging, enlarge one with a double click,
-full screen; layouts saved per user or shared by administrators), cameras (status for everyone; for administrators an
+full screen; layouts saved per user or shared by administrators), **Investigate** (search the stored events by site,
+camera, kind and time, newest first; open one to play its camera from 5 s before it, and up to three more cameras of the
+site in sync, with one timeline of what each recorded and the site's events: play, pause, speed up to 8×, ±10 s, click
+the timeline or an event mark to move all cameras there), cameras (status for everyone; for administrators an
 **Add cameras** wizard: it lists what the gateway found on the network (or a typed address), signs in to all of them
 with one shared password (a camera that refuses it gets its own), shows each camera's picture, chooses its streams,
 and adds them named, at a site and with a recording policy; one camera can also be added and edited in full), settings (sites, recording policies, gateways with their

@@ -20,7 +20,7 @@ async function addCamera(page: Page, id: string) {
   // Nothing listens there: the camera is configured but sends no video.
   await page.getByLabel('RTSP URL').fill(`rtsp://127.0.0.1:9/${id}`);
   await page.getByRole('button', { name: 'Add camera' }).click();
-  await expect(page.getByRole('link', { name: id })).toBeVisible();
+  await expect(page.getByRole('link', { name: id, exact: true })).toBeVisible();
 }
 
 test('live view plays through the recorder and keeps saved layouts', async ({ page }) => {
@@ -59,11 +59,22 @@ test('live view plays through the recorder and keeps saved layouts', async ({ pa
   await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
   await expect(page.getByRole('option', { name: 'Yard first' })).toHaveCount(0);
 
+  // The cameras never answered: Investigate lists them as offline, and opens one on its timeline.
+  await page.getByRole('link', { name: 'Investigate' }).click();
+  const offline = page.getByRole('list', { name: 'Events' }).getByRole('button', { name: /Camera offline.*gate/ }).first();
+  await expect(offline).toBeVisible({ timeout: 30_000 });
+  await offline.click();
+  await expect(page.getByRole('heading', { name: 'Camera offline · gate' })).toBeVisible();
+  await expect(page.getByRole('figure', { name: 'gate' })).toBeVisible();
+  await expect(page.getByRole('slider', { name: 'Time' })).toBeVisible();
+  await page.getByRole('checkbox', { name: 'yard' }).check();
+  await expect(page.getByRole('figure', { name: 'yard' })).toBeVisible();
+
   // Clean up for the other tests: they expect no cameras.
   for (const id of ['gate', 'yard']) {
     await page.goto('/cameras');
     await page.getByRole('row', { name: new RegExp(id) }).getByRole('button', { name: 'Delete' }).click();
     await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
-    await expect(page.getByRole('link', { name: id })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: id, exact: true })).toHaveCount(0);
   }
 });

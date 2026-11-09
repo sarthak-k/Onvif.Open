@@ -277,3 +277,44 @@ export interface GatewayRequest {
   backup?: { provider: string; prefix: string | null; keepLocalCopyHours: number; settings: Record<string, string> | null };
   discovery?: { multicast: boolean; addresses: string[] };
 }
+
+export interface RecordingSegment {
+  cameraId: string;
+  fileName: string;
+  startTime: string;
+  lastWriteTime: string;
+  size: number;
+  isActive: boolean;
+  isLocal: boolean;
+  isArchived: boolean;
+}
+
+export type EventCategory = 'motion' | 'person' | 'vehicle' | 'object' | 'intrusion' | 'tamper' | 'input' | 'offline' | 'plugin' | 'other';
+
+/** Something a camera, a detection, the recorder or a plugin reported (stored, searchable). */
+export interface StoredEvent {
+  id: string;
+  cameraId: string | null;
+  cameraName: string | null;
+  siteId: string | null;
+  category: EventCategory;
+  severity: 'Info' | 'Warning' | 'Critical';
+  source: string;
+  title: string;
+  topic: string | null;
+  startTime: string;
+  /** Null while it is still going on. */
+  endTime: string | null;
+  data: unknown;
+}
+
+export interface EventQuery {
+  cameraId?: string;
+  siteId?: string;
+  category?: EventCategory;
+  from?: string;
+  to?: string;
+  /** Only events that started before this time (the next page). */
+  before?: string;
+  limit?: number;
+}
