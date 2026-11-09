@@ -533,7 +533,11 @@ a network: bearer tokens and passwords must not travel in clear text.
 
 ## Web app
 
-`web/` is a React + TypeScript app for the recorder: first-run setup, sign-in, live view (several cameras in a grid: single, 2 × 2 up to
+`web/` is a React + TypeScript app for the recorder: first-run setup (which leads straight to adding cameras), sign-in,
+**Home** (where everyone lands: problems first, such as cameras not recording, gateways offline, a disk almost full or
+a cloud backup failing or falling behind, each with since when and where to look; then each site with its cameras
+recording, problems and today's events in its own time zone; then today's events; and for administrators, until done or
+hidden, what is left to set up: cameras, users, backup), live view (several cameras in a grid: single, 2 × 2 up to
 5 × 5, or one large tile with smaller ones; arrange cameras by picking or dragging, enlarge one with a double click,
 full screen; layouts saved per user or shared by administrators), **Investigate** (search the stored events by site,
 camera, kind and time, newest first; open one to play its camera from 5 s before it, and up to three more cameras of the

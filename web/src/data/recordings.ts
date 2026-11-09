@@ -35,3 +35,14 @@ export function useSegments(cameraId: string, from: number, to: number) {
     refetchInterval: 30_000,
   });
 }
+
+/** Events since a time (newest first), refreshed every 30 s: what happened today. */
+export function useEventsSince(from: number | null) {
+  const api = useApi();
+  return useQuery({
+    queryKey: queryKeys.events.since(from ?? 0),
+    queryFn: () => api.events.list({ from: new Date(from!).toISOString(), limit: 500 }),
+    enabled: from !== null,
+    refetchInterval: 30_000,
+  });
+}

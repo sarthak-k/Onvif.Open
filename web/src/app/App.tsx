@@ -116,7 +116,7 @@ export function App({
                   </Route>
                   <Route
                     path="*"
-                    element={<Navigate to="/cameras" replace />}
+                    element={<Navigate to="/home" replace />}
                   />
                 </Routes>
               </Suspense>

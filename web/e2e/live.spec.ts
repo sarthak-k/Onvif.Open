@@ -10,7 +10,7 @@ async function signIn(page: Page) {
   await page.getByLabel('User name').fill('admin');
   await page.getByLabel('Password', { exact: true }).fill(e2e.adminPassword);
   await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page.getByRole('heading', { name: 'Cameras' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
 }
 
 async function addCamera(page: Page, id: string) {
@@ -59,8 +59,13 @@ test('live view plays through the recorder and keeps saved layouts', async ({ pa
   await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
   await expect(page.getByRole('option', { name: 'Yard first' })).toHaveCount(0);
 
-  // The cameras never answered: Investigate lists them as offline, and opens one on its timeline.
-  await page.getByRole('link', { name: 'Investigate' }).click();
+  // The cameras never answered: Home says so first, and leads to when they went offline.
+  await page.getByRole('link', { name: 'Home' }).click();
+  await expect(page.getByRole('list', { name: 'Problems' })).toContainText('gate is not recording', { timeout: 30_000 });
+  await expect(page.getByRole('list', { name: 'Sites' })).toContainText('0 of 2 cameras recording');
+
+  // Investigate lists them as offline, and opens one on its timeline.
+  await page.getByRole('link', { name: 'Investigate' }).first().click();
   const offline = page.getByRole('list', { name: 'Events' }).getByRole('button', { name: /Camera offline.*gate/ }).first();
   await expect(offline).toBeVisible({ timeout: 30_000 });
   await offline.click();
