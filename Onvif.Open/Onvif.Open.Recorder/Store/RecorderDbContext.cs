@@ -40,9 +40,11 @@ namespace Onvif.Open.Recorder.Store
         public DbSet<CaseClipRecord> CaseClips => Set<CaseClipRecord>();
         public DbSet<ExportRecord> Exports => Set<ExportRecord>();
         public DbSet<ShareLinkRecord> ShareLinks => Set<ShareLinkRecord>();
+        public DbSet<AlertRuleRecord> AlertRules => Set<AlertRuleRecord>();
+        public DbSet<AlertRecord> Alerts => Set<AlertRecord>();
 
         /// <summary>Every table of the model, for creating the ones a database lacks.</summary>
-        public static readonly string[] TableNames = { "oo_organizations", "oo_sites", "oo_recording_policies", "oo_cameras", "oo_users", "oo_memberships", "oo_layouts", "oo_plugins", "oo_events", "oo_audit", "oo_gateways", "oo_cases", "oo_case_clips", "oo_exports", "oo_share_links" };
+        public static readonly string[] TableNames = { "oo_organizations", "oo_sites", "oo_recording_policies", "oo_cameras", "oo_users", "oo_memberships", "oo_layouts", "oo_plugins", "oo_events", "oo_audit", "oo_gateways", "oo_cases", "oo_case_clips", "oo_exports", "oo_share_links", "oo_alert_rules", "oo_alerts" };
 
         #endregion
 
@@ -225,6 +227,37 @@ namespace Onvif.Open.Recorder.Store
                 link.Property(l => l.CreatedByName).HasMaxLength(100);
                 link.HasIndex(l => l.TokenHash).IsUnique();
                 link.HasIndex(l => l.ExportId);
+            });
+
+            modelBuilder.Entity<AlertRuleRecord>(rule =>
+            {
+                rule.ToTable("oo_alert_rules");
+                rule.HasKey(r => r.Id);
+                rule.Property(r => r.Id).HasMaxLength(36);
+                rule.Property(r => r.OrganizationId).HasMaxLength(36).IsRequired();
+                rule.Property(r => r.Name).HasMaxLength(100).IsRequired();
+                rule.Property(r => r.Kind).HasMaxLength(16).IsRequired();
+                rule.Property(r => r.WebhookUrl).HasMaxLength(1000);
+                rule.HasIndex(r => r.OrganizationId);
+            });
+
+            modelBuilder.Entity<AlertRecord>(alert =>
+            {
+                alert.ToTable("oo_alerts");
+                alert.HasKey(a => a.Id);
+                alert.Property(a => a.Id).HasMaxLength(36);
+                alert.Property(a => a.OrganizationId).HasMaxLength(36).IsRequired();
+                alert.Property(a => a.RuleId).HasMaxLength(36);
+                alert.Property(a => a.RuleName).HasMaxLength(100);
+                alert.Property(a => a.SiteId).HasMaxLength(36);
+                alert.Property(a => a.CameraId).HasMaxLength(64);
+                alert.Property(a => a.CameraName).HasMaxLength(100);
+                alert.Property(a => a.EventId).HasMaxLength(36);
+                alert.Property(a => a.Category).HasMaxLength(32);
+                alert.Property(a => a.Severity).HasMaxLength(16);
+                alert.Property(a => a.Title).HasMaxLength(200);
+                alert.Property(a => a.AcknowledgedBy).HasMaxLength(100);
+                alert.HasIndex(a => new { a.OrganizationId, a.TriggeredAt });
             });
 
             modelBuilder.Entity<GatewayRecord>(gateway =>
@@ -589,6 +622,51 @@ namespace Onvif.Open.Recorder.Store
         public DateTime ExpiresAt { get; set; }
         public DateTime? RevokedAt { get; set; }
         public int Downloads { get; set; }
+    }
+
+    /// <summary>When to raise an alert and whom to tell (see Alerts.AlertRule).</summary>
+    public sealed class AlertRuleRecord
+    {
+        public string Id { get; set; }
+        public string OrganizationId { get; set; }
+        public string Name { get; set; }
+        public bool Enabled { get; set; }
+
+        /// <summary>"Event" or "Offline".</summary>
+        public string Kind { get; set; }
+
+        /// <summary>JSON: the conditions and recipients (categories, cameras, sites, hours, emails, ...).</summary>
+        public string Settings { get; set; }
+
+        public string WebhookUrl { get; set; }
+
+        /// <summary>Encrypted: the key webhooks are signed with.</summary>
+        public string WebhookSecret { get; set; }
+
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
+    }
+
+    /// <summary>An alert in the inbox: what a rule caught, and whether someone has seen to it.</summary>
+    public sealed class AlertRecord
+    {
+        public string Id { get; set; }
+        public string OrganizationId { get; set; }
+        public string RuleId { get; set; }
+        public string RuleName { get; set; }
+        public string SiteId { get; set; }
+        public string CameraId { get; set; }
+        public string CameraName { get; set; }
+        public string EventId { get; set; }
+        public string Category { get; set; }
+        public string Severity { get; set; }
+        public string Title { get; set; }
+        public DateTime TriggeredAt { get; set; }
+        public DateTime? AcknowledgedAt { get; set; }
+        public string AcknowledgedBy { get; set; }
+
+        /// <summary>JSON: how each notification went (email, webhook).</summary>
+        public string Delivery { get; set; }
     }
 
     public sealed class PluginRecord

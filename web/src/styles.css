@@ -108,6 +108,7 @@ caption { text-align: left; font-weight: 600; padding: 4px 8px; }
 
 .badge { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 999px; font-size: 0.75rem; border: 1px solid var(--border); color: var(--muted); }
 .badge.warn { color: var(--warn); border-color: var(--warn); }
+.text-warn { color: var(--warn); }
 .state { font-weight: 600; }
 .state-recording { color: var(--ok-text); }
 .state-reconnecting, .state-connecting { color: var(--warn); }

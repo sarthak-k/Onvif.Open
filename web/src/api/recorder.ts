@@ -1,5 +1,5 @@
 import type { ApiClient } from './client';
-import type { CameraConfig, CameraStatus, DiscoveredDevice, AuditEntry, AuditQuery, ShareLink, VideoExport, Case, CaseClip, CaseRequest, CaseStatus, ClipRequest, EventQuery, RecordingSegment, StoredEvent, Gateway, GatewayRequest, Layout, LayoutRequest, Me, Organization, ProbeResult, RecordingPolicy, RecordingPolicyRequest, SetupStatus, Site, SiteRequest, User, UserRequest } from './types';
+import type { Alert, AlertRule, AlertRuleRequest, AlertSummary, DeliveryResult, CameraConfig, CameraStatus, DiscoveredDevice, AuditEntry, AuditQuery, ShareLink, VideoExport, Case, CaseClip, CaseRequest, CaseStatus, ClipRequest, EventQuery, RecordingSegment, StoredEvent, Gateway, GatewayRequest, Layout, LayoutRequest, Me, Organization, ProbeResult, RecordingPolicy, RecordingPolicyRequest, SetupStatus, Site, SiteRequest, User, UserRequest } from './types';
 
 // The recorder's API by area. Pages depend on these interfaces, not on HTTP, so tests and later back ends can
 // provide their own implementation (dependency inversion, interface segregation).
@@ -101,6 +101,23 @@ export interface CasesApi {
   removeClip(caseId: string, clipId: string): Promise<void>;
 }
 
+export interface AlertRulesApi {
+  /** By name. */
+  list(): Promise<AlertRule[]>;
+  create(rule: AlertRuleRequest): Promise<AlertRule>;
+  update(ruleId: string, rule: AlertRuleRequest): Promise<AlertRule>;
+  remove(ruleId: string): Promise<void>;
+  /** Sends a test alert the way the rule would; how each notification went. */
+  test(ruleId: string): Promise<{ delivery: Record<string, DeliveryResult> }>;
+}
+
+export interface AlertsApi {
+  /** Newest first: the open ones, or all. */
+  list(status?: 'open'): Promise<Alert[]>;
+  summary(): Promise<AlertSummary>;
+  acknowledge(alertId: string): Promise<Alert>;
+}
+
 export interface EventsApi {
   /** Newest first. */
   list(query?: EventQuery): Promise<StoredEvent[]>;
@@ -137,6 +154,8 @@ export interface RecorderApi {
   events: EventsApi;
   cases: CasesApi;
   exports: ExportsApi;
+  alertRules: AlertRulesApi;
+  alerts: AlertsApi;
 }
 
 const segment = encodeURIComponent;
@@ -234,6 +253,18 @@ export function createRecorderApi(client: ApiClient): RecorderApi {
       addClip: (id, clip) => client.post(`/api/cases/${segment(id)}/clips`, clip),
       updateClip: (id, clipId, note) => client.put(`/api/cases/${segment(id)}/clips/${segment(clipId)}`, { note }),
       removeClip: (id, clipId) => client.delete(`/api/cases/${segment(id)}/clips/${segment(clipId)}`),
+    },
+    alertRules: {
+      list: () => client.get('/api/alert-rules'),
+      create: (rule) => client.post('/api/alert-rules', rule),
+      update: (id, rule) => client.put(`/api/alert-rules/${segment(id)}`, rule),
+      remove: (id) => client.delete(`/api/alert-rules/${segment(id)}`),
+      test: (id) => client.post(`/api/alert-rules/${segment(id)}/test`, {}),
+    },
+    alerts: {
+      list: (status) => client.get(`/api/alerts${queryString({ status })}`),
+      summary: () => client.get('/api/alerts/summary'),
+      acknowledge: (id) => client.post(`/api/alerts/${segment(id)}/acknowledge`, {}),
     },
     audit: {
       list: (query = {}) => client.get(`/api/audit${queryString({ ...query })}`),

@@ -5,6 +5,7 @@ import { useGateways } from '../../data/gateways';
 import { useEventsSince } from '../../data/recordings';
 import { useSites } from '../../data/tenancy';
 import { useUsers } from '../../data/users';
+import { useAlertRules } from '../../data/alerts';
 import { ErrorMessage } from '../../shared/ui/ErrorMessage';
 import { useUser } from '../auth/AuthContext';
 import { can } from '../auth/permissions';
@@ -93,6 +94,7 @@ export default function HomePage() {
           cameras={cameras.length}
           backup={!!gateways.data?.some((g) => g.backup?.provider || g.health?.backupProvider)}
           canInvite={can(user, 'users.manage')}
+          canSetUpAlerts={can(user, 'settings.manage')}
           onDismiss={() => {
             setDismissed(true);
             try {
@@ -152,12 +154,14 @@ export default function HomePage() {
 }
 
 /** What is left to set up, until it is done or dismissed. */
-function Checklist({ cameras, backup, canInvite, onDismiss }: { cameras: number; backup: boolean; canInvite: boolean; onDismiss(): void }) {
+function Checklist({ cameras, backup, canInvite, canSetUpAlerts, onDismiss }: { cameras: number; backup: boolean; canInvite: boolean; canSetUpAlerts: boolean; onDismiss(): void }) {
   const users = useUsers(canInvite);
+  const rules = useAlertRules(canSetUpAlerts);
   const steps = [
     { done: cameras > 0, label: 'Add your cameras', to: '/cameras/add' },
     ...(canInvite ? [{ done: (users.data?.length ?? 0) > 1, label: 'Invite the people who watch them', to: '/settings/users' }] : []),
     { done: backup, label: 'Back up recordings to the cloud or a NAS', to: '/settings/gateways' },
+    ...(canSetUpAlerts ? [{ done: (rules.data?.length ?? 0) > 0, label: 'Set up an alert (a person at night, a camera offline)', to: '/settings/alerts' }] : []),
     { done: false, label: 'Choose when cameras record (always, around events, business hours)', to: '/settings/policies', optional: true },
   ];
   const left = steps.filter((s) => !s.done && !('optional' in s));

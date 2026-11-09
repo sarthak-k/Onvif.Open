@@ -28,6 +28,8 @@ namespace Onvif.Open.Recorder.Audit
         public const string Gateway = "gateway";
         public const string Case = "case";
         public const string Export = "export";
+        public const string AlertRule = "alert_rule";
+        public const string Alert = "alert";
     }
 
     /// <summary>
@@ -130,6 +132,11 @@ namespace Onvif.Open.Recorder.Audit
                 case AuditTargets.Export:
                     var export = await services.GetRequiredService<Exports.IExportStore>().FindAsync(id);
                     return export == null ? null : $"{export.CameraName} {export.From:yyyy-MM-dd HH:mm}Z";
+                case AuditTargets.AlertRule:
+                    return (await services.GetRequiredService<Alerts.IAlertStore>().FindRuleAsync(id))?.Name;
+                case AuditTargets.Alert:
+                    var alert = await services.GetRequiredService<Alerts.IAlertStore>().FindAlertAsync(id);
+                    return alert == null ? null : $"{alert.Title} at {alert.CameraName ?? alert.SiteId}";
                 case AuditTargets.Gateway:
                     return (await services.GetRequiredService<Gateways.IGatewayStore>().FindAsync(id))?.Name;
                 default:

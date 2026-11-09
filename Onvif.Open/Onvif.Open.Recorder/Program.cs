@@ -86,6 +86,22 @@ builder.Services.AddSingleton(sp => new Onvif.Open.Recorder.Exports.ExportServic
     sp.GetRequiredService<ILogger<Onvif.Open.Recorder.Exports.ExportService>>()));
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Onvif.Open.Recorder.Exports.ExportService>());
 
+// Alerts: rules raise alerts into the inbox and notify by email ("Alerts:Smtp") and signed webhooks.
+builder.Services.AddSingleton<Onvif.Open.Recorder.Alerts.IAlertStore, Onvif.Open.Recorder.Alerts.EfAlertStore>();
+builder.Services.AddSingleton<Onvif.Open.Recorder.Alerts.AlertRuleCache>();
+builder.Services.AddSingleton<Onvif.Open.Recorder.Alerts.IAlertNotifier>(sp => new Onvif.Open.Recorder.Alerts.EmailNotifier(
+    sp.GetRequiredService<IConfiguration>().GetSection(Onvif.Open.Recorder.Alerts.SmtpOptions.SectionName).Get<Onvif.Open.Recorder.Alerts.SmtpOptions>()));
+builder.Services.AddSingleton<Onvif.Open.Recorder.Alerts.IAlertNotifier>(_ => new Onvif.Open.Recorder.Alerts.WebhookNotifier(
+    new System.Net.Http.HttpClient(new System.Net.Http.SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5), AllowAutoRedirect = false })));
+builder.Services.AddSingleton(sp => new Onvif.Open.Recorder.Alerts.AlertDelivery(
+    sp.GetServices<Onvif.Open.Recorder.Alerts.IAlertNotifier>(),
+    sp.GetRequiredService<ITenancyStore>(),
+    sp.GetRequiredService<IConfiguration>()["Alerts:PublicUrl"],
+    sp.GetRequiredService<ILogger<Onvif.Open.Recorder.Alerts.AlertDelivery>>()));
+builder.Services.AddSingleton<Onvif.Open.Recorder.Alerts.AlertService>();
+builder.Services.AddSingleton<Onvif.Open.Recorder.Alerts.AlertEngine>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Onvif.Open.Recorder.Alerts.AlertEngine>());
+
 // With "ControlPlane:Url" this recorder is also a gateway of another one: it pairs with a code, then reports there.
 var controlPlane = builder.Configuration["ControlPlane:Url"];
 if (!string.IsNullOrWhiteSpace(controlPlane))
@@ -150,7 +166,8 @@ builder.Services.AddSingleton<IPluginHost>(sp => PluginConfiguration.CreateHost(
 
 
 // Stores what cameras, detections, recording and plugins report (subscribes before recording starts).
-builder.Services.AddHostedService<EventRecorder>();
+builder.Services.AddSingleton<EventRecorder>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<EventRecorder>());
 
 builder.Services.AddHostedService(sp => sp.GetRequiredService<GatewayHeartbeat>());
 
@@ -184,6 +201,7 @@ app.MapAuditApi();
 app.MapGatewayApi();
 app.MapCaseApi();
 app.MapExportApi();
+app.MapAlertApi();
 app.Run();
 
 public partial class Program

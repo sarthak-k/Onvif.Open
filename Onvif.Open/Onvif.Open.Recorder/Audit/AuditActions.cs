@@ -42,6 +42,10 @@ namespace Onvif.Open.Recorder.Audit
         public const string CaseClipAdd = "case.clip_add";
         public const string CaseClipUpdate = "case.clip_update";
         public const string CaseClipRemove = "case.clip_remove";
+        public const string AlertRuleCreate = "alert.rule_create";
+        public const string AlertRuleUpdate = "alert.rule_update";
+        public const string AlertRuleDelete = "alert.rule_delete";
+        public const string AlertAcknowledge = "alert.acknowledge";
         public const string GatewayPair = "gateway.pair";
         public const string GatewayRemove = "gateway.remove";
         public const string PluginDelete = "plugin.delete";

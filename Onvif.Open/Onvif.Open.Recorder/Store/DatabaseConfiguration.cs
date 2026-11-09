@@ -121,7 +121,9 @@ namespace Onvif.Open.Recorder.Store
                 ("oo_cases", ct => db.Cases.AnyAsync(ct)),
                 ("oo_case_clips", ct => db.CaseClips.AnyAsync(ct)),
                 ("oo_exports", ct => db.Exports.AnyAsync(ct)),
-                ("oo_share_links", ct => db.ShareLinks.AnyAsync(ct))
+                ("oo_share_links", ct => db.ShareLinks.AnyAsync(ct)),
+                ("oo_alert_rules", ct => db.AlertRules.AnyAsync(ct)),
+                ("oo_alerts", ct => db.Alerts.AnyAsync(ct))
             };
             var missing = new List<string>();
 
