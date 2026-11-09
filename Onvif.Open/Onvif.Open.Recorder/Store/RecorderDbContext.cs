@@ -36,9 +36,11 @@ namespace Onvif.Open.Recorder.Store
         public DbSet<EventRecord> Events => Set<EventRecord>();
         public DbSet<AuditRecord> Audit => Set<AuditRecord>();
         public DbSet<GatewayRecord> Gateways => Set<GatewayRecord>();
+        public DbSet<CaseRecord> Cases => Set<CaseRecord>();
+        public DbSet<CaseClipRecord> CaseClips => Set<CaseClipRecord>();
 
         /// <summary>Every table of the model, for creating the ones a database lacks.</summary>
-        public static readonly string[] TableNames = { "oo_organizations", "oo_sites", "oo_recording_policies", "oo_cameras", "oo_users", "oo_memberships", "oo_layouts", "oo_plugins", "oo_events", "oo_audit", "oo_gateways" };
+        public static readonly string[] TableNames = { "oo_organizations", "oo_sites", "oo_recording_policies", "oo_cameras", "oo_users", "oo_memberships", "oo_layouts", "oo_plugins", "oo_events", "oo_audit", "oo_gateways", "oo_cases", "oo_case_clips" };
 
         #endregion
 
@@ -163,6 +165,34 @@ namespace Onvif.Open.Recorder.Store
                 audit.Property(a => a.TargetName).HasMaxLength(200);
                 audit.Property(a => a.IpAddress).HasMaxLength(64);
                 audit.HasIndex(a => new { a.OrganizationId, a.CreatedAt });
+            });
+
+            modelBuilder.Entity<CaseRecord>(record =>
+            {
+                record.ToTable("oo_cases");
+                record.HasKey(c => c.Id);
+                record.Property(c => c.Id).HasMaxLength(36);
+                record.Property(c => c.OrganizationId).HasMaxLength(36).IsRequired();
+                record.Property(c => c.Name).HasMaxLength(200).IsRequired();
+                record.Property(c => c.Status).HasMaxLength(16).IsRequired();
+                record.Property(c => c.CreatedById).HasMaxLength(36);
+                record.Property(c => c.CreatedByName).HasMaxLength(100);
+                record.HasIndex(c => new { c.OrganizationId, c.UpdatedAt });
+            });
+
+            modelBuilder.Entity<CaseClipRecord>(clip =>
+            {
+                clip.ToTable("oo_case_clips");
+                clip.HasKey(c => c.Id);
+                clip.Property(c => c.Id).HasMaxLength(36);
+                clip.Property(c => c.CaseId).HasMaxLength(36).IsRequired();
+                clip.Property(c => c.OrganizationId).HasMaxLength(36).IsRequired();
+                clip.Property(c => c.SiteId).HasMaxLength(36);
+                clip.Property(c => c.Cameras).IsRequired();
+                clip.Property(c => c.EventId).HasMaxLength(36);
+                clip.Property(c => c.CreatedById).HasMaxLength(36);
+                clip.Property(c => c.CreatedByName).HasMaxLength(100);
+                clip.HasIndex(c => c.CaseId);
             });
 
             modelBuilder.Entity<GatewayRecord>(gateway =>
@@ -438,6 +468,47 @@ namespace Onvif.Open.Recorder.Store
 
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
+    }
+
+    /// <summary>A case: an incident being looked into, with the clips of video that show it.</summary>
+    public sealed class CaseRecord
+    {
+        public string Id { get; set; }
+        public string OrganizationId { get; set; }
+        public string Name { get; set; }
+        public string Description { get; set; }
+
+        /// <summary>"Open" (its video is kept) or "Closed".</summary>
+        public string Status { get; set; }
+
+        public string CreatedById { get; set; }
+        public string CreatedByName { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
+        public DateTime? ClosedAt { get; set; }
+    }
+
+    /// <summary>A bookmark in a case: a stretch of time on one or more cameras of a site, with a note.</summary>
+    public sealed class CaseClipRecord
+    {
+        public string Id { get; set; }
+        public string CaseId { get; set; }
+        public string OrganizationId { get; set; }
+        public string SiteId { get; set; }
+
+        /// <summary>JSON array of camera ids.</summary>
+        public string Cameras { get; set; }
+
+        public DateTime From { get; set; }
+        public DateTime To { get; set; }
+        public string Note { get; set; }
+
+        /// <summary>The event it was saved from, if any.</summary>
+        public string EventId { get; set; }
+
+        public string CreatedById { get; set; }
+        public string CreatedByName { get; set; }
+        public DateTime CreatedAt { get; set; }
     }
 
     public sealed class PluginRecord

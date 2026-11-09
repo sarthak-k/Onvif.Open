@@ -1,5 +1,5 @@
 import type { ApiClient } from './client';
-import type { CameraConfig, CameraStatus, DiscoveredDevice, AuditEntry, AuditQuery, EventQuery, RecordingSegment, StoredEvent, Gateway, GatewayRequest, Layout, LayoutRequest, Me, Organization, ProbeResult, RecordingPolicy, RecordingPolicyRequest, SetupStatus, Site, SiteRequest, User, UserRequest } from './types';
+import type { CameraConfig, CameraStatus, DiscoveredDevice, AuditEntry, AuditQuery, Case, CaseClip, CaseRequest, CaseStatus, ClipRequest, EventQuery, RecordingSegment, StoredEvent, Gateway, GatewayRequest, Layout, LayoutRequest, Me, Organization, ProbeResult, RecordingPolicy, RecordingPolicyRequest, SetupStatus, Site, SiteRequest, User, UserRequest } from './types';
 
 // The recorder's API by area. Pages depend on these interfaces, not on HTTP, so tests and later back ends can
 // provide their own implementation (dependency inversion, interface segregation).
@@ -75,6 +75,18 @@ export interface GatewaysApi {
   controlPlaneUrl(): string;
 }
 
+export interface CasesApi {
+  /** Most recently changed first; all statuses when none is given. */
+  list(status?: CaseStatus): Promise<Case[]>;
+  get(caseId: string): Promise<Case>;
+  create(request: CaseRequest): Promise<Case>;
+  update(caseId: string, request: CaseRequest): Promise<Case>;
+  remove(caseId: string): Promise<void>;
+  addClip(caseId: string, clip: ClipRequest): Promise<CaseClip>;
+  updateClip(caseId: string, clipId: string, note: string | null): Promise<CaseClip>;
+  removeClip(caseId: string, clipId: string): Promise<void>;
+}
+
 export interface EventsApi {
   /** Newest first. */
   list(query?: EventQuery): Promise<StoredEvent[]>;
@@ -109,6 +121,7 @@ export interface RecorderApi {
   audit: AuditApi;
   gateways: GatewaysApi;
   events: EventsApi;
+  cases: CasesApi;
 }
 
 const segment = encodeURIComponent;
@@ -184,6 +197,16 @@ export function createRecorderApi(client: ApiClient): RecorderApi {
     },
     events: {
       list: (query = {}) => client.get(`/api/events${queryString({ ...query })}`),
+    },
+    cases: {
+      list: (status) => client.get(`/api/cases${queryString({ status })}`),
+      get: (id) => client.get(`/api/cases/${segment(id)}`),
+      create: (request) => client.post('/api/cases', request),
+      update: (id, request) => client.put(`/api/cases/${segment(id)}`, request),
+      remove: (id) => client.delete(`/api/cases/${segment(id)}`),
+      addClip: (id, clip) => client.post(`/api/cases/${segment(id)}/clips`, clip),
+      updateClip: (id, clipId, note) => client.put(`/api/cases/${segment(id)}/clips/${segment(clipId)}`, { note }),
+      removeClip: (id, clipId) => client.delete(`/api/cases/${segment(id)}/clips/${segment(clipId)}`),
     },
     audit: {
       list: (query = {}) => client.get(`/api/audit${queryString({ ...query })}`),

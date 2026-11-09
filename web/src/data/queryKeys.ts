@@ -19,6 +19,11 @@ export const queryKeys = {
   policies: ['recording-policies'] as const,
   audit: (filter: object) => ['audit', filter] as const,
   gateways: ['gateways'] as const,
+  cases: {
+    all: ['cases'] as const,
+    list: (status: string) => ['cases', 'list', status] as const,
+    one: (id: string) => ['cases', 'one', id] as const,
+  },
   events: {
     search: (filter: object) => ['events', 'search', filter] as const,
     between: (siteId: string, from: number, to: number) => ['events', 'between', siteId, from, to] as const,

@@ -14,20 +14,28 @@ namespace Onvif.Open.Recorder.Events
     /// </summary>
     public sealed class PolicyRetention
     {
-        public PolicyRetention(CameraDirectory directory, EventIndex events)
+        public PolicyRetention(CameraDirectory directory, EventIndex events, Cases.CaseHolds holds = null)
         {
+            _holds = holds;
             _directory = directory ?? throw new ArgumentNullException(nameof(directory));
             _events = events ?? throw new ArgumentNullException(nameof(events));
         }
 
         private readonly CameraDirectory _directory;
         private readonly EventIndex _events;
+        private readonly Cases.CaseHolds _holds;
 
         /// <summary>False for cameras this recorder does not know (removed cameras keep their files until the recorder-wide limits apply).</summary>
         public bool IsExpired(RecordingSegment segment, DateTimeOffset now)
         {
             var camera = _directory.Find(segment.CameraId);
             if (camera == null)
+            {
+                return false;
+            }
+
+            // Evidence: video in an open case stays until the case is closed.
+            if (_holds?.Holds(segment.CameraId, segment.StartTime, segment.LastWriteTime) == true)
             {
                 return false;
             }

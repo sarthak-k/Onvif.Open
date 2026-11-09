@@ -21,6 +21,7 @@ describe('App', () => {
       media: { liveUrl: (id) => `memory://${id}`, recordingsUrl: (id) => `memory://${id}/recordings`, token: () => null },
       audit: { list: fail },
       events: { list: fail },
+      cases: { list: async () => [], get: fail, create: fail, update: fail, remove: fail, addClip: fail, updateClip: fail, removeClip: fail },
       gateways: { list: async () => [], update: fail, pair: fail, remove: fail, controlPlaneUrl: () => 'http://recorder' },
     };
     const client = new ApiClient('', memoryStorage('refresh-0'), (async () => new Response(JSON.stringify(tokens(1)))) as typeof fetch);

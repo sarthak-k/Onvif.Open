@@ -447,7 +447,13 @@ report. A camera's policy keeps all its video for `continuousRetentionDays` (7 b
 (30 s before and after) for `eventRetentionDays` (30 by default); cameras that record only around events keep their
 video for `eventRetentionDays`. Events are kept as long as their camera's `eventRetentionDays`; those about no camera or a removed one for a year.
 
-**Audit log.** Changes (cameras, sites, policies, users, layouts, plugins, the organization), sign-ins, password
+**Cases.** A case collects clips (a stretch of time on up to four cameras of one site, at most 6 hours, with a note).
+Everyone reads cases, with the clips of the sites they see; operators and above open cases, add, annotate and remove
+clips, and close or reopen them; administrators delete them. While a case is open, retention never deletes video that
+overlaps one of its clips, whatever the cameras' policies say (the gateway's disk limits still apply); once it is
+closed, that video follows the policies again.
+
+**Audit log.** Changes (cameras, sites, policies, users, layouts, plugins, gateways, cases, the organization), sign-ins, password
 changes, starting and stopping recording, relay switching, and who watched live video, played recordings or exported
 video (a view is recorded once per user and camera every 10 minutes) go to the audit log, kept for
 `Audit:RetentionDays` (365 by default). Refused requests are not recorded, failed sign-ins are.
@@ -502,6 +508,8 @@ dotnet run --project Onvif.Open/Onvif.Open.Recorder
 | `GET /api/layouts`, `POST /api/layouts` `{name, grid, cameras, shared}`, `PUT .../{id}`, `DELETE .../{id}` | Live view layouts: each user's own, plus shared ones (managed by administrators); the grid is the web app's template id and `cameras` the camera of each tile |
 | `GET /api/plugins` | Plugin state, delivered/dropped frames, errors |
 | `GET /api/events?cameraId=&siteId=&category=&from=&to=&before=&limit=` | Stored events, newest first: what cameras report (motion, tamper, inputs), detections (person, vehicle, object), cameras going offline, and plugin findings; each with its start and end. `category` is one of motion, person, vehicle, object, intrusion, tamper, input, offline, plugin, other; `before` pages |
+| `GET /api/cases?status=Open/Closed`, `GET .../{id}`, `POST /api/cases` `{name, description}`, `PUT .../{id}` `{name, description, status}`, `DELETE .../{id}` | Cases (reading for everyone, changes for operators and above, deleting for administrators); a case lists the clips of the sites the user sees |
+| `POST /api/cases/{id}/clips` `{cameraIds, from, to, note, eventId}`, `PUT .../clips/{clipId}` `{note}`, `DELETE .../clips/{clipId}` | Clips of a case (operators and above); not on closed cases |
 | `GET /api/audit?userId=&action=&from=&to=&before=&limit=` | The audit log (administrators who see all sites): changes, sign-ins (also failed ones), who watched live or recorded video and who exported it; `action` is an action (`camera.update`) or an area (`camera`) |
 | `GET /health` | Liveness |
 
@@ -515,7 +523,9 @@ a network: bearer tokens and passwords must not travel in clear text.
 full screen; layouts saved per user or shared by administrators), **Investigate** (search the stored events by site,
 camera, kind and time, newest first; open one to play its camera from 5 s before it, and up to three more cameras of the
 site in sync, with one timeline of what each recorded and the site's events: play, pause, speed up to 8×, ±10 s, click
-the timeline or an event mark to move all cameras there), cameras (status for everyone; for administrators an
+the timeline or an event mark to move all cameras there; operators mark the start and end of what matters and save
+it, with a note, to a case), **Cases** (incidents being looked into: their clips with notes, played back in sync;
+closed when done, deleted by administrators), cameras (status for everyone; for administrators an
 **Add cameras** wizard: it lists what the gateway found on the network (or a typed address), signs in to all of them
 with one shared password (a camera that refuses it gets its own), shows each camera's picture, chooses its streams,
 and adds them named, at a site and with a recording policy; one camera can also be added and edited in full), settings (sites, recording policies, gateways with their

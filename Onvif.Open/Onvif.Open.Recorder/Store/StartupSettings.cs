@@ -42,9 +42,14 @@ namespace Onvif.Open.Recorder.Store
         /// Creates missing tables, then reads the recorder's gateway, the cameras (with their policies applied, filling
         /// <paramref name="directory"/>) and plugins.
         /// </summary>
-        public static async Task<StartupSettings> LoadAsync(IDbContextFactory<RecorderDbContext> contexts, ISettingsStore store, Tenancy.ITenancyStore tenancy, Tenancy.CameraDirectory directory, Gateways.GatewayService gateways, CancellationToken cancellationToken = default)
+        public static async Task<StartupSettings> LoadAsync(IDbContextFactory<RecorderDbContext> contexts, ISettingsStore store, Tenancy.ITenancyStore tenancy, Tenancy.CameraDirectory directory, Gateways.GatewayService gateways, Cases.CaseHolds holds = null, CancellationToken cancellationToken = default)
         {
             await DatabaseConfiguration.EnsureCreatedAsync(contexts, cancellationToken).ConfigureAwait(false);
+            if (holds != null)
+            {
+                await holds.ReloadAsync(cancellationToken).ConfigureAwait(false);
+            }
+
             var gateway = await gateways.StartAsync(cancellationToken).ConfigureAwait(false);
             var cameras = Configuration.CameraConfigurationService.Resolve(
                 await store.GetCamerasAsync(cancellationToken).ConfigureAwait(false),

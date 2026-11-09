@@ -26,6 +26,7 @@ namespace Onvif.Open.Recorder.Audit
         public const string Plugin = "plugin";
         public const string Organization = "organization";
         public const string Gateway = "gateway";
+        public const string Case = "case";
     }
 
     /// <summary>
@@ -123,6 +124,8 @@ namespace Onvif.Open.Recorder.Audit
                     return (await services.GetRequiredService<ILayoutStore>().FindAsync(id))?.Name;
                 case AuditTargets.Plugin:
                     return id;
+                case AuditTargets.Case:
+                    return (await services.GetRequiredService<Cases.ICaseStore>().FindAsync(id))?.Name;
                 case AuditTargets.Gateway:
                     return (await services.GetRequiredService<Gateways.IGatewayStore>().FindAsync(id))?.Name;
                 default:
