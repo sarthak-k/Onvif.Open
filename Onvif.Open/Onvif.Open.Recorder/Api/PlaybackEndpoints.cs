@@ -13,6 +13,7 @@ using Onvif.Open.Recorder.Hosting;
 using Onvif.Open.Recording.Implementation.Export;
 using Onvif.Open.Recording.Implementation.Hls;
 
+using Onvif.Open.Recorder.Audit;
 using Onvif.Open.Recorder.Security;
 
 namespace Onvif.Open.Recorder.Api
@@ -54,7 +55,8 @@ namespace Onvif.Open.Recorder.Api
 
                 NoCache(http);
                 return Results.Text(stream.GetPlaylist(sequence => SecurityConfiguration.WithMediaToken(http, $"live/{sequence.ToString(CultureInfo.InvariantCulture)}.ts")), PlaylistType);
-            });
+            })
+                .Audit(AuditActions.VideoLive, AuditTargets.Camera, views: true);
 
             camera.MapGet("/live/{sequence:long}.ts", (string id, long sequence, LiveViewService live) =>
             {
@@ -83,7 +85,8 @@ namespace Onvif.Open.Recorder.Api
                 var text = await playlist.GetPlaylistAsync(cameraId, start, end, s => SecurityConfiguration.WithMediaToken(http, $"segments/{Uri.EscapeDataString(s.FileName)}"), ct);
                 NoCache(http);
                 return Results.Text(text, PlaylistType);
-            });
+            })
+                .Audit(AuditActions.VideoPlayback, AuditTargets.Camera, views: true);
 
             camera.MapGet("/clip", async (string id, DateTimeOffset? from, DateTimeOffset? to, IRecordingManager manager, HttpContext http, CancellationToken ct) =>
             {
@@ -117,7 +120,8 @@ namespace Onvif.Open.Recorder.Api
                 }
 
                 return Results.Empty;
-            });
+            })
+                .Audit(AuditActions.VideoExport, AuditTargets.Camera, details: c => new { from = c.HttpContext.Request.Query["from"].ToString(), to = c.HttpContext.Request.Query["to"].ToString() });
 
             return app;
         }

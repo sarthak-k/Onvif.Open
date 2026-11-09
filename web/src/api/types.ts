@@ -189,3 +189,27 @@ export interface LayoutRequest {
   /** Only read when creating; administrators only. */
   shared?: boolean;
 }
+
+/** Something a person did, as the audit log records it. */
+export interface AuditEntry {
+  id: string;
+  time: string;
+  userId?: string | null;
+  userName?: string | null;
+  /** "area.verb", e.g. "camera.update" or "auth.signin_failed". */
+  action: string;
+  targetType?: string | null;
+  targetId?: string | null;
+  targetName?: string | null;
+  details?: string | null;
+  ipAddress?: string | null;
+}
+
+export interface AuditQuery {
+  /** An action ("camera.update") or an area ("camera"). */
+  action?: string;
+  userId?: string;
+  /** Only entries older than this time (the next page). */
+  before?: string;
+  limit?: number;
+}

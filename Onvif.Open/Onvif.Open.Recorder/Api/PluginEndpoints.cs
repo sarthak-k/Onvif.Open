@@ -32,33 +32,6 @@ namespace Onvif.Open.Recorder.Api
 
             api.MapGet("/plugins", (IPluginHost host) => host.GetStatus()).RequireAuthorization(Policies.Admin);
 
-            api.MapGet("/events", (IPluginHost host, IRecordingManager manager, ClaimsPrincipal user, CameraDirectory directory, string cameraId, string type, string source, DateTimeOffset? since, PluginEventSeverity? severity, int? limit) =>
-            {
-                var events = host.GetEvents(new PluginEventQuery
-                {
-                    CameraId = cameraId,
-                    Type = type,
-                    Source = source,
-                    Since = since,
-                    MinimumSeverity = severity,
-                    Limit = Math.Clamp(limit ?? 100, 1, 1000)
-                });
-
-                // Camera events of the sites the user sees; events about no camera only for users who see every site.
-                return events.Where(e => e.CameraId == null ? user.HasAllSites() : user.CanSeeCamera(directory, e.CameraId)).Select(e => new
-                {
-                    e.Id,
-                    e.Source,
-                    e.Type,
-                    e.CameraId,
-                    severity = e.Severity.ToString(),
-                    e.Message,
-                    e.Timestamp,
-                    e.Data,
-                    recording = FindRecording(manager, e)
-                });
-            });
-
             api.MapGet("/cameras/{id}/snapshot", async (string id, IRecordingManager manager, ConfiguredRecording recording, CancellationToken ct) =>
             {
                 if (!manager.GetStatus().Any(s => string.Equals(s.CameraId, id, StringComparison.OrdinalIgnoreCase)))
@@ -81,31 +54,6 @@ namespace Onvif.Open.Recorder.Api
             });
 
             return app;
-        }
-
-        #endregion
-
-        #region Private Methods
-
-        /// <summary>The segment recorded at the time of the event: the video evidence for it.</summary>
-        private static object FindRecording(IRecordingManager manager, PluginEvent pluginEvent)
-        {
-            if (pluginEvent.CameraId == null)
-            {
-                return null;
-            }
-
-            var segment = manager.GetSegments(pluginEvent.CameraId)
-                .LastOrDefault(s => s.StartTime <= pluginEvent.Timestamp && (s.IsActive || s.LastWriteTime >= pluginEvent.Timestamp));
-
-            return segment == null
-                ? null
-                : new
-                {
-                    segment.FileName,
-                    offset = pluginEvent.Timestamp - segment.StartTime,
-                    url = $"/api/cameras/{Uri.EscapeDataString(segment.CameraId)}/segments/{Uri.EscapeDataString(segment.FileName)}"
-                };
         }
 
         #endregion

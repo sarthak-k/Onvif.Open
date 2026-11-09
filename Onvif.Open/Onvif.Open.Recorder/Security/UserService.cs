@@ -97,6 +97,14 @@ namespace Onvif.Open.Recorder.Security
             return user == null ? null : new Member(user, membership);
         }
 
+        /// <summary>A user (by name) with their home membership, or null.</summary>
+        public async Task<Member> FindByNameAsync(string userName, CancellationToken cancellationToken = default)
+        {
+            var user = await _store.FindByNameAsync(userName, cancellationToken).ConfigureAwait(false);
+            var membership = user == null ? null : await FindHomeMembershipAsync(user.Id, cancellationToken).ConfigureAwait(false);
+            return membership == null ? null : new Member(user, membership);
+        }
+
         /// <summary>The member when the credentials are right and the account is enabled, not locked and belongs to an organization; otherwise null.</summary>
         public async Task<Member> SignInAsync(string userName, string password, CancellationToken cancellationToken = default)
         {

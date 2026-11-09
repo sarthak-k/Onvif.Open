@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Options;
+using Onvif.Open.Recorder.Audit;
 using Onvif.Open.Recorder.Security;
 using Onvif.Open.Recorder.Store;
 
@@ -59,9 +60,14 @@ namespace Onvif.Open.Recorder.Api
             var auth = app.MapGroup("/api/auth");
 
             // { "tokenType": "Bearer", "accessToken": "...", "expiresIn": 900, "refreshToken": "..." }
-            auth.MapPost("/login", async (SignInRequest request, UserService users, CancellationToken ct) =>
+            auth.MapPost("/login", async (SignInRequest request, UserService users, AuditLog audit, HttpContext http, CancellationToken ct) =>
             {
                 var member = await users.SignInAsync(request?.UserName, request?.Password, ct);
+
+                // A failed sign-in of a known user goes to that user's organization; unknown names are kept without one.
+                var known = member == null ? await users.FindByNameAsync(request?.UserName, ct) : null;
+                audit.Record(http, member, known?.Membership.OrganizationId, request?.UserName, member == null ? AuditActions.SignInFailed : AuditActions.SignIn);
+
                 return member == null
                     ? Results.Problem("Wrong user name or password, or the account is disabled or locked for a few minutes.", statusCode: StatusCodes.Status401Unauthorized)
                     : SignIn(member);
@@ -113,11 +119,16 @@ namespace Onvif.Open.Recorder.Api
             }).RequireAuthorization(Policies.SignedIn);
 
             // Returns new tokens: the change ends every session, also this one.
-            auth.MapPost("/password", async (PasswordRequest request, ClaimsPrincipal principal, UserService users, UserValidator validator, CancellationToken ct) =>
+            auth.MapPost("/password", async (PasswordRequest request, ClaimsPrincipal principal, UserService users, UserValidator validator, AuditLog audit, HttpContext http, CancellationToken ct) =>
             {
                 var id = principal.FindFirstValue(ClaimTypes.NameIdentifier);
                 var result = await users.ChangePasswordAsync(id, request?.CurrentPassword, request?.NewPassword, ct);
                 validator.Invalidate(id);
+
+                if (result.Status == UserStatus.Ok)
+                {
+                    audit.Record(http, AuditActions.PasswordChange, AuditTargets.User, id, result.Member.User.UserName);
+                }
 
                 return result.Status == UserStatus.Ok ? SignIn(result.Member) : ToResult(result);
             }).RequireAuthorization(Policies.SignedIn);
@@ -134,7 +145,8 @@ namespace Onvif.Open.Recorder.Api
                 var result = await users.CreateMemberAsync(principal.FindFirstValue(RecorderClaims.Organization), principal.FindFirstValue(ClaimTypes.Role),
                     request?.UserName, request?.Password, request?.Role ?? Roles.Viewer, request?.Sites, mustChangePassword: true, ct);
                 return result.Status == UserStatus.Ok ? Results.Created($"/api/users/{result.Member.User.Id}", ToDto(result.Member)) : ToResult(result);
-            });
+            })
+                .Audit(AuditActions.UserCreate, AuditTargets.User, details: c => c.Arguments[0] is UserRequest r ? new { role = r.Role, sites = r.Sites } : null);
 
             usersApi.MapPut("/{id}", async (string id, UserRequest request, ClaimsPrincipal principal, UserService users, UserValidator validator, CancellationToken ct) =>
             {
@@ -142,7 +154,8 @@ namespace Onvif.Open.Recorder.Api
                     id, request?.Role, request?.Sites, request?.Enabled, request?.Password, ct);
                 validator.Invalidate(id);
                 return result.Status == UserStatus.Ok ? Results.Ok(ToDto(result.Member)) : ToResult(result);
-            });
+            })
+                .Audit(AuditActions.UserUpdate, AuditTargets.User, details: c => c.Arguments[1] is UserRequest r ? new { role = r.Role, sites = r.Sites, enabled = r.Enabled, passwordReset = r.Password != null } : null);
 
             usersApi.MapDelete("/{id}", async (string id, ClaimsPrincipal principal, UserService users, UserValidator validator, CancellationToken ct) =>
             {
@@ -150,7 +163,8 @@ namespace Onvif.Open.Recorder.Api
                     id, principal.FindFirstValue(ClaimTypes.NameIdentifier), ct);
                 validator.Invalidate(id);
                 return result.Status == UserStatus.Ok ? Results.NoContent() : ToResult(result);
-            });
+            })
+                .Audit(AuditActions.UserDelete, AuditTargets.User);
 
             return app;
         }

@@ -147,7 +147,7 @@ namespace Onvif.Open.Test.Recording.Integration
             Assert.Equal(HttpStatusCode.Conflict, (await _client.PostAsync("/api/cameras/cam1/trigger", null)).StatusCode);
             Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsync("/api/cameras/nope/trigger", null)).StatusCode);
 
-            var events = JsonDocument.Parse(await _client.GetStringAsync("/api/camera-events?cameraId=lobby")).RootElement;
+            var events = JsonDocument.Parse(await _client.GetStringAsync("/api/events?cameraId=lobby")).RootElement;
             Assert.Equal(JsonValueKind.Array, events.ValueKind);
         }
 

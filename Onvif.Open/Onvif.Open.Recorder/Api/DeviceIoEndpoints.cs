@@ -15,6 +15,7 @@ using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Core.DeviceIo;
 using Onvif.Open.Recorder.Configuration;
 
+using Onvif.Open.Recorder.Audit;
 using Onvif.Open.Recorder.Security;
 
 namespace Onvif.Open.Recorder.Api
@@ -81,7 +82,8 @@ namespace Onvif.Open.Recorder.Api
                     }
 
                     return Results.NoContent();
-                })).RequireAuthorization(Policies.Operator);
+                })).RequireAuthorization(Policies.Operator)
+                .Audit(AuditActions.RelaySwitch, AuditTargets.Camera, details: c => new { relay = c.HttpContext.GetRouteValue("token") });
 
             io.MapPut("/relays/{token}/settings", (string id, string token, RelaySettingsRequest request, IRecordingManager manager, ConfiguredRecording recording, CancellationToken ct) =>
                 Run(id, manager, recording, async i =>

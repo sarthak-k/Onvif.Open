@@ -1,5 +1,5 @@
 import type { ApiClient } from './client';
-import type { CameraConfig, CameraStatus, DiscoveredDevice, Layout, LayoutRequest, Me, Organization, ProbeResult, RecordingPolicy, RecordingPolicyRequest, SetupStatus, Site, SiteRequest, User, UserRequest } from './types';
+import type { CameraConfig, CameraStatus, DiscoveredDevice, AuditEntry, AuditQuery, Layout, LayoutRequest, Me, Organization, ProbeResult, RecordingPolicy, RecordingPolicyRequest, SetupStatus, Site, SiteRequest, User, UserRequest } from './types';
 
 // The recorder's API by area. Pages depend on these interfaces, not on HTTP, so tests and later back ends can
 // provide their own implementation (dependency inversion, interface segregation).
@@ -63,6 +63,11 @@ export interface LayoutsApi {
   remove(layoutId: string): Promise<void>;
 }
 
+export interface AuditApi {
+  /** Newest first. */
+  list(query?: AuditQuery): Promise<AuditEntry[]>;
+}
+
 /** Where players fetch media, and the credentials they send. */
 export interface MediaApi {
   /** Live HLS playlist of a camera (absolute URL). */
@@ -82,9 +87,22 @@ export interface RecorderApi {
   users: UsersApi;
   layouts: LayoutsApi;
   media: MediaApi;
+  audit: AuditApi;
 }
 
 const segment = encodeURIComponent;
+
+/** "?a=1&b=2" of the values that are set, or "". */
+function queryString(values: Record<string, string | number | undefined>): string {
+  const query = new URLSearchParams();
+  for (const [name, value] of Object.entries(values)) {
+    if (value !== undefined && value !== '') {
+      query.set(name, String(value));
+    }
+  }
+  const text = query.toString();
+  return text ? `?${text}` : '';
+}
 
 export function createRecorderApi(client: ApiClient): RecorderApi {
   return {
@@ -139,6 +157,9 @@ export function createRecorderApi(client: ApiClient): RecorderApi {
       create: (user) => client.post('/api/users', user),
       update: (id, user) => client.put(`/api/users/${segment(id)}`, user),
       remove: (id) => client.delete(`/api/users/${segment(id)}`),
+    },
+    audit: {
+      list: (query = {}) => client.get(`/api/audit${queryString({ ...query })}`),
     },
   };
 }

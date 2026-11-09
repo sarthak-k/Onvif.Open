@@ -1,17 +1,17 @@
 import type { TokenStorage } from '../api/client';
 
-type Handler = (request: { method: string; path: string; body: unknown; token: string | null }) => { status?: number; body?: unknown } | undefined;
+type Handler = (request: { method: string; path: string; query: URLSearchParams; body: unknown; token: string | null }) => { status?: number; body?: unknown } | undefined;
 
 /** A fetch replacement that answers like the recorder; routes are "METHOD /path". */
 export function fakeFetch(routes: Record<string, Handler>) {
-  const calls: { method: string; path: string; body: unknown; token: string | null }[] = [];
+  const calls: { method: string; path: string; query: URLSearchParams; body: unknown; token: string | null }[] = [];
 
   const fetcher = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), 'http://recorder');
     const method = init?.method ?? 'GET';
     const token = ((init?.headers as Record<string, string> | undefined)?.Authorization ?? '').replace(/^Bearer /, '') || null;
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
-    const request = { method, path: url.pathname, body, token };
+    const request = { method, path: url.pathname, query: url.searchParams, body, token };
     calls.push(request);
 
     const handler = routes[`${method} ${url.pathname}`];

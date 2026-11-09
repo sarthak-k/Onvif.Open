@@ -32,8 +32,8 @@ namespace Onvif.Open.Recorder.Configuration
         /// Creates the manager with <paramref name="cameras"/> (from the settings database) and keeps the ONVIF cameras,
         /// which also provide snapshots, PTZ, imaging, ...
         /// </summary>
-        /// <param name="cameraRetention">How long each camera's video is kept (from its recording policy); null: no per-camera limit.</param>
-        public static ConfiguredRecording Create(RecorderOptions options, IReadOnlyList<CameraOptions> cameras, ILoggerFactory loggerFactory, ArchiveStore archive = null, Func<string, TimeSpan?> cameraRetention = null)
+        /// <param name="isExpired">Whether a file has been kept long enough by its camera's recording policy; null: no per-camera limit.</param>
+        public static ConfiguredRecording Create(RecorderOptions options, IReadOnlyList<CameraOptions> cameras, ILoggerFactory loggerFactory, ArchiveStore archive = null, Func<RecordingSegment, DateTimeOffset, bool> isExpired = null)
         {
             Validate(options);
             ValidateCameras(cameras);
@@ -57,7 +57,7 @@ namespace Onvif.Open.Recorder.Configuration
                 .SetStorageDirectory(options.StorageDirectory)
                 .SetFormat(ToFormat(options.Format))
                 .SetRotationPolicy(ToRotationPolicy(options.Rotation) ?? RotationPolicies.Default)
-                .SetRetentionPolicy(WithCameraRetention(ToRetentionPolicy(options.Retention), cameraRetention))
+                .SetRetentionPolicy(WithCameraRetention(ToRetentionPolicy(options.Retention), isExpired))
                 .SetRetentionInterval(options.RetentionInterval)
                 .SetStallTimeout(options.StallTimeout)
                 .SetReconnectDelay(options.MinReconnectDelay, options.MaxReconnectDelay)
@@ -82,14 +82,14 @@ namespace Onvif.Open.Recorder.Configuration
         /// The recorder-wide limits (free space, total size) plus each camera's own retention, looked up at every run so
         /// a changed recording policy applies at the next one.
         /// </summary>
-        public static IRetentionPolicy WithCameraRetention(IRetentionPolicy recorderWide, Func<string, TimeSpan?> cameraRetention)
+        public static IRetentionPolicy WithCameraRetention(IRetentionPolicy recorderWide, Func<RecordingSegment, DateTimeOffset, bool> isExpired)
         {
-            if (cameraRetention == null)
+            if (isExpired == null)
             {
                 return recorderWide;
             }
 
-            var perCamera = RetentionPolicies.When(context => context.Segments.Where(s => cameraRetention(s.CameraId) is TimeSpan keep && context.Now - s.LastWriteTime > keep));
+            var perCamera = RetentionPolicies.When(context => context.Segments.Where(s => isExpired(s, context.Now)));
             return ReferenceEquals(recorderWide, RetentionPolicies.KeepAll) ? perCamera : RetentionPolicies.All(recorderWide, perCamera);
         }
 

@@ -33,9 +33,11 @@ namespace Onvif.Open.Recorder.Store
         public DbSet<MembershipRecord> Memberships => Set<MembershipRecord>();
         public DbSet<LayoutRecord> Layouts => Set<LayoutRecord>();
         public DbSet<PluginRecord> Plugins => Set<PluginRecord>();
+        public DbSet<EventRecord> Events => Set<EventRecord>();
+        public DbSet<AuditRecord> Audit => Set<AuditRecord>();
 
         /// <summary>Every table of the model, for creating the ones a database lacks.</summary>
-        public static readonly string[] TableNames = { "oo_organizations", "oo_sites", "oo_recording_policies", "oo_cameras", "oo_users", "oo_memberships", "oo_layouts", "oo_plugins" };
+        public static readonly string[] TableNames = { "oo_organizations", "oo_sites", "oo_recording_policies", "oo_cameras", "oo_users", "oo_memberships", "oo_layouts", "oo_plugins", "oo_events", "oo_audit" };
 
         #endregion
 
@@ -126,6 +128,39 @@ namespace Onvif.Open.Recorder.Store
                 layout.Property(l => l.Grid).HasMaxLength(32).IsRequired();
                 layout.Property(l => l.Cameras).IsRequired();
                 layout.HasIndex(l => new { l.OrganizationId, l.OwnerId });
+            });
+
+            modelBuilder.Entity<EventRecord>(evt =>
+            {
+                evt.ToTable("oo_events");
+                evt.HasKey(e => e.Id);
+                evt.Property(e => e.Id).HasMaxLength(36);
+                evt.Property(e => e.OrganizationId).HasMaxLength(36).IsRequired();
+                evt.Property(e => e.SiteId).HasMaxLength(36);
+                evt.Property(e => e.CameraId).HasMaxLength(64);
+                evt.Property(e => e.Category).HasMaxLength(32).IsRequired();
+                evt.Property(e => e.Severity).HasMaxLength(16).IsRequired();
+                evt.Property(e => e.Source).HasMaxLength(100).IsRequired();
+                evt.Property(e => e.Title).HasMaxLength(200).IsRequired();
+                evt.Property(e => e.Topic).HasMaxLength(256);
+                evt.HasIndex(e => new { e.OrganizationId, e.StartTime });
+                evt.HasIndex(e => new { e.CameraId, e.StartTime });
+            });
+
+            modelBuilder.Entity<AuditRecord>(audit =>
+            {
+                audit.ToTable("oo_audit");
+                audit.HasKey(a => a.Id);
+                audit.Property(a => a.Id).HasMaxLength(36);
+                audit.Property(a => a.OrganizationId).HasMaxLength(36);
+                audit.Property(a => a.UserId).HasMaxLength(36);
+                audit.Property(a => a.UserName).HasMaxLength(64);
+                audit.Property(a => a.Action).HasMaxLength(64).IsRequired();
+                audit.Property(a => a.TargetType).HasMaxLength(32);
+                audit.Property(a => a.TargetId).HasMaxLength(64);
+                audit.Property(a => a.TargetName).HasMaxLength(200);
+                audit.Property(a => a.IpAddress).HasMaxLength(64);
+                audit.HasIndex(a => new { a.OrganizationId, a.CreatedAt });
             });
 
             modelBuilder.Entity<PluginRecord>(plugin =>
@@ -279,6 +314,67 @@ namespace Onvif.Open.Recorder.Store
 
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
+    }
+
+    /// <summary>
+    /// Something that happened, kept for as long as the camera's policy keeps video around events: motion, a person
+    /// or vehicle in view, tampering, an input, the camera going offline, a plugin's finding. An event with a duration
+    /// has an end time; one still going on has none yet.
+    /// </summary>
+    public sealed class EventRecord
+    {
+        public string Id { get; set; }
+        public string OrganizationId { get; set; }
+        public string SiteId { get; set; }
+
+        /// <summary>The camera it happened at; null for events about no camera (some plugin events).</summary>
+        public string CameraId { get; set; }
+
+        /// <summary>See <see cref="Events.EventCategories"/>.</summary>
+        public string Category { get; set; }
+
+        /// <summary>Info, Warning or Critical.</summary>
+        public string Severity { get; set; }
+
+        /// <summary>"camera", "detection", "recorder" or "plugin:&lt;name&gt;".</summary>
+        public string Source { get; set; }
+
+        /// <summary>A short readable name: "Motion", "Person", "Camera offline".</summary>
+        public string Title { get; set; }
+
+        /// <summary>The ONVIF topic or plugin event type it came from.</summary>
+        public string Topic { get; set; }
+
+        public DateTime StartTime { get; set; }
+        public DateTime? EndTime { get; set; }
+
+        /// <summary>Details as a JSON object (e.g. object classes and likelihood, a plugin's data).</summary>
+        public string Data { get; set; }
+    }
+
+    /// <summary>Who did what, when and from where: changes to settings, sign-ins, and watching or exporting video.</summary>
+    public sealed class AuditRecord
+    {
+        public string Id { get; set; }
+
+        /// <summary>Null for sign-ins of unknown user names.</summary>
+        public string OrganizationId { get; set; }
+
+        public string UserId { get; set; }
+        public string UserName { get; set; }
+
+        /// <summary>See <see cref="Audit.AuditActions"/>, e.g. "camera.update", "video.export".</summary>
+        public string Action { get; set; }
+
+        public string TargetType { get; set; }
+        public string TargetId { get; set; }
+        public string TargetName { get; set; }
+
+        /// <summary>Details as a JSON object; never secrets.</summary>
+        public string Details { get; set; }
+
+        public string IpAddress { get; set; }
+        public DateTime CreatedAt { get; set; }
     }
 
     /// <summary>A plugin folder row: <see cref="Key"/> is the lower-cased folder name.</summary>
