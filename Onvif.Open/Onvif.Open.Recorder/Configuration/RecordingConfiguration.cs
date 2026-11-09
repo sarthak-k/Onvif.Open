@@ -33,7 +33,9 @@ namespace Onvif.Open.Recorder.Configuration
         /// which also provide snapshots, PTZ, imaging, ...
         /// </summary>
         /// <param name="isExpired">Whether a file has been kept long enough by its camera's recording policy; null: no per-camera limit.</param>
-        public static ConfiguredRecording Create(RecorderOptions options, IReadOnlyList<CameraOptions> cameras, ILoggerFactory loggerFactory, ArchiveStore archive = null, Func<RecordingSegment, DateTimeOffset, bool> isExpired = null)
+        /// <param name="limits">Recorder-wide limits (the gateway's storage limits); null: none.</param>
+        /// <param name="minLocalFreeGB">With a backup: the free space kept on the local disk.</param>
+        public static ConfiguredRecording Create(RecorderOptions options, IReadOnlyList<CameraOptions> cameras, ILoggerFactory loggerFactory, ArchiveStore archive = null, Func<RecordingSegment, DateTimeOffset, bool> isExpired = null, IRetentionPolicy limits = null, double? minLocalFreeGB = null)
         {
             Validate(options);
             ValidateCameras(cameras);
@@ -45,11 +47,11 @@ namespace Onvif.Open.Recorder.Configuration
                 builder.SetArchive(archive.Store, new SegmentArchiveOptions
                 {
                     Name = archive.Name,
-                    Prefix = options.Archive?.Prefix,
-                    KeepLocalCopyFor = options.Archive?.KeepLocalCopyFor ?? TimeSpan.Zero,
+                    Prefix = archive.Prefix,
+                    KeepLocalCopyFor = archive.KeepLocalCopyFor,
                     MaxConcurrentUploads = options.Archive?.MaxConcurrentUploads ?? 2,
                     RefreshInterval = options.Archive?.RefreshInterval ?? TimeSpan.FromMinutes(15),
-                    MinLocalFreeBytes = options.Retention?.MinFreeSpaceGB is double free && free > 0 ? ToBytes(free, RotationPolicies.GiB) : 0
+                    MinLocalFreeBytes = minLocalFreeGB is double free && free > 0 ? ToBytes(free, RotationPolicies.GiB) : 0
                 });
             }
 
@@ -57,7 +59,7 @@ namespace Onvif.Open.Recorder.Configuration
                 .SetStorageDirectory(options.StorageDirectory)
                 .SetFormat(ToFormat(options.Format))
                 .SetRotationPolicy(ToRotationPolicy(options.Rotation) ?? RotationPolicies.Default)
-                .SetRetentionPolicy(WithCameraRetention(ToRetentionPolicy(options.Retention), isExpired))
+                .SetRetentionPolicy(WithCameraRetention(limits ?? RetentionPolicies.KeepAll, isExpired))
                 .SetRetentionInterval(options.RetentionInterval)
                 .SetStallTimeout(options.StallTimeout)
                 .SetReconnectDelay(options.MinReconnectDelay, options.MaxReconnectDelay)
@@ -181,10 +183,9 @@ namespace Onvif.Open.Recorder.Configuration
                 errors.Add("Recording:StorageDirectory is required.");
             }
 
-            if (options.Archive != null && options.Archive.IsEnabled
-                && (options.Archive.KeepLocalCopyFor < TimeSpan.Zero || options.Archive.MaxConcurrentUploads < 1 || options.Archive.RefreshInterval <= TimeSpan.Zero))
+            if (options.Archive != null && (options.Archive.MaxConcurrentUploads < 1 || options.Archive.RefreshInterval <= TimeSpan.Zero))
             {
-                errors.Add("Recording:Archive: KeepLocalCopyFor must not be negative, MaxConcurrentUploads must be at least 1 and RefreshInterval positive.");
+                errors.Add("Recording:Archive: MaxConcurrentUploads must be at least 1 and RefreshInterval positive.");
             }
 
             if (errors.Count > 0)

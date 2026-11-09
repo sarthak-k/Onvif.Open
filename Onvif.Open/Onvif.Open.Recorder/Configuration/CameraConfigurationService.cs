@@ -21,8 +21,9 @@ namespace Onvif.Open.Recorder.Configuration
     {
         #region Constructor
 
-        public CameraConfigurationService(ISettingsStore store, ITenancyStore tenancy, CameraDirectory directory, ConfiguredRecording recording, ILogger<CameraConfigurationService> logger)
+        public CameraConfigurationService(ISettingsStore store, ITenancyStore tenancy, CameraDirectory directory, ConfiguredRecording recording, Gateways.GatewayService gateways, ILogger<CameraConfigurationService> logger)
         {
+            _gateways = gateways ?? throw new ArgumentNullException(nameof(gateways));
             _store = store ?? throw new ArgumentNullException(nameof(store));
             _tenancy = tenancy ?? throw new ArgumentNullException(nameof(tenancy));
             _directory = directory ?? throw new ArgumentNullException(nameof(directory));
@@ -40,6 +41,7 @@ namespace Onvif.Open.Recorder.Configuration
         private readonly ITenancyStore _tenancy;
         private readonly CameraDirectory _directory;
         private readonly ConfiguredRecording _recording;
+        private readonly Gateways.GatewayService _gateways;
         private readonly ILogger _logger;
         private readonly SemaphoreSlim _changes = new SemaphoreSlim(1, 1);
 
@@ -68,6 +70,9 @@ namespace Onvif.Open.Recorder.Configuration
             {
                 camera.Id = Guid.NewGuid().ToString("D");
                 camera.OrganizationId = organizationId;
+
+                // This recorder records the camera: it is on the recorder's own gateway.
+                camera.GatewayId = (await _gateways.EnsureLocalAsync(cancellationToken).ConfigureAwait(false))?.Id;
 
                 var (policy, errors) = await PrepareAsync(organizationId, camera, cancellationToken).ConfigureAwait(false);
                 if (errors.Count > 0)
@@ -113,6 +118,7 @@ namespace Onvif.Open.Recorder.Configuration
 
                 camera.Id = existing.Id;
                 camera.OrganizationId = organizationId;
+                camera.GatewayId = existing.GatewayId;
                 camera.Password = camera.Password == null ? existing.Password : camera.Password.Length == 0 ? null : camera.Password;
 
                 var (policy, errors) = await PrepareAsync(organizationId, camera, cancellationToken).ConfigureAwait(false);

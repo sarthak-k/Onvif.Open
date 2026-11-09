@@ -75,6 +75,7 @@ namespace Onvif.Open.Test.Recording.Integration
             OrganizationId = TestSettings.OrganizationId,
             SiteId = TestSettings.SiteId,
             PolicyId = TestSettings.AlwaysPolicyId,
+            GatewayId = TestSettings.GatewayId,
             OnvifUrl = "http://192.168.1.10",
             Username = "admin",
             Password = password,

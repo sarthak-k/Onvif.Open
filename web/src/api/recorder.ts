@@ -1,5 +1,5 @@
 import type { ApiClient } from './client';
-import type { CameraConfig, CameraStatus, DiscoveredDevice, AuditEntry, AuditQuery, Layout, LayoutRequest, Me, Organization, ProbeResult, RecordingPolicy, RecordingPolicyRequest, SetupStatus, Site, SiteRequest, User, UserRequest } from './types';
+import type { CameraConfig, CameraStatus, DiscoveredDevice, AuditEntry, AuditQuery, Gateway, GatewayRequest, Layout, LayoutRequest, Me, Organization, ProbeResult, RecordingPolicy, RecordingPolicyRequest, SetupStatus, Site, SiteRequest, User, UserRequest } from './types';
 
 // The recorder's API by area. Pages depend on these interfaces, not on HTTP, so tests and later back ends can
 // provide their own implementation (dependency inversion, interface segregation).
@@ -63,6 +63,11 @@ export interface LayoutsApi {
   remove(layoutId: string): Promise<void>;
 }
 
+export interface GatewaysApi {
+  list(): Promise<Gateway[]>;
+  update(gatewayId: string, gateway: GatewayRequest): Promise<Gateway>;
+}
+
 export interface AuditApi {
   /** Newest first. */
   list(query?: AuditQuery): Promise<AuditEntry[]>;
@@ -88,6 +93,7 @@ export interface RecorderApi {
   layouts: LayoutsApi;
   media: MediaApi;
   audit: AuditApi;
+  gateways: GatewaysApi;
 }
 
 const segment = encodeURIComponent;
@@ -160,6 +166,10 @@ export function createRecorderApi(client: ApiClient): RecorderApi {
     },
     audit: {
       list: (query = {}) => client.get(`/api/audit${queryString({ ...query })}`),
+    },
+    gateways: {
+      list: () => client.get('/api/gateways'),
+      update: (id, gateway) => client.put(`/api/gateways/${segment(id)}`, gateway),
     },
   };
 }

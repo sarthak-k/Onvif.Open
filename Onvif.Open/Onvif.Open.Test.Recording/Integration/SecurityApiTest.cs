@@ -51,7 +51,6 @@ namespace Onvif.Open.Test.Recording.Integration
             {
                 _settings.Apply(builder);
                 builder.UseSetting("Recording:StorageDirectory", _storage.Path);
-                builder.UseSetting("Recording:Retention:MinFreeSpaceGB", "0");
 
                 foreach (var (key, value) in settings)
                 {

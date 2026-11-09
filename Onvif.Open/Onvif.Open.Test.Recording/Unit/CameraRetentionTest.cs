@@ -140,3 +140,32 @@ namespace Onvif.Open.Test.Recording.Unit
         }
     }
 }
+
+namespace Onvif.Open.Test.Recording.Unit
+{
+    using System;
+    using System.Linq;
+    using Onvif.Open.Core.Recording;
+    using Onvif.Open.Recorder.Gateways;
+    using Xunit;
+
+    public sealed class GatewayRetentionTest
+    {
+        [Fact]
+        public void ChangedLimitsShouldApplyAtTheNextRun()
+        {
+            var limits = new StorageLimits { MinFreeSpaceGB = null };
+            var retention = new GatewayRetention(() => limits);
+            var now = DateTimeOffset.UtcNow;
+            var segments = Enumerable.Range(0, 3)
+                .Select(i => new RecordingSegment("cam", $"/r/cam/{i}.ts", now.AddHours(-3 + i), now.AddHours(-2 + i), 1024L * 1024 * 1024, isActive: false))
+                .ToList();
+            var context = new RetentionContext(segments, now, null);
+
+            Assert.Empty(retention.SelectForDeletion(context));
+
+            limits = new StorageLimits { MaxSizePerCameraGB = 2 };
+            Assert.Equal(new[] { segments[0] }, retention.SelectForDeletion(context));
+        }
+    }
+}

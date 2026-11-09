@@ -2,6 +2,7 @@
 // 2026-11-07
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
@@ -13,7 +14,7 @@ using Onvif.Open.Recording.Implementation.Storage;
 namespace Onvif.Open.Recorder.Configuration
 {
     /// <summary>
-    /// Creates the archive store named by "Recording:Archive:Provider": the built-in FileSystem store or a storage plugin.
+    /// Creates the gateway's backup store: the built-in FileSystem store (a NAS share, another disk) or a storage plugin.
     /// </summary>
     public static class StorageConfiguration
     {
@@ -25,19 +26,18 @@ namespace Onvif.Open.Recorder.Configuration
 
         #region Public Methods
 
-        /// <summary>The configured archive, or null when recordings are only kept locally.</summary>
-        public static ArchiveStore CreateArchive(IConfiguration configuration, string contentRoot, ILoggerFactory loggerFactory)
+        /// <summary>The backup store, or null when recordings are only kept on the gateway.</summary>
+        /// <param name="configuration">For "Plugins:Directory", where storage plugins are.</param>
+        public static ArchiveStore CreateArchive(Gateways.BackupSettings backup, IConfiguration configuration, string contentRoot, ILoggerFactory loggerFactory)
         {
-            var recording = configuration.GetSection(RecorderOptions.SectionName);
-            var options = recording.GetSection("Archive").Get<ArchiveOptions>() ?? new ArchiveOptions();
-
-            if (!options.IsEnabled)
+            if (backup == null || !backup.IsEnabled)
             {
                 return null;
             }
 
-            var provider = options.Provider.Trim();
-            var settings = PluginConfiguration.ReadSettings(recording.GetSection("Archive").GetSection("Settings"));
+            var provider = backup.Provider.Trim();
+            var settings = (IReadOnlyDictionary<string, string>)new Dictionary<string, string>(backup.Settings ?? new Dictionary<string, string>(), StringComparer.OrdinalIgnoreCase);
+            var keepLocal = TimeSpan.FromHours(Math.Max(0, backup.KeepLocalCopyHours));
             var logger = loggerFactory.CreateLogger(typeof(StorageConfiguration).FullName);
 
             if (string.Equals(provider, FileSystemProvider, StringComparison.OrdinalIgnoreCase))
@@ -45,7 +45,7 @@ namespace Onvif.Open.Recorder.Configuration
                 var context = new SegmentStoreContext(settings);
                 var path = Path.GetFullPath(Path.Combine(contentRoot, context.Require("Path")));
                 logger.LogInformation("Archiving recordings to {Path}", path);
-                return new ArchiveStore(FileSystemProvider, new FileSystemSegmentStore(path));
+                return new ArchiveStore(FileSystemProvider, new FileSystemSegmentStore(path), backup.Prefix, keepLocal);
             }
 
             if (provider.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || provider.Contains("..", StringComparison.Ordinal))
@@ -60,7 +60,7 @@ namespace Onvif.Open.Recorder.Configuration
                 ?? throw new InvalidOperationException($"Storage provider '{storeProvider.Name}' did not create a store.");
 
             logger.LogInformation("Archiving recordings with storage provider {Provider} to {Store}", storeProvider.Name, store);
-            return new ArchiveStore(storeProvider.Name, store);
+            return new ArchiveStore(storeProvider.Name, store, backup.Prefix, keepLocal);
         }
 
         #endregion
@@ -73,10 +73,12 @@ namespace Onvif.Open.Recorder.Configuration
     {
         #region Constructor
 
-        public ArchiveStore(string name, ISegmentStore store)
+        public ArchiveStore(string name, ISegmentStore store, string prefix = null, TimeSpan keepLocalCopyFor = default)
         {
             Name = name;
             Store = store ?? throw new ArgumentNullException(nameof(store));
+            Prefix = prefix;
+            KeepLocalCopyFor = keepLocalCopyFor;
         }
 
         #endregion
@@ -85,6 +87,12 @@ namespace Onvif.Open.Recorder.Configuration
 
         public string Name { get; }
         public ISegmentStore Store { get; }
+
+        /// <summary>Prepended to every key, e.g. "site-a".</summary>
+        public string Prefix { get; }
+
+        /// <summary>How long the local copy is kept after upload.</summary>
+        public TimeSpan KeepLocalCopyFor { get; }
 
         #endregion
     }
