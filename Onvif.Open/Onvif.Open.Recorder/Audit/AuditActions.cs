@@ -33,6 +33,8 @@ namespace Onvif.Open.Recorder.Audit
 
         public const string PluginUpdate = "plugin.update";
         public const string GatewayUpdate = "gateway.update";
+        public const string GatewayPair = "gateway.pair";
+        public const string GatewayRemove = "gateway.remove";
         public const string PluginDelete = "plugin.delete";
 
         public const string LayoutCreate = "layout.create";

@@ -176,7 +176,9 @@ namespace Onvif.Open.Recorder.Store
                 gateway.Property(g => g.Version).HasMaxLength(64);
                 gateway.Property(g => g.BackupProvider).HasMaxLength(200);
                 gateway.Property(g => g.BackupPrefix).HasMaxLength(200);
+                gateway.Property(g => g.TokenHash).HasMaxLength(64);
                 gateway.HasIndex(g => g.OrganizationId);
+                gateway.HasIndex(g => g.TokenHash);
             });
 
             modelBuilder.Entity<PluginRecord>(plugin =>
@@ -430,6 +432,9 @@ namespace Onvif.Open.Recorder.Store
 
         /// <summary>JSON array of addresses probed directly.</summary>
         public string DiscoveryAddresses { get; set; }
+
+        /// <summary>SHA-256 (hex) of a paired gateway's token.</summary>
+        public string TokenHash { get; set; }
 
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
