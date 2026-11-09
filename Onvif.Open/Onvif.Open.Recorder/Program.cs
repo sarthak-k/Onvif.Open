@@ -75,7 +75,7 @@ builder.Services.AddSingleton<Onvif.Open.Recorder.Cases.CaseService>();
 
 // MP4 exports with a watermark (ffmpeg, "Export:Ffmpeg"), kept in "Export:Directory" for 7 days; share links.
 builder.Services.AddSingleton<Onvif.Open.Recorder.Exports.IExportStore, Onvif.Open.Recorder.Exports.EfExportStore>();
-builder.Services.AddSingleton<Onvif.Open.Recorder.Exports.IMp4Encoder>(sp => new Onvif.Open.Recorder.Exports.FfmpegMp4Encoder(sp.GetRequiredService<IConfiguration>()["Export:Ffmpeg"]));
+builder.Services.AddSingleton<Onvif.Open.Recorder.Exports.IMp4Encoder>(sp => new Onvif.Open.Recorder.Exports.FfmpegMp4Encoder(sp.GetRequiredService<IConfiguration>()["Export:Ffmpeg"], sp.GetRequiredService<IConfiguration>()["Export:FontFile"]));
 builder.Services.AddSingleton(sp => new Onvif.Open.Recorder.Exports.ExportService(
     sp.GetRequiredService<Onvif.Open.Recorder.Exports.IExportStore>(),
     sp.GetRequiredService<IRecordingManager>(),

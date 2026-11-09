@@ -33,18 +33,44 @@ namespace Onvif.Open.Recorder.Exports
     /// </summary>
     public sealed class FfmpegMp4Encoder : IMp4Encoder
     {
-        public FfmpegMp4Encoder(string ffmpeg = null)
+        /// <param name="fontFile">The watermark's font ("Export:FontFile"); null: a common one found on this machine, else fontconfig's default.</param>
+        public FfmpegMp4Encoder(string ffmpeg = null, string fontFile = null)
         {
             _ffmpeg = string.IsNullOrWhiteSpace(ffmpeg) ? "ffmpeg" : ffmpeg;
+            _fontFile = string.IsNullOrWhiteSpace(fontFile) ? FindFont() : fontFile;
         }
 
+        /// <summary>Fonts tried when none is configured (ffmpeg builds without fontconfig need one).</summary>
+        public static readonly string[] CommonFonts =
+        {
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+            "/System/Library/Fonts/Supplemental/Arial.ttf",
+            "/Library/Fonts/Arial.ttf",
+            @"C:\Windows\Fonts\arial.ttf"
+        };
+
         private readonly string _ffmpeg;
+        private readonly string _fontFile;
+
+        private static string FindFont() => CommonFonts.FirstOrDefault(File.Exists);
 
         public async Task EncodeAsync(string input, string output, Watermark watermark, CancellationToken cancellationToken)
         {
             // The text goes in a file: no escaping of the filter arguments, and drawtext expands the clock in it.
             var textFile = output + ".txt";
             await File.WriteAllTextAsync(textFile, Text(watermark), new UTF8Encoding(false), cancellationToken).ConfigureAwait(false);
+
+            // The font is copied next to the text: its path then needs no escaping in the filter either.
+            string font = null;
+            if (_fontFile != null && File.Exists(_fontFile))
+            {
+                font = output + ".font" + Path.GetExtension(_fontFile);
+                File.Copy(_fontFile, font, overwrite: true);
+            }
 
             // Run in the output's folder and name the text file without a path: nothing to escape in the filter.
             var start = new ProcessStartInfo(_ffmpeg)
@@ -59,7 +85,7 @@ namespace Onvif.Open.Recorder.Exports
             {
                 "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
                 "-i", input,
-                "-vf", $"setpts=PTS-STARTPTS,drawtext=textfile={Path.GetFileName(textFile)}:expansion=normal:x=12:y=12:fontsize=h/32:fontcolor=white:box=1:boxcolor=black@0.55:boxborderw=6:line_spacing=4",
+                "-vf", $"setpts=PTS-STARTPTS,drawtext={(font == null ? string.Empty : $"fontfile={Path.GetFileName(font)}:")}textfile={Path.GetFileName(textFile)}:expansion=normal:x=12:y=12:fontsize=h/32:fontcolor=white:box=1:boxcolor=black@0.55:boxborderw=6:line_spacing=4",
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p",
                 "-c:a", "aac", "-b:a", "96k",
                 "-movflags", "+faststart",
@@ -99,6 +125,10 @@ namespace Onvif.Open.Recorder.Exports
             finally
             {
                 File.Delete(textFile);
+                if (font != null)
+                {
+                    File.Delete(font);
+                }
             }
         }
 

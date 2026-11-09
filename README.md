@@ -456,7 +456,8 @@ closed, that video follows the policies again.
 **Exports and share links.** A stretch of up to an hour of one camera can be exported as an MP4 (H.264/AAC) with a
 watermark drawn into every frame: the organization, site and camera, who exported it and when, a reference, and the
 site time of the frame. Exports are made in the background, one at a time (and resumed after a restart), with
-ffmpeg (`Export:Ffmpeg`, default `ffmpeg` on the path), kept in `Export:Directory` (default `data/exports`) for 7 days
+ffmpeg (`Export:Ffmpeg`, default `ffmpeg` on the path; the watermark font is `Export:FontFile`, else a common font
+found on the machine, else fontconfig's default), kept in `Export:Directory` (default `data/exports`) for 7 days
 with their SHA-256, and downloaded by whoever may see the camera. Operators and above share an export with a link that
 works without signing in for 1 hour to 7 days (or until the export expires), and revoke it; the token is shown once and
 only its hash is stored; every download through a link is in the audit log.
