@@ -467,7 +467,7 @@ dotnet run --project Onvif.Open/Onvif.Open.Recorder
 | `GET /api/recording-policies`, `POST` `{name, mode: Always/EventsOnly, preRollSeconds, postRollSeconds, continuousRetentionDays, eventRetentionDays, isDefault}`, `PUT .../{id}`, `DELETE .../{id}` | Recording policies; a change applies to its cameras at once; the default and policies in use cannot be deleted |
 | `GET /api/users`, `POST /api/users` `{userName, password, role, sites}`, `PUT .../{id}` `{role, sites, enabled, password}`, `DELETE .../{id}` | Members of the organization (administrators who see all sites); `sites: []` = all sites |
 | `GET /api/config/plugins`, `PUT .../{folder}` `{enabled, cameras, settings}`, `DELETE .../{folder}` | Plugin assignments (applied at the next start); setting values are write-only |
-| `POST /api/config/cameras/test` | Try a camera before saving it: sign-in, device, media profiles and capabilities (ONVIF) or codec (RTSP). With `id` and no password the stored password is used |
+| `POST /api/config/cameras/test?snapshot=true` | Try a camera before saving it: sign-in, device, media profiles and capabilities (ONVIF) or codec (RTSP). ONVIF cameras also get `recommended` streams (`mainProfile`: the sharpest, H.264 before H.265 at the same size; `subProfile`: the smallest other one) and, with `snapshot=true`, a picture as a data URL. With `id` and no password the stored password is used |
 | `POST /api/config/cameras`, `PUT .../{id}`, `DELETE .../{id}` | Add (the recorder assigns the id), change (name, site, policy, connection; password omitted: kept, `""`: removed) or remove a camera; applied immediately. Removing a camera assigned to a plugin is refused |
 | `GET /api/cameras/{id}/device-recordings` | Recordings stored on the camera (Profile G) and their time span |
 | `GET /api/cameras/{id}/device-recordings/{token}/export?from=...&to=...` | Download a clip from the camera's own storage as MPEG-TS (up to 6 hours) |
@@ -494,8 +494,10 @@ a network: bearer tokens and passwords must not travel in clear text.
 
 `web/` is a React + TypeScript app for the recorder: first-run setup, sign-in, live view (several cameras in a grid: single, 2 × 2 up to
 5 × 5, or one large tile with smaller ones; arrange cameras by picking or dragging, enlarge one with a double click,
-full screen; layouts saved per user or shared by administrators), cameras (status for everyone; adding, editing and
-removing for administrators, with discovery and a connection test), settings (sites, recording policies, gateways with their
+full screen; layouts saved per user or shared by administrators), cameras (status for everyone; for administrators an
+**Add cameras** wizard: it lists what the gateway found on the network (or a typed address), signs in to all of them
+with one shared password (a camera that refuses it gets its own), shows each camera's picture, chooses its streams,
+and adds them named, at a site and with a recording policy; one camera can also be added and edited in full), settings (sites, recording policies, gateways with their
 health, storage limits, cloud backup and discovery, users with roles and site access, the audit log, the organization) and the own account. It is a
 static site served separately from the recorder:
 

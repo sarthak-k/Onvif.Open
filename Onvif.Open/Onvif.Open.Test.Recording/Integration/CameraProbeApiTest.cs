@@ -58,9 +58,9 @@ namespace Onvif.Open.Test.Recording.Integration
 
         #region Private Methods
 
-        private async Task<JsonElement> ProbeAsync(object camera)
+        private async Task<JsonElement> ProbeAsync(object camera, bool snapshot = false)
         {
-            var response = await _client.PostAsJsonAsync("/api/config/cameras/test", camera);
+            var response = await _client.PostAsJsonAsync("/api/config/cameras/test" + (snapshot ? "?snapshot=true" : string.Empty), camera);
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             return JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
         }

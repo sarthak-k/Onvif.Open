@@ -167,6 +167,10 @@ export interface ProbeResult {
   profiles?: ProbeProfile[] | null;
   capabilities?: { ptz: boolean; imaging: boolean; analytics: boolean; replay: boolean; deviceIo: boolean } | null;
   stream?: { codec?: string | null; audio?: string | null } | null;
+  /** The streams the recorder would use (ONVIF): the sharpest to record, the smallest for tiles. */
+  recommended?: { mainProfile?: string | null; subProfile?: string | null } | null;
+  /** A picture from the camera as a data URL, when asked for. */
+  snapshot?: string | null;
 }
 
 export interface Layout {

@@ -4,6 +4,7 @@ import type { Permission } from '../features/auth/permissions';
 // Pages load on first use (code splitting): signing in does not download the camera editor.
 const LivePage = lazy(() => import('../features/live/LivePage'));
 const CamerasPage = lazy(() => import('../features/cameras/CamerasPage'));
+const AddCamerasPage = lazy(() => import('../features/cameras/wizard/AddCamerasPage'));
 const CameraEditorPage = lazy(() => import('../features/cameras/editor/CameraEditorPage'));
 const UsersPage = lazy(() => import('../features/settings/UsersPage'));
 const SitesPage = lazy(() => import('../features/settings/SitesPage'));
@@ -27,6 +28,7 @@ export interface AppRoute {
 export const appRoutes: readonly AppRoute[] = [
   { path: '/live', page: LivePage, permission: 'cameras.view', nav: 'Live' },
   { path: '/cameras', page: CamerasPage, permission: 'cameras.view', nav: 'Cameras' },
+  { path: '/cameras/add', page: AddCamerasPage, permission: 'cameras.manage' },
   { path: '/cameras/new', page: CameraEditorPage, permission: 'cameras.manage' },
   { path: '/cameras/:id', page: CameraEditorPage, permission: 'cameras.manage' },
   { path: '/settings/sites', page: SitesPage, permission: 'settings.manage', settings: true },
