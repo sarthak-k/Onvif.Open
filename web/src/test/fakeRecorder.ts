@@ -51,8 +51,8 @@ export const mainSite = { id: 'site-main', name: 'Main St', timeZone: 'UTC', add
 export const lyonSite = { id: 'site-lyon', name: 'Lyon', timeZone: 'Europe/Paris', address: null };
 
 export const policies = [
-  { id: 'p-always', name: 'Always record', mode: 'Always' as const, preRollSeconds: 5, postRollSeconds: 10, continuousRetentionDays: 7, eventRetentionDays: 30, isDefault: true },
-  { id: 'p-events', name: 'Events only', mode: 'EventsOnly' as const, preRollSeconds: 5, postRollSeconds: 10, continuousRetentionDays: 7, eventRetentionDays: 30, isDefault: false },
+  { id: 'p-always', name: 'Always record', mode: 'Always' as const, preRollSeconds: 5, postRollSeconds: 10, continuousRetentionDays: 7, eventRetentionDays: 30, isDefault: true, schedule: [] },
+  { id: 'p-events', name: 'Events only', mode: 'EventsOnly' as const, preRollSeconds: 5, postRollSeconds: 10, continuousRetentionDays: 7, eventRetentionDays: 30, isDefault: false, schedule: [] },
 ];
 
 /** The signed-in user (/api/auth/me): an administrator who sees every site. */

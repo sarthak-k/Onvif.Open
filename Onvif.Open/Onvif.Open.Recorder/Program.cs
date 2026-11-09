@@ -118,6 +118,10 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<GatewayHeartbeat>(
 builder.Services.AddHostedService<PluginHostedService>();
 builder.Services.AddHostedService<RecordingHostedService>();
 
+// "Schedule" policies: cameras record all the time during their hours.
+builder.Services.AddSingleton<ScheduledRecording>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<ScheduledRecording>());
+
 var app = builder.Build();
 app.UseRecorderSecurity();
 app.UseCameraAccess();

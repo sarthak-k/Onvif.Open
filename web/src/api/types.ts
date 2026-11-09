@@ -71,7 +71,17 @@ export interface Site {
 
 export type SiteRequest = Omit<Site, 'id'>;
 
-export type PolicyMode = 'Always' | 'EventsOnly';
+export type PolicyMode = 'Always' | 'EventsOnly' | 'Schedule';
+
+export type Weekday = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
+
+/** Weekly hours in the site's time zone; an end not after the start runs past midnight. */
+export interface ScheduleWindow {
+  days: Weekday[];
+  /** "HH:mm". */
+  start: string;
+  end: string;
+}
 
 export interface RecordingPolicy {
   id: string;
@@ -82,6 +92,8 @@ export interface RecordingPolicy {
   continuousRetentionDays: number;
   eventRetentionDays: number;
   isDefault: boolean;
+  /** When a "Schedule" policy records all the time. */
+  schedule: ScheduleWindow[];
 }
 
 export type RecordingPolicyRequest = Omit<RecordingPolicy, 'id'>;

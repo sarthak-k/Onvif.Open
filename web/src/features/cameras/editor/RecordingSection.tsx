@@ -1,3 +1,4 @@
+import { describeSchedule } from '../../settings/schedule';
 import { Link } from 'react-router-dom';
 import type { RecordingPolicy } from '../../../api/types';
 import { NumberField, Section, SelectField } from '../../../shared/form/fields';
@@ -5,8 +6,14 @@ import type { SectionProps } from './cameraForm';
 
 /** "Records always · keeps video 7 days, around events 30 days" */
 export function describePolicy(policy: RecordingPolicy): string {
-  const how = policy.mode === 'Always' ? 'Records always' : `Records around events (${policy.preRollSeconds} s before, ${policy.postRollSeconds} s after)`;
-  const keep = policy.mode === 'Always' ? `keeps video ${policy.continuousRetentionDays} days, around events ${policy.eventRetentionDays} days` : `keeps video ${policy.eventRetentionDays} days`;
+  const around = `around events (${policy.preRollSeconds} s before, ${policy.postRollSeconds} s after)`;
+  const how =
+    policy.mode === 'Always'
+      ? 'Records always'
+      : policy.mode === 'Schedule'
+        ? `Records always ${describeSchedule(policy.schedule ?? [])}, otherwise ${around}`
+        : `Records ${around}`;
+  const keep = policy.mode === 'EventsOnly' ? `keeps video ${policy.eventRetentionDays} days` : `keeps video ${policy.continuousRetentionDays} days, around events ${policy.eventRetentionDays} days`;
   return `${how} · ${keep}`;
 }
 

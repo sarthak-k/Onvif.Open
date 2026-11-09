@@ -424,6 +424,12 @@ recording. RTSP-only cameras use `rtspUrl` (optionally `"transport": "Udp"`). `a
 (ONVIF Profile M): `triggerClasses` records while such an object is in view (instead of on every motion event), and
 `"enabled": true` passes detected objects to plugins.
 
+**Recording policies.** Setup creates three: *Always record* (the default), *Events only* (around events, with 5 s
+before and 10 s after) and *Business hours* (`Schedule`: all the time Monday to Friday 08:00 to 18:00, around events
+otherwise). A schedule's hours are weekly time ranges in each camera's site time zone; a range whose end is not after
+its start runs past midnight (22:00 to 06:00). The recorder checks the schedules every 30 s, so recording starts within
+30 s of the hours and stops at their end (plus the post-roll).
+
 **Events and how long video is kept.** Everything a camera reports is stored as an event (it survives restarts and
 can be searched with `/api/events`): stateful camera events from their start to their end, detections of the same kind
 merged while they keep being seen (ending 5 s after the last sighting), the time a camera was offline, and what plugins
@@ -464,7 +470,7 @@ dotnet run --project Onvif.Open/Onvif.Open.Recorder
 | `GET /api/setup`, `POST /api/setup` `{organizationName, region, siteName, timeZone, userName, password, setupToken?}` | First-run setup (anonymous, until the first owner exists); returns the owner's tokens |
 | `GET /api/organization`, `PUT /api/organization` `{name}` | The organization (name, data region); owners rename it |
 | `GET /api/sites`, `POST /api/sites` `{name, timeZone, address}`, `PUT .../{id}`, `DELETE .../{id}` | Sites the user sees; a site with cameras, and the last site, cannot be deleted |
-| `GET /api/recording-policies`, `POST` `{name, mode: Always/EventsOnly, preRollSeconds, postRollSeconds, continuousRetentionDays, eventRetentionDays, isDefault}`, `PUT .../{id}`, `DELETE .../{id}` | Recording policies; a change applies to its cameras at once; the default and policies in use cannot be deleted |
+| `GET /api/recording-policies`, `POST` `{name, mode: Always/EventsOnly/Schedule, preRollSeconds, postRollSeconds, continuousRetentionDays, eventRetentionDays, isDefault, schedule: [{days: ["Monday", ...], start: "08:00", end: "18:00"}]}`, `PUT .../{id}`, `DELETE .../{id}` | Recording policies; a change applies to its cameras at once; the default and policies in use cannot be deleted |
 | `GET /api/users`, `POST /api/users` `{userName, password, role, sites}`, `PUT .../{id}` `{role, sites, enabled, password}`, `DELETE .../{id}` | Members of the organization (administrators who see all sites); `sites: []` = all sites |
 | `GET /api/config/plugins`, `PUT .../{folder}` `{enabled, cameras, settings}`, `DELETE .../{folder}` | Plugin assignments (applied at the next start); setting values are write-only |
 | `POST /api/config/cameras/test?snapshot=true` | Try a camera before saving it: sign-in, device, media profiles and capabilities (ONVIF) or codec (RTSP). ONVIF cameras also get `recommended` streams (`mainProfile`: the sharpest, H.264 before H.265 at the same size; `subProfile`: the smallest other one) and, with `snapshot=true`, a picture as a data URL. With `id` and no password the stored password is used |

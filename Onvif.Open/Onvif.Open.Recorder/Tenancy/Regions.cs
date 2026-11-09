@@ -32,7 +32,10 @@ namespace Onvif.Open.Recorder.Tenancy
         /// <summary>Records around events and detections only (with pre- and post-roll).</summary>
         public const string EventsOnly = "EventsOnly";
 
-        public static IReadOnlyList<string> All { get; } = new[] { Always, EventsOnly };
+        /// <summary>Records all the time during the policy's hours, around events otherwise.</summary>
+        public const string Schedule = "Schedule";
+
+        public static IReadOnlyList<string> All { get; } = new[] { Always, EventsOnly, Schedule };
 
         public static string Normalize(string mode)
         {

@@ -114,7 +114,10 @@ namespace Onvif.Open.Test.Recording.Integration
 
                 // The agreed defaults: continuous video 7 days, video around events 30 days.
                 var policies = (await JsonAsync(client, "/api/recording-policies")).EnumerateArray().ToList();
-                Assert.Equal(new[] { "Always", "EventsOnly" }, policies.Select(p => p.GetProperty("mode").GetString()));
+                Assert.Equal(new[] { "Always", "Schedule", "EventsOnly" }, policies.Select(p => p.GetProperty("mode").GetString()));
+                var hours = policies[1].GetProperty("schedule")[0];
+                Assert.Equal(("Business hours", "08:00", "18:00"), (policies[1].GetProperty("name").GetString(), hours.GetProperty("start").GetString(), hours.GetProperty("end").GetString()));
+                Assert.Equal(new[] { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday" }, hours.GetProperty("days").EnumerateArray().Select(d => d.GetString()));
                 Assert.True(policies[0].GetProperty("isDefault").GetBoolean());
                 Assert.All(policies, p => Assert.Equal((7, 30), (p.GetProperty("continuousRetentionDays").GetInt32(), p.GetProperty("eventRetentionDays").GetInt32())));
 

@@ -14,7 +14,8 @@ namespace Onvif.Open.Recorder.Tenancy
     /// <param name="EventsOnly">Records only around events: everything it records is event video.</param>
     /// <param name="ContinuousRetention">How long video without events is kept.</param>
     /// <param name="EventRetention">How long video around events (and the events themselves) is kept.</param>
-    public sealed record CameraEntry(string Id, string OrganizationId, string SiteId, string PolicyId, string Name, bool EventsOnly, TimeSpan ContinuousRetention, TimeSpan EventRetention);
+    /// <param name="Schedule">When it records all the time ("Schedule" policies); null otherwise.</param>
+    public sealed record CameraEntry(string Id, string OrganizationId, string SiteId, string PolicyId, string Name, bool EventsOnly, TimeSpan ContinuousRetention, TimeSpan EventRetention, RecordingSchedule Schedule = null);
 
     /// <summary>
     /// The configured cameras in memory: who owns each (organization, site), its name and its retention. Answers the
@@ -30,7 +31,8 @@ namespace Onvif.Open.Recorder.Tenancy
                 camera.Id, organizationId, camera.SiteId, camera.PolicyId, camera.Name ?? camera.Id,
                 policy.Mode == RecordingModes.EventsOnly,
                 TimeSpan.FromDays(Math.Max(1, policy.ContinuousRetentionDays)),
-                TimeSpan.FromDays(Math.Max(1, policy.EventRetentionDays)));
+                TimeSpan.FromDays(Math.Max(1, policy.EventRetentionDays)),
+                policy.Mode == RecordingModes.Schedule ? RecordingSchedule.From(RecordingSchedule.Deserialize(policy.Schedule)) : null);
         }
 
         public void Remove(string cameraId)
@@ -54,10 +56,13 @@ namespace Onvif.Open.Recorder.Tenancy
     /// </summary>
     public static class RecordingPolicyRules
     {
-        /// <summary>Recording mode and pre-/post-roll come from the policy.</summary>
+        /// <summary>
+        /// Recording mode and pre-/post-roll come from the policy. A schedule records in triggered mode: during its hours
+        /// the recorder keeps the camera triggered (see Hosting.ScheduledRecording).
+        /// </summary>
         public static CameraOptions Apply(CameraOptions camera, RecordingPolicyRecord policy)
         {
-            camera.Mode = policy.Mode == RecordingModes.EventsOnly ? Core.Recording.RecordingMode.Triggered : Core.Recording.RecordingMode.Continuous;
+            camera.Mode = policy.Mode == RecordingModes.Always ? Core.Recording.RecordingMode.Continuous : Core.Recording.RecordingMode.Triggered;
             camera.PreRoll = TimeSpan.FromSeconds(policy.PreRollSeconds);
             camera.PostRoll = TimeSpan.FromSeconds(policy.PostRollSeconds);
             return camera;

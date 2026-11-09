@@ -131,6 +131,8 @@ caption { text-align: left; font-weight: 600; padding: 4px 8px; }
 .steps li { counter-increment: step; color: var(--muted); padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border); font-size: 0.9rem; }
 .steps li::before { content: counter(step) ". "; }
 .steps li[aria-current='step'] { color: var(--accent-text); background: var(--accent); border-color: var(--accent); }
+.day-toggles { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.schedule-row { padding: 8px 0; border-top: 1px solid var(--border); }
 .candidates { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--gap); }
 .candidates > li { display: grid; grid-template-columns: 160px 1fr; gap: var(--gap); align-items: start; }
 .snapshot { width: 160px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 6px; background: #111; }
