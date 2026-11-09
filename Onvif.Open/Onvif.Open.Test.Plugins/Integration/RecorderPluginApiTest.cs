@@ -58,7 +58,7 @@ namespace Onvif.Open.Test.Plugins.Integration
                 Assert.Equal("Running", plugin.GetProperty("state").GetString());
                 Assert.Equal("room-1", plugin.GetProperty("cameras")[0].GetString());
 
-                var events = JsonDocument.Parse(await client.GetStringAsync("/api/events?cameraId=room-1&limit=10")).RootElement;
+                var events = JsonDocument.Parse(await client.GetStringAsync("/api/events?cameraId=room-1&category=plugin&limit=10")).RootElement;
                 Assert.Equal(0, events.GetArrayLength());
 
                 // RTSP-only camera: no ONVIF snapshot.
