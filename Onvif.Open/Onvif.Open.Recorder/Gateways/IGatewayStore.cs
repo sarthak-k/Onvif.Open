@@ -23,6 +23,11 @@ namespace Onvif.Open.Recorder.Gateways
         Task<Gateway> FindEmbeddedAsync(CancellationToken cancellationToken = default);
         Task SaveAsync(Gateway gateway, CancellationToken cancellationToken = default);
 
+        /// <summary>The paired gateway whose token has this hash, or null.</summary>
+        Task<Gateway> FindByTokenHashAsync(string tokenHash, CancellationToken cancellationToken = default);
+
+        Task<bool> DeleteAsync(string id, CancellationToken cancellationToken = default);
+
         /// <summary>Stores a heartbeat without touching the settings.</summary>
         Task ReportAsync(string id, string version, DateTime startedAt, DateTime seenAt, GatewayHealth health, CancellationToken cancellationToken = default);
 
@@ -72,6 +77,28 @@ namespace Onvif.Open.Recorder.Gateways
             }
         }
 
+        public async Task<Gateway> FindByTokenHashAsync(string tokenHash, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrEmpty(tokenHash))
+            {
+                return null;
+            }
+
+            await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
+            {
+                var record = await db.Gateways.AsNoTracking().FirstOrDefaultAsync(g => g.TokenHash == tokenHash, cancellationToken).ConfigureAwait(false);
+                return record == null ? null : ToGateway(record);
+            }
+        }
+
+        public async Task<bool> DeleteAsync(string id, CancellationToken cancellationToken = default)
+        {
+            await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
+            {
+                return await db.Gateways.Where(g => g.Id == id).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false) > 0;
+            }
+        }
+
         public async Task SaveAsync(Gateway gateway, CancellationToken cancellationToken = default)
         {
             await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
@@ -87,6 +114,7 @@ namespace Onvif.Open.Recorder.Gateways
                 record.Name = gateway.Name;
                 record.Location = gateway.Location;
                 record.Embedded = gateway.Embedded;
+                record.TokenHash = gateway.TokenHash;
                 record.MinFreeSpaceGB = gateway.Storage.MinFreeSpaceGB;
                 record.MaxSizePerCameraGB = gateway.Storage.MaxSizePerCameraGB;
                 record.MaxTotalSizeGB = gateway.Storage.MaxTotalSizeGB;
@@ -153,7 +181,8 @@ namespace Onvif.Open.Recorder.Gateways
                     Addresses = string.IsNullOrEmpty(record.DiscoveryAddresses) ? new List<string>() : JsonSerializer.Deserialize<List<string>>(record.DiscoveryAddresses, Json)
                 },
                 CreatedAt = record.CreatedAt,
-                UpdatedAt = record.UpdatedAt
+                UpdatedAt = record.UpdatedAt,
+                TokenHash = record.TokenHash
             };
         }
     }

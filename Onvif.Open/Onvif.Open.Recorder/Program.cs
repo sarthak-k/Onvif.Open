@@ -66,6 +66,27 @@ builder.Services.AddSingleton<TenancyService>();
 builder.Services.AddSingleton<IGatewayStore, EfGatewayStore>();
 builder.Services.AddSingleton<GatewayService>();
 builder.Services.AddSingleton<GatewayHeartbeat>();
+builder.Services.AddSingleton<GatewayPairing>();
+
+// With "ControlPlane:Url" this recorder is also a gateway of another one: it pairs with a code, then reports there.
+var controlPlane = builder.Configuration["ControlPlane:Url"];
+if (!string.IsNullOrWhiteSpace(controlPlane))
+{
+    builder.Services.AddSingleton(sp => new ControlPlaneClient(
+        new System.Net.Http.HttpClient(new System.Net.Http.SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) })
+        {
+            BaseAddress = new Uri(controlPlane.TrimEnd('/') + "/"),
+            Timeout = TimeSpan.FromSeconds(30)
+        },
+        new FileControlPlaneCredentials(
+            Path.GetFullPath(Path.Combine(sp.GetRequiredService<IHostEnvironment>().ContentRootPath, sp.GetRequiredService<IConfiguration>()["ControlPlane:CredentialsFile"] ?? Path.Combine("data", "control-plane.json"))),
+            sp.GetRequiredService<IDataProtectionProvider>()),
+        () => GatewayHeartbeat.Measure(sp.GetRequiredService<IRecordingManager>()),
+        sp.GetRequiredService<IConfiguration>()["Gateway:Name"] is string name && name.Length > 0 ? name : Environment.MachineName,
+        sp.GetRequiredService<IConfiguration>()["Gateway:Location"],
+        sp.GetRequiredService<ILogger<ControlPlaneClient>>()));
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<ControlPlaneClient>());
+}
 
 // Read once at startup: the gateway, the cameras to record and the plugins to load. Later changes go through the API.
 builder.Services.AddSingleton(sp => StartupSettings.LoadAsync(

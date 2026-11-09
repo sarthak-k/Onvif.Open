@@ -20,7 +20,7 @@ describe('App', () => {
       layouts: { list: async () => [], create: fail, update: fail, remove: fail },
       media: { liveUrl: (id) => `memory://${id}`, token: () => null },
       audit: { list: fail },
-      gateways: { list: async () => [], update: fail },
+      gateways: { list: async () => [], update: fail, pair: fail, remove: fail, controlPlaneUrl: () => 'http://recorder' },
     };
     const client = new ApiClient('', memoryStorage('refresh-0'), (async () => new Response(JSON.stringify(tokens(1)))) as typeof fetch);
 

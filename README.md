@@ -327,6 +327,16 @@ space, backup state, version) and shows as offline after two minutes without a r
   Applied when the recorder restarts (`restartRequired` says when one is due).
 * **Finding cameras**: multicast on the local network, plus addresses asked directly (other subnets). Applied at once.
 
+**Pairing a gateway on another machine.** Install the recorder on a computer at the site and start it with
+`ControlPlane:Url` set to this recorder's address (e.g. `ControlPlane__Url=https://cameras.example.com`, and optionally
+`Gateway__Name`). It asks for a 6-digit code and writes it to its log ("Pair this gateway: ... enter the code 123 456");
+an administrator enters it in the web app (Settings › Gateways › Add gateway) within 10 minutes. The gateway then
+receives its own token (stored encrypted in `data/control-plane.json`, only a hash of it here) and reports its health
+every 30 s, so it shows as online with its cameras, disk and backup state. It only makes outbound HTTPS requests:
+nothing to open on the site's firewall. Removing it in the web app revokes its token; it then asks for a new code.
+Paired gateways report their health; recording their cameras from here, and their live video, come with the tunnel
+in a later version.
+
 Camera ids are UUIDs assigned by the recorder, so recordings
 never depend on a name someone typed; names can change at any time. Bring the database you use (EF Core; the `oo_*`
 tables are created on first start, also inside an existing database, and tables added by later versions are created
@@ -487,6 +497,8 @@ dotnet run --project Onvif.Open/Onvif.Open.Recorder
 | `GET /api/discovery` | ONVIF devices on the network (WS-Discovery, with the gateway's discovery settings), with `configuredCameraId` for those already set up |
 | `GET /api/gateways`, `GET .../{id}` | Gateways with `status` (Online, Offline, Waiting), version, last report, `health` and `restartRequired`; the settings only for administrators who see all sites |
 | `PUT /api/gateways/{id}` `{name, storage, backup, discovery}` | Change a gateway's settings (administrators who see all sites); backup setting values are write-only |
+| `POST /api/gateways/pair` `{code, name}`, `DELETE /api/gateways/{id}` | Pair the gateway that shows this code, remove a paired gateway (administrators who see all sites; this server's own gateway and gateways with cameras cannot be removed) |
+| `POST /api/gateways/pairing` `{name, location}`, `GET .../pairing/{id}` (header `X-Pairing-Secret`), `POST /api/gateways/heartbeat` (header `X-Gateway-Token`) | Used by gateways: ask for a code, collect the token once the code was entered, report health |
 | `GET /api/layouts`, `POST /api/layouts` `{name, grid, cameras, shared}`, `PUT .../{id}`, `DELETE .../{id}` | Live view layouts: each user's own, plus shared ones (managed by administrators); the grid is the web app's template id and `cameras` the camera of each tile |
 | `GET /api/plugins` | Plugin state, delivered/dropped frames, errors |
 | `GET /api/events?cameraId=&siteId=&category=&from=&to=&before=&limit=` | Stored events, newest first: what cameras report (motion, tamper, inputs), detections (person, vehicle, object), cameras going offline, and plugin findings; each with its start and end. `category` is one of motion, person, vehicle, object, intrusion, tamper, input, offline, plugin, other; `before` pages |

@@ -119,7 +119,7 @@ namespace Onvif.Open.Test.Recording.Integration
         }
 
         [Fact]
-        public void OnlyHealthAndSignInShouldAllowAnonymousAccess()
+        public void OnlyHealthSignInAndGatewaysShouldAllowAnonymousAccess()
         {
             using (var factory = Factory())
             {
@@ -131,7 +131,9 @@ namespace Onvif.Open.Test.Recording.Integration
                     .OrderBy(p => p, StringComparer.Ordinal);
 
                 // Setup only works while there are no users (and with Security:SetupToken when one is configured).
-                Assert.Equal(new[] { "/api/auth/login", "/api/auth/refresh", "/api/setup", "/api/setup", "/health" }, anonymous);
+                // Gateways ask for a pairing code (rate-limited; pairs nothing until an administrator enters it), collect
+                // their token with the pairing's secret, and report with their token.
+                Assert.Equal(new[] { "/api/auth/login", "/api/auth/refresh", "/api/gateways/heartbeat", "/api/gateways/pairing", "/api/gateways/pairing/{id}", "/api/setup", "/api/setup", "/health" }, anonymous);
             }
         }
 

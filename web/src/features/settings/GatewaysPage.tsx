@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import type { Gateway } from '../../api/types';
-import { useGateways, useUpdateGateway } from '../../data/gateways';
-import { CheckboxField, NumberField, Section, SelectField, TextAreaField, TextField } from '../../shared/form/fields';
+import { useApi } from '../../data/ApiContext';
+import { useGateways, usePairGateway, useRemoveGateway, useUpdateGateway } from '../../data/gateways';
+import { CheckboxField, NumberField, RadioGroup, Section, SelectField, TextAreaField, TextField } from '../../shared/form/fields';
 import { formatDate } from '../../shared/format';
 import { useForm } from '../../shared/form/useForm';
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog';
@@ -18,15 +19,23 @@ export default function GatewaysPage() {
   const user = useUser();
   const gateways = useGateways();
   const [editing, setEditing] = useState<Gateway | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [removing, setRemoving] = useState<Gateway | null>(null);
+  const remove = useRemoveGateway();
   const manage = can(user, 'settings.manage');
 
   return (
     <section className="stack">
       <div className="heading">
         <h1>Gateways</h1>
+        {manage && (
+          <button type="button" className="primary" onClick={() => setAdding(true)}>
+            Add gateway
+          </button>
+        )}
       </div>
       <p className="muted">A gateway records the cameras of a site and keeps their video. This server is your first gateway.</p>
-      <ErrorMessage error={gateways.error} />
+      <ErrorMessage error={gateways.error ?? remove.error} />
 
       {gateways.data?.map((gateway) => (
         <article key={gateway.id} className="card stack" aria-label={gateway.name}>
@@ -36,9 +45,18 @@ export default function GatewaysPage() {
               {gateway.embedded && <span className="badge">this server</span>}
             </h2>
             {manage && (
-              <button type="button" onClick={() => setEditing(gateway)}>
-                Edit
-              </button>
+              <div className="actions">
+                {gateway.embedded && (
+                  <button type="button" onClick={() => setEditing(gateway)}>
+                    Edit
+                  </button>
+                )}
+                {!gateway.embedded && (
+                  <button type="button" className="danger" onClick={() => setRemoving(gateway)}>
+                    Remove
+                  </button>
+                )}
+              </div>
             )}
           </div>
           {gateway.restartRequired && <p className="alert alert-error">Restart the recorder to apply the new backup settings.</p>}
@@ -63,6 +81,21 @@ export default function GatewaysPage() {
       ))}
 
       {editing && <GatewayDialog gateway={editing} onClose={() => setEditing(null)} />}
+      {adding && <AddGatewayDialog onClose={() => setAdding(false)} />}
+      {removing && (
+        <ConfirmDialog
+          title={`Remove ${removing.name}?`}
+          confirmLabel="Remove"
+          danger
+          onCancel={() => setRemoving(null)}
+          onConfirm={() => {
+            remove.mutate(removing.id);
+            setRemoving(null);
+          }}
+        >
+          It stops reporting here. To use it again, restart it and enter its new code.
+        </ConfirmDialog>
+      )}
     </section>
   );
 }
@@ -118,6 +151,52 @@ function GatewayDialog({ gateway, onClose }: { gateway: Gateway; onClose(): void
           <TextAreaField label="Also ask these addresses (one per line)" rows={3} placeholder="10.0.5.20" value={values.addresses} onChange={(v) => set('addresses', v)} />
         </Section>
         <ErrorMessage error={save.error} />
+      </form>
+    </ConfirmDialog>
+  );
+}
+
+const placeOptions = [
+  { value: 'local' as const, label: 'On a local machine' },
+  { value: 'cloud' as const, label: 'In the cloud' },
+];
+
+/** Pairs a gateway installed on a machine at a site: it shows a 6-digit code, entered here. */
+function AddGatewayDialog({ onClose }: { onClose(): void }) {
+  const api = useApi();
+  const pair = usePairGateway();
+  const { values, set } = useForm({ place: 'local' as 'local' | 'cloud', code: '', name: '' });
+  const digits = values.code.replace(/\D/g, '');
+  const local = values.place === 'local';
+
+  function submit(event?: FormEvent) {
+    event?.preventDefault();
+    if (local && digits.length === 6) {
+      pair.mutate({ code: digits, name: values.name.trim() || null }, { onSuccess: onClose });
+    }
+  }
+
+  return (
+    <ConfirmDialog title="Add gateway" confirmLabel="Pair" busy={!local || digits.length !== 6 || pair.isPending} onCancel={onClose} onConfirm={() => submit()}>
+      <form className="stack" onSubmit={submit} aria-label="Add gateway">
+        <RadioGroup legend="Where does it run?" value={values.place} options={placeOptions} onChange={(v) => set('place', v)} />
+        {local ? (
+          <>
+            <ol className="small">
+              <li>Install Onvif.Open on a computer at the site, on the same network as its cameras.</li>
+              <li>
+                Start it with <code>ControlPlane:Url</code> set to <code>{api.gateways.controlPlaneUrl()}</code>. It only connects out: nothing to open on the
+                site's firewall.
+              </li>
+              <li>Enter the 6-digit code it shows in its log.</li>
+            </ol>
+            <TextField label="Pairing code" inputMode="numeric" autoComplete="off" placeholder="123 456" maxLength={7} value={values.code} onChange={(v) => set('code', v)} />
+            <TextField label="Name (optional)" maxLength={100} placeholder="The name the gateway gives" value={values.name} onChange={(v) => set('name', v)} />
+          </>
+        ) : (
+          <p className="muted">Gateways run for you in the cloud come with cloud hosting. Until then, add one on a local machine.</p>
+        )}
+        <ErrorMessage error={pair.error} />
       </form>
     </ConfirmDialog>
   );

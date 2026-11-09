@@ -17,3 +17,18 @@ export function useUpdateGateway() {
     onSuccess: () => queries.invalidateQueries({ queryKey: queryKeys.gateways }),
   });
 }
+
+export function usePairGateway() {
+  const api = useApi();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: ({ code, name }: { code: string; name: string | null }) => api.gateways.pair(code, name),
+    onSuccess: () => queries.invalidateQueries({ queryKey: queryKeys.gateways }),
+  });
+}
+
+export function useRemoveGateway() {
+  const api = useApi();
+  const queries = useQueryClient();
+  return useMutation({ mutationFn: (id: string) => api.gateways.remove(id), onSettled: () => queries.invalidateQueries({ queryKey: queryKeys.gateways }) });
+}

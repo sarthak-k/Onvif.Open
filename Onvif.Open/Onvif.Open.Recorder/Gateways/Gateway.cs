@@ -37,6 +37,9 @@ namespace Onvif.Open.Recorder.Gateways
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
 
+        /// <summary>SHA-256 of the token a paired gateway reports with (never the token); null for the embedded one.</summary>
+        public string TokenHash { get; set; }
+
         #endregion
     }
 

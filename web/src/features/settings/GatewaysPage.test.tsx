@@ -77,6 +77,60 @@ describe('gateways', () => {
     client.signOut();
   });
 
+  it('pairs a gateway on another machine with its code, and removes it', async () => {
+    const paired: Gateway = { ...gateway, id: 'gw-2', name: 'Warehouse', embedded: false, status: 'Waiting', lastSeenAt: null, health: null };
+    let list: Gateway[] = [gateway];
+    let pairedWith: unknown;
+    const removed: string[] = [];
+    const { user, client } = renderApp('/settings/gateways', {
+      ...signedIn(),
+      'GET /api/gateways': () => ({ body: list }),
+      'POST /api/gateways/pair': ({ body }) => {
+        pairedWith = body;
+        if ((body as { code: string }).code !== '123456') return { status: 400, body: { errors: ['No gateway shows this code.'] } };
+        list = [gateway, paired];
+        return { status: 201, body: paired };
+      },
+      'DELETE /api/gateways/gw-2': () => {
+        removed.push('gw-2');
+        list = [gateway];
+        return { status: 204 };
+      },
+    });
+
+    await screen.findByRole('article', { name: 'Back office' });
+    await user.click(screen.getByRole('button', { name: 'Add gateway' }));
+    let dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText(/ControlPlane:Url/)).toBeInTheDocument();
+    const pairButton = within(dialog).getByRole('button', { name: 'Pair' });
+    expect(pairButton).toBeDisabled();
+
+    await user.type(within(dialog).getByLabelText('Pairing code'), '654 321');
+    await user.click(pairButton);
+    expect(await within(dialog).findByText('No gateway shows this code.')).toBeInTheDocument();
+
+    await user.clear(within(dialog).getByLabelText('Pairing code'));
+    await user.type(within(dialog).getByLabelText('Pairing code'), '123 456');
+    await user.click(pairButton);
+    const card = await screen.findByRole('article', { name: 'Warehouse' });
+    expect(pairedWith).toEqual({ code: '123456', name: null });
+    expect(within(card).getByText('Waiting')).toBeInTheDocument();
+    expect(within(card).queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+
+    // In the cloud: not offered yet.
+    await user.click(screen.getByRole('button', { name: 'Add gateway' }));
+    dialog = screen.getByRole('dialog');
+    await user.click(within(dialog).getByLabelText('In the cloud'));
+    expect(within(dialog).getByText(/come with cloud hosting/)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+    await user.click(within(card).getByRole('button', { name: 'Remove' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
+    await vi.waitFor(() => expect(screen.queryByRole('article', { name: 'Warehouse' })).not.toBeInTheDocument());
+    expect(removed).toEqual(['gw-2']);
+    client.signOut();
+  });
+
   it('sends new backup settings when the destination changes', () => {
     const values = { ...toFormValues(gateway), destination: 'Onvif.Open.Storage.S3', backupSettings: 'Bucket=cams\nSecretKey=a=b\n\n' };
     expect(toRequest(values, gateway).backup).toEqual({ provider: 'Onvif.Open.Storage.S3', prefix: null, keepLocalCopyHours: 0, settings: { Bucket: 'cams', SecretKey: 'a=b' } });

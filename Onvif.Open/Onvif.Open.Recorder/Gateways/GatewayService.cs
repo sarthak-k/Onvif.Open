@@ -246,6 +246,60 @@ namespace Onvif.Open.Recorder.Gateways
             }
         }
 
+        /// <summary>A gateway paired from another machine, with the token it reports with (shown once).</summary>
+        public async Task<(Gateway Gateway, string Token)> CreatePairedAsync(string organizationId, string name, string location, CancellationToken cancellationToken = default)
+        {
+            var token = GatewayTokens.Create();
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
+            var gateway = new Gateway
+            {
+                Id = Guid.NewGuid().ToString("D"),
+                OrganizationId = organizationId,
+                Name = Truncate(string.IsNullOrWhiteSpace(name) ? "Gateway" : name.Trim(), MaxNameLength),
+                Location = GatewayLocations.Normalize(location),
+                Embedded = false,
+                TokenHash = GatewayTokens.Hash(token),
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+
+            await _store.SaveAsync(gateway, cancellationToken).ConfigureAwait(false);
+            _logger?.LogInformation("Gateway {Name} ({Id}) paired", gateway.Name, gateway.Id);
+            return (gateway, token);
+        }
+
+        /// <summary>The paired gateway a token belongs to, or null.</summary>
+        public Task<Gateway> AuthenticateAsync(string token, CancellationToken cancellationToken = default) =>
+            string.IsNullOrWhiteSpace(token) ? Task.FromResult<Gateway>(null) : _store.FindByTokenHashAsync(GatewayTokens.Hash(token.Trim()), cancellationToken);
+
+        /// <summary>Stores a paired gateway's heartbeat.</summary>
+        public Task ReportAsync(Gateway gateway, string version, DateTime startedAt, GatewayHealth health, CancellationToken cancellationToken = default) =>
+            _store.ReportAsync(gateway.Id, Truncate(string.IsNullOrWhiteSpace(version) ? "unknown" : version.Trim(), 64), startedAt, _timeProvider.GetUtcNow().UtcDateTime, health ?? new GatewayHealth(), cancellationToken);
+
+        /// <summary>Removes a paired gateway (its token stops working); not the recorder's own, nor one that records cameras.</summary>
+        public async Task<ServiceResult<Gateway>> RemoveAsync(string organizationId, string id, int cameras, CancellationToken cancellationToken = default)
+        {
+            var gateway = await FindAsync(organizationId, id, cancellationToken).ConfigureAwait(false);
+            if (gateway == null)
+            {
+                return ServiceResult<Gateway>.NotFound();
+            }
+
+            if (gateway.Embedded)
+            {
+                return ServiceResult<Gateway>.Conflict("This server's own gateway cannot be removed.");
+            }
+
+            if (cameras > 0)
+            {
+                return ServiceResult<Gateway>.Conflict($"{cameras} camera(s) are recorded by '{gateway.Name}': move or remove them first.");
+            }
+
+            await _store.DeleteAsync(gateway.Id, cancellationToken).ConfigureAwait(false);
+            _logger?.LogInformation("Gateway {Name} ({Id}) removed", gateway.Name, gateway.Id);
+            return ServiceResult<Gateway>.Ok(gateway);
+        }
+
         /// <summary>Stores the embedded gateway's heartbeat.</summary>
         public async Task ReportAsync(GatewayHealth health, CancellationToken cancellationToken = default)
         {

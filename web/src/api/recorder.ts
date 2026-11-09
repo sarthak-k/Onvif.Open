@@ -66,6 +66,11 @@ export interface LayoutsApi {
 export interface GatewaysApi {
   list(): Promise<Gateway[]>;
   update(gatewayId: string, gateway: GatewayRequest): Promise<Gateway>;
+  /** Pairs the gateway that shows this 6-digit code; null name: the one it gave. */
+  pair(code: string, name: string | null): Promise<Gateway>;
+  remove(gatewayId: string): Promise<void>;
+  /** The address a new gateway is set up with ("ControlPlane:Url"): this recorder's. */
+  controlPlaneUrl(): string;
 }
 
 export interface AuditApi {
@@ -170,6 +175,9 @@ export function createRecorderApi(client: ApiClient): RecorderApi {
     gateways: {
       list: () => client.get('/api/gateways'),
       update: (id, gateway) => client.put(`/api/gateways/${segment(id)}`, gateway),
+      pair: (code, name) => client.post('/api/gateways/pair', { code, name }),
+      remove: (id) => client.delete(`/api/gateways/${segment(id)}`),
+      controlPlaneUrl: () => new URL(client.baseUrl || '/', window.location.origin).toString().replace(/\/$/, ''),
     },
   };
 }

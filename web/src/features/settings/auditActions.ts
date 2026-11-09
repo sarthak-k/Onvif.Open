@@ -20,6 +20,8 @@ const actionLabels: Record<string, string> = {
   'camera.update': 'Changed a camera',
   'camera.delete': 'Removed a camera',
   'gateway.update': 'Changed a gateway',
+  'gateway.pair': 'Paired a gateway',
+  'gateway.remove': 'Removed a gateway',
   'plugin.update': 'Configured a plugin',
   'plugin.delete': 'Removed a plugin',
   'layout.create': 'Saved a layout',
