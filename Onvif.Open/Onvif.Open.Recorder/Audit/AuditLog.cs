@@ -75,6 +75,22 @@ namespace Onvif.Open.Recorder.Audit
             });
         }
 
+        /// <summary>Records what someone without an account did through a share link of the organization.</summary>
+        public void RecordShared(HttpContext http, string organizationId, string action, string targetType, string targetId, string targetName, object details = null)
+        {
+            Record(new AuditRecord
+            {
+                OrganizationId = organizationId,
+                UserName = "Share link",
+                Action = action,
+                TargetType = targetType,
+                TargetId = targetId,
+                TargetName = targetName,
+                Details = details == null ? null : JsonSerializer.Serialize(details),
+                IpAddress = http?.Connection.RemoteIpAddress?.ToString()
+            });
+        }
+
         /// <summary>True when this user has not viewed this camera this way within <see cref="ViewWindow"/> (and marks it viewed).</summary>
         public bool IsNewView(ClaimsPrincipal user, string action, string cameraId)
         {

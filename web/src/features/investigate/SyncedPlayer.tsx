@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useEventsBetween } from '../../data/recordings';
 import type { Span } from '../playback/spans';
 import { Timeline } from '../playback/Timeline';
-import { formatClock, formatDuration } from '../playback/time';
+import { formatClock, formatDuration, zoneName } from '../playback/time';
 import { CameraTile, type SeekCommand } from './CameraTile';
 
 export interface PlayerCamera {
@@ -31,6 +31,8 @@ interface Props {
   initialMarks?: ClipMarks;
   /** Mark in/out buttons and what to do with the marked clip (e.g. save it to a case); none: no marking. */
   clipActions?(marks: { from: number; to: number }): ReactNode;
+  /** The site's time zone: every time is shown in it. */
+  timeZone?: string;
   footer?: ReactNode;
 }
 
@@ -40,7 +42,7 @@ const rates = [0.5, 1, 2, 4, 8];
  * Cameras played in sync over a time window: one clock (the first camera leads), one timeline with what each recorded
  * and the site's events, shared play, pause, speed and jumps, and in/out marks for a clip.
  */
-export function SyncedPlayer({ siteId, from, to, start, startLabel, cameras, initialMarks, clipActions, footer }: Props) {
+export function SyncedPlayer({ siteId, from, to, start, startLabel, cameras, initialMarks, clipActions, timeZone, footer }: Props) {
   const [seek, setSeek] = useState<SeekCommand>(() => ({ time: start, n: 0 }));
   const [playing, setPlaying] = useState(true);
   const [rate, setRate] = useState(1);
@@ -109,7 +111,7 @@ export function SyncedPlayer({ siteId, from, to, start, startLabel, cameras, ini
           Back to {startLabel}
         </button>
         <span className="playback-clock" aria-live="polite">
-          {formatClock(now)}
+          {formatClock(now, true, timeZone)} {zoneName(now, timeZone)}
         </span>
       </div>
 
@@ -120,6 +122,7 @@ export function SyncedPlayer({ siteId, from, to, start, startLabel, cameras, ini
         events={timelineEvents}
         position={position}
         clip={marks}
+        timeZone={timeZone}
         onSeek={goTo}
       />
 
@@ -133,9 +136,9 @@ export function SyncedPlayer({ siteId, from, to, start, startLabel, cameras, ini
           </button>
           <span className="muted small">
             {marked
-              ? `Clip ${formatClock(marked.from)} – ${formatClock(marked.to)} (${formatDuration(marked.to - marked.from)})`
+              ? `Clip ${formatClock(marked.from, true, timeZone)} – ${formatClock(marked.to, true, timeZone)} (${formatDuration(marked.to - marked.from)})`
               : marks.from !== null
-                ? `In at ${formatClock(marks.from)}: now mark the end`
+                ? `In at ${formatClock(marks.from, true, timeZone)}: now mark the end`
                 : 'Mark where the clip starts and ends.'}
           </span>
           {marked && clipActions(marked)}

@@ -33,6 +33,9 @@ namespace Onvif.Open.Recorder.Audit
 
         public const string PluginUpdate = "plugin.update";
         public const string GatewayUpdate = "gateway.update";
+        public const string VideoShare = "video.share";
+        public const string VideoShareRevoke = "video.share_revoke";
+        public const string VideoSharedDownload = "video.shared_download";
         public const string CaseCreate = "case.create";
         public const string CaseUpdate = "case.update";
         public const string CaseDelete = "case.delete";

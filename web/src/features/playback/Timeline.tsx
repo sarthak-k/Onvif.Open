@@ -2,7 +2,7 @@ import { memo, useMemo, type KeyboardEvent, type MouseEvent } from 'react';
 import type { StoredEvent } from '../../api/types';
 import { categoryLabels, severityClass, startOf } from './events';
 import type { Span } from './spans';
-import { formatClock } from './time';
+import { formatClock, zoneOffsetMs } from './time';
 
 export interface TimelineRow {
   id: string;
@@ -18,6 +18,8 @@ interface Props {
   position: number | null;
   /** A marked stretch (in/out), shown over the bars. */
   clip?: { from: number | null; to: number | null };
+  /** The site's time zone: labels and ticks in its time. */
+  timeZone?: string;
   onSeek(time: number): void;
 }
 
@@ -33,18 +35,20 @@ function tickStep(duration: number): number {
  * The time window as one bar per camera with what it recorded, the events as marks above, and the playhead. Click a
  * bar (or use the arrow keys: 10 s, with Shift 1 min) to move all cameras there.
  */
-export const Timeline = memo(function Timeline({ start, end, rows, events, position, clip, onSeek }: Props) {
+export const Timeline = memo(function Timeline({ start, end, rows, events, position, clip, timeZone, onSeek }: Props) {
   const duration = Math.max(end - start, 1);
   const clamp = (time: number) => Math.min(Math.max(time, start), end);
   const percent = (time: number) => `${((clamp(time) - start) / duration) * 100}%`;
   const width = (from: number, to: number) => `${((clamp(to) - clamp(from)) / duration) * 100}%`;
 
+  // Round labels in the site's time (zones like +05:30 would otherwise get odd minutes).
   const ticks = useMemo(() => {
     const step = tickStep(duration);
+    const offset = zoneOffsetMs(start, timeZone);
     const result: number[] = [];
-    for (let t = Math.ceil(start / step) * step; t <= end; t += step) result.push(t);
+    for (let t = Math.ceil((start + offset) / step) * step - offset; t <= end; t += step) result.push(t);
     return result;
-  }, [start, end, duration]);
+  }, [start, end, duration, timeZone]);
 
   const seekAt = (event: MouseEvent<HTMLDivElement>) => {
     const box = event.currentTarget.getBoundingClientRect();
@@ -70,7 +74,7 @@ export const Timeline = memo(function Timeline({ start, end, rows, events, posit
       aria-valuemin={start}
       aria-valuemax={end}
       aria-valuenow={position ?? start}
-      aria-valuetext={position ? formatClock(position) : 'Not playing'}
+      aria-valuetext={position ? formatClock(position, true, timeZone) : 'Not playing'}
       onKeyDown={onKey}
     >
       <div className="timeline-events" onClick={seekAt}>
@@ -80,8 +84,8 @@ export const Timeline = memo(function Timeline({ start, end, rows, events, posit
             type="button"
             className={`timeline-event ${severityClass(e)}`}
             style={{ left: percent(startOf(e)) }}
-            title={`${formatClock(startOf(e))} ${categoryLabels[e.category]}: ${e.title}${e.cameraName ? ` (${e.cameraName})` : ''}`}
-            aria-label={`${categoryLabels[e.category]} at ${formatClock(startOf(e))}`}
+            title={`${formatClock(startOf(e), true, timeZone)} ${categoryLabels[e.category]}: ${e.title}${e.cameraName ? ` (${e.cameraName})` : ''}`}
+            aria-label={`${categoryLabels[e.category]} at ${formatClock(startOf(e), true, timeZone)}`}
             onClick={(click) => {
               click.stopPropagation();
               onSeek(startOf(e));
@@ -108,7 +112,7 @@ export const Timeline = memo(function Timeline({ start, end, rows, events, posit
       <div className="timeline-ticks" aria-hidden="true">
         {ticks.map((t) => (
           <span key={t} style={{ left: percent(t) }}>
-            {formatClock(t, duration < 10 * 60_000)}
+            {formatClock(t, duration < 10 * 60_000, timeZone)}
           </span>
         ))}
       </div>

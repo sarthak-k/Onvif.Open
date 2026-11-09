@@ -38,6 +38,48 @@ namespace Onvif.Open.Test.Recording.Fakes
 
         #region Public Variables
 
+        /// <summary>Writes a frame into a recording, shifted so the recording starts at zero.</summary>
+        public static void Write(Onvif.Open.Recording.Implementation.Format.ISegmentMuxer muxer, MediaFrame frame, TimeSpan offset)
+        {
+            switch (frame)
+            {
+                case VideoFrame v:
+                    muxer.Write(new VideoFrame(v.Codec, v.Data, v.IsKeyFrame, v.RtpTimestamp, v.Timestamp - offset));
+                    break;
+                case AudioFrame a:
+                    muxer.Write(a.WithTimestamp(a.Timestamp - offset));
+                    break;
+            }
+        }
+
+        /// <summary>The 10 s of real media as two 5 s MPEG-TS recordings of a camera from <paramref name="start"/>, in a storage folder.</summary>
+        public static Onvif.Open.Recording.Implementation.Storage.FileSystemRecordingStorage WriteRecordings(string directory, string cameraId, DateTimeOffset start)
+        {
+            var storage = new Onvif.Open.Recording.Implementation.Storage.FileSystemRecordingStorage(directory);
+
+            foreach (var part in new[] { 0, 5 })
+            {
+                var frames = Frames.Where(f => f.Timestamp.TotalSeconds >= part && f.Timestamp.TotalSeconds < part + 5).ToList();
+                var first = frames.OfType<VideoFrame>().First().Timestamp;
+
+                using (var stream = storage.CreateSegment(cameraId, start.AddSeconds(part), ".ts", out var path))
+                {
+                    using (var muxer = Onvif.Open.Recording.Implementation.Format.SegmentFormats.MpegTs.CreateMuxer(stream, Onvif.Open.Core.Streaming.VideoCodec.H264, Aac16k))
+                    {
+                        foreach (var frame in frames.SkipWhile(f => f is AudioFrame))
+                        {
+                            Write(muxer, frame, first);
+                        }
+                    }
+
+                    stream.Dispose();
+                    File.SetLastWriteTimeUtc(path, start.AddSeconds(part + 5).UtcDateTime);
+                }
+            }
+
+            return storage;
+        }
+
         public static bool IsAvailable => Available.Value;
 
         /// <summary>10 seconds of video and audio, ordered by timestamp.</summary>

@@ -21,6 +21,7 @@ describe('App', () => {
       media: { liveUrl: (id) => `memory://${id}`, recordingsUrl: (id) => `memory://${id}/recordings`, token: () => null },
       audit: { list: fail },
       events: { list: fail },
+      exports: { list: async () => [], create: fail, links: fail, share: fail, revoke: fail, downloadUrl: (id) => id, sharedUrl: (p) => p },
       cases: { list: async () => [], get: fail, create: fail, update: fail, remove: fail, addClip: fail, updateClip: fail, removeClip: fail },
       gateways: { list: async () => [], update: fail, pair: fail, remove: fail, controlPlaneUrl: () => 'http://recorder' },
     };

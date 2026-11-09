@@ -9,7 +9,8 @@ import { ErrorMessage } from '../../shared/ui/ErrorMessage';
 import { useUser } from '../auth/AuthContext';
 import { can } from '../auth/permissions';
 import { categoryLabels, categoryOptions, endOf, severityClass, startOf, windowOf } from '../playback/events';
-import { formatClock, formatDuration } from '../playback/time';
+import { formatClock, formatDuration, formatWhen, zoneName } from '../playback/time';
+import { ExportButton } from '../exports/ExportButton';
 import { SaveClipButton } from './SaveClipButton';
 import { SyncedPlayer, type PlayerCamera } from './SyncedPlayer';
 
@@ -25,10 +26,6 @@ const maxCameras = 4;
 
 /** Seconds of video before the event when it is opened. */
 const openBeforeMs = 5000;
-
-function formatWhen(time: number): string {
-  return new Date(time).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' });
-}
 
 /**
  * Finds what happened: search the stored events by site, camera, kind and time; open one to play its camera, and
@@ -68,6 +65,7 @@ export default function InvestigatePage() {
     { value: '', label: 'All cameras' },
     ...cameras.filter((c) => !siteId || c.siteId === siteId).map((c) => ({ value: c.cameraId, label: c.name })),
   ];
+  const zoneOf = (id: string | null) => sites.data?.find((s) => s.id === id)?.timeZone;
   const nameOf = (id: string) => cameras.find((c) => c.cameraId === id)?.name ?? id;
 
   const open = (event: StoredEvent) => {
@@ -111,7 +109,7 @@ export default function InvestigatePage() {
                   <strong>{categoryLabels[event.category]}</strong>
                   {event.title !== categoryLabels[event.category] && <span>{event.title}</span>}
                   <span className="muted small">
-                    {event.cameraName ?? 'No camera'} · {formatWhen(startOf(event))} · {event.endTime ? formatDuration(endOf(event) - startOf(event)) : 'still going on'}
+                    {event.cameraName ?? 'No camera'} · {formatWhen(startOf(event), zoneOf(event.siteId))} {zoneName(startOf(event), zoneOf(event.siteId))} · {event.endTime ? formatDuration(endOf(event) - startOf(event)) : 'still going on'}
                   </span>
                 </button>
               </li>
@@ -154,11 +152,17 @@ export default function InvestigatePage() {
                 to={shownWindow!.to}
                 start={startOf(selected) - openBeforeMs}
                 startLabel="the event"
+                timeZone={zoneOf(selected.siteId)}
                 cameras={playing}
-                clipActions={canSave ? (marks) => <SaveClipButton cameraIds={playing.map((c) => c.cameraId)} marks={marks} eventId={selected.id} /> : undefined}
+                clipActions={(marks) => (
+                  <>
+                    <ExportButton cameraIds={playing.map((c) => c.cameraId)} from={marks.from} to={marks.to} />
+                    {canSave && <SaveClipButton cameraIds={playing.map((c) => c.cameraId)} marks={marks} eventId={selected.id} />}
+                  </>
+                )}
                 footer={
                   <p className="muted small">
-                    {categoryLabels[selected.category]} at {formatClock(startOf(selected))}: the video starts 5 s before it. Click the timeline or an event mark to
+                    {categoryLabels[selected.category]} at {formatClock(startOf(selected), true, zoneOf(selected.siteId))}: the video starts 5 s before it. Click the timeline or an event mark to
                     move all cameras there.
                   </p>
                 }

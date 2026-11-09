@@ -27,6 +27,7 @@ namespace Onvif.Open.Recorder.Audit
         public const string Organization = "organization";
         public const string Gateway = "gateway";
         public const string Case = "case";
+        public const string Export = "export";
     }
 
     /// <summary>
@@ -126,6 +127,9 @@ namespace Onvif.Open.Recorder.Audit
                     return id;
                 case AuditTargets.Case:
                     return (await services.GetRequiredService<Cases.ICaseStore>().FindAsync(id))?.Name;
+                case AuditTargets.Export:
+                    var export = await services.GetRequiredService<Exports.IExportStore>().FindAsync(id);
+                    return export == null ? null : $"{export.CameraName} {export.From:yyyy-MM-dd HH:mm}Z";
                 case AuditTargets.Gateway:
                     return (await services.GetRequiredService<Gateways.IGatewayStore>().FindAsync(id))?.Name;
                 default:

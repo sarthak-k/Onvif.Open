@@ -363,3 +363,37 @@ export interface ClipRequest {
   note: string | null;
   eventId: string | null;
 }
+
+export type ExportStatus = 'Queued' | 'Running' | 'Ready' | 'Failed' | 'Expired';
+
+/** A watermarked MP4 of one camera, kept for 7 days. */
+export interface VideoExport {
+  id: string;
+  cameraId: string;
+  cameraName: string | null;
+  siteId: string | null;
+  caseId: string | null;
+  from: string;
+  to: string;
+  status: ExportStatus;
+  error: string | null;
+  size: number | null;
+  /** SHA-256 of the file, to show it was not changed. */
+  sha256: string | null;
+  requestedBy: string | null;
+  createdAt: string;
+  completedAt: string | null;
+  expiresAt: string;
+  downloadable: boolean;
+}
+
+export interface ShareLink {
+  id: string;
+  /** Only right after it was made: the link's path (with its token). */
+  path: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  downloads: number;
+}

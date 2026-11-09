@@ -9,17 +9,20 @@ import { ConfirmDialog } from '../../shared/ui/ConfirmDialog';
 import { ErrorMessage } from '../../shared/ui/ErrorMessage';
 import { useUser } from '../auth/AuthContext';
 import { can } from '../auth/permissions';
+import { ExportButton } from '../exports/ExportButton';
 import { SyncedPlayer } from '../investigate/SyncedPlayer';
-import { formatClock, formatDuration } from '../playback/time';
+import { useSites } from '../../data/tenancy';
+import { formatClock, formatDay, formatDuration, zoneName } from '../playback/time';
 
 /** Video shown around a clip when it is played. */
 const aroundMs = 30_000;
 
-function describeClip(clip: CaseClip): string {
+/** "Mon, 9 Nov 2026, 22:04:10 – 22:04:40 CET (30 s)", in the clip's site time. */
+function describeClip(clip: CaseClip, timeZone?: string): string {
   const from = Date.parse(clip.from);
   const to = Date.parse(clip.to);
-  const day = new Date(from).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
-  return `${day}, ${formatClock(from)} – ${formatClock(to)} (${formatDuration(to - from)})`;
+  const zone = zoneName(from, timeZone);
+  return `${formatDay(from, timeZone)}, ${formatClock(from, true, timeZone)} – ${formatClock(to, true, timeZone)}${zone ? ` ${zone}` : ''} (${formatDuration(to - from)})`;
 }
 
 /** One case: what it is about, its clips with notes, and playing them back. */
@@ -39,6 +42,8 @@ export default function CasePage() {
   const [noting, setNoting] = useState<CaseClip | null>(null);
   const [removing, setRemoving] = useState<CaseClip | null>(null);
   const item = found.data;
+  const sites = useSites();
+  const zoneOf = (id: string | null) => sites.data?.find((s) => s.id === id)?.timeZone;
   const window = useMemo(() => (playing ? { from: Date.parse(playing.from) - aroundMs, to: Date.parse(playing.to) + aroundMs } : null), [playing]);
 
   if (found.isError) {
@@ -91,13 +96,14 @@ export default function CasePage() {
       {hidden > 0 && <p className="muted small">{hidden} more clip(s) are of sites you do not see.</p>}
       <ul className="event-cards" aria-label="Clips">
         {item.clips?.map((clip) => (
-          <li key={clip.id} className="card stack" aria-label={describeClip(clip)}>
+          <li key={clip.id} className="card stack" aria-label={describeClip(clip, zoneOf(clip.siteId))}>
             <div className="heading">
-              <strong>{describeClip(clip)}</strong>
+              <strong>{describeClip(clip, zoneOf(clip.siteId))}</strong>
               <div className="actions">
                 <button type="button" className="primary" aria-pressed={playing?.id === clip.id} onClick={() => setPlaying(clip)}>
                   Play
                 </button>
+                <ExportButton cameraIds={clip.cameraIds} from={Date.parse(clip.from)} to={Date.parse(clip.to)} caseId={item.id} />
                 {canEdit && (
                   <>
                     <button type="button" onClick={() => setNoting(clip)}>
@@ -125,6 +131,7 @@ export default function CasePage() {
           to={window.to}
           start={Date.parse(playing.from)}
           startLabel="the clip"
+          timeZone={zoneOf(playing.siteId)}
           cameras={playing.cameras.map((c) => ({ cameraId: c.id, name: c.name }))}
           initialMarks={{ from: Date.parse(playing.from), to: Date.parse(playing.to) }}
         />

@@ -60,3 +60,9 @@ export function useDeletePolicy() {
   const queries = useQueryClient();
   return useMutation({ mutationFn: (id: string) => api.policies.remove(id), onSettled: () => queries.invalidateQueries({ queryKey: queryKeys.policies }) });
 }
+
+/** A site's time zone (IANA id), once the sites are loaded; times of that site are shown in it. */
+export function useSiteTimeZone(siteId: string | null | undefined): string | undefined {
+  const sites = useSites();
+  return sites.data?.find((s) => s.id === siteId)?.timeZone;
+}

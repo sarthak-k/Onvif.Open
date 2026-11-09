@@ -73,6 +73,19 @@ builder.Services.AddSingleton<Onvif.Open.Recorder.Cases.ICaseStore, Onvif.Open.R
 builder.Services.AddSingleton<Onvif.Open.Recorder.Cases.CaseHolds>();
 builder.Services.AddSingleton<Onvif.Open.Recorder.Cases.CaseService>();
 
+// MP4 exports with a watermark (ffmpeg, "Export:Ffmpeg"), kept in "Export:Directory" for 7 days; share links.
+builder.Services.AddSingleton<Onvif.Open.Recorder.Exports.IExportStore, Onvif.Open.Recorder.Exports.EfExportStore>();
+builder.Services.AddSingleton<Onvif.Open.Recorder.Exports.IMp4Encoder>(sp => new Onvif.Open.Recorder.Exports.FfmpegMp4Encoder(sp.GetRequiredService<IConfiguration>()["Export:Ffmpeg"]));
+builder.Services.AddSingleton(sp => new Onvif.Open.Recorder.Exports.ExportService(
+    sp.GetRequiredService<Onvif.Open.Recorder.Exports.IExportStore>(),
+    sp.GetRequiredService<IRecordingManager>(),
+    sp.GetRequiredService<CameraDirectory>(),
+    sp.GetRequiredService<ITenancyStore>(),
+    sp.GetRequiredService<Onvif.Open.Recorder.Exports.IMp4Encoder>(),
+    Path.Combine(sp.GetRequiredService<IHostEnvironment>().ContentRootPath, sp.GetRequiredService<IConfiguration>()["Export:Directory"] ?? Path.Combine("data", "exports")),
+    sp.GetRequiredService<ILogger<Onvif.Open.Recorder.Exports.ExportService>>()));
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Onvif.Open.Recorder.Exports.ExportService>());
+
 // With "ControlPlane:Url" this recorder is also a gateway of another one: it pairs with a code, then reports there.
 var controlPlane = builder.Configuration["ControlPlane:Url"];
 if (!string.IsNullOrWhiteSpace(controlPlane))
@@ -170,6 +183,7 @@ app.MapEventApi();
 app.MapAuditApi();
 app.MapGatewayApi();
 app.MapCaseApi();
+app.MapExportApi();
 app.Run();
 
 public partial class Program

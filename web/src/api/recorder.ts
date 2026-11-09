@@ -1,5 +1,5 @@
 import type { ApiClient } from './client';
-import type { CameraConfig, CameraStatus, DiscoveredDevice, AuditEntry, AuditQuery, Case, CaseClip, CaseRequest, CaseStatus, ClipRequest, EventQuery, RecordingSegment, StoredEvent, Gateway, GatewayRequest, Layout, LayoutRequest, Me, Organization, ProbeResult, RecordingPolicy, RecordingPolicyRequest, SetupStatus, Site, SiteRequest, User, UserRequest } from './types';
+import type { CameraConfig, CameraStatus, DiscoveredDevice, AuditEntry, AuditQuery, ShareLink, VideoExport, Case, CaseClip, CaseRequest, CaseStatus, ClipRequest, EventQuery, RecordingSegment, StoredEvent, Gateway, GatewayRequest, Layout, LayoutRequest, Me, Organization, ProbeResult, RecordingPolicy, RecordingPolicyRequest, SetupStatus, Site, SiteRequest, User, UserRequest } from './types';
 
 // The recorder's API by area. Pages depend on these interfaces, not on HTTP, so tests and later back ends can
 // provide their own implementation (dependency inversion, interface segregation).
@@ -75,6 +75,20 @@ export interface GatewaysApi {
   controlPlaneUrl(): string;
 }
 
+export interface ExportsApi {
+  /** Newest first. */
+  list(): Promise<VideoExport[]>;
+  /** One camera from `from` to `to` (at most an hour), as a watermarked MP4 made in the background. */
+  create(cameraId: string, from: Date, to: Date, caseId?: string | null): Promise<VideoExport>;
+  links(exportId: string): Promise<ShareLink[]>;
+  share(exportId: string, hours: number): Promise<ShareLink>;
+  revoke(exportId: string, linkId: string): Promise<void>;
+  /** The file, with the token in the URL (build it just before use). */
+  downloadUrl(exportId: string): string;
+  /** A share link's full address. */
+  sharedUrl(path: string): string;
+}
+
 export interface CasesApi {
   /** Most recently changed first; all statuses when none is given. */
   list(status?: CaseStatus): Promise<Case[]>;
@@ -122,6 +136,7 @@ export interface RecorderApi {
   gateways: GatewaysApi;
   events: EventsApi;
   cases: CasesApi;
+  exports: ExportsApi;
 }
 
 const segment = encodeURIComponent;
@@ -197,6 +212,18 @@ export function createRecorderApi(client: ApiClient): RecorderApi {
     },
     events: {
       list: (query = {}) => client.get(`/api/events${queryString({ ...query })}`),
+    },
+    exports: {
+      list: () => client.get('/api/exports'),
+      create: (cameraId, from, to, caseId) => client.post('/api/exports', { cameraId, from: from.toISOString(), to: to.toISOString(), caseId: caseId ?? null }),
+      links: (id) => client.get(`/api/exports/${segment(id)}/links`),
+      share: (id, hours) => client.post(`/api/exports/${segment(id)}/links`, { hours }),
+      revoke: (id, linkId) => client.delete(`/api/exports/${segment(id)}/links/${segment(linkId)}`),
+      downloadUrl: (id) => {
+        const token = client.token;
+        return new URL(`${client.baseUrl}/api/exports/${segment(id)}/video.mp4${token ? `?access_token=${encodeURIComponent(token)}` : ''}`, window.location.origin).toString();
+      },
+      sharedUrl: (path) => new URL(`${client.baseUrl}${path}`, window.location.origin).toString(),
     },
     cases: {
       list: (status) => client.get(`/api/cases${queryString({ status })}`),

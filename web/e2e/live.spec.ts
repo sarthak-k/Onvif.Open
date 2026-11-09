@@ -82,8 +82,13 @@ test('live view plays through the recorder and keeps saved layouts', async ({ pa
   await expect(page.getByRole('heading', { name: /Gate went dark/ })).toBeVisible();
   await expect(page.getByText('Both cameras lost')).toBeVisible();
   await expect(page.getByRole('list', { name: 'Clips' })).toContainText('gate, yard');
+  // Nothing was recorded (the cameras never answered): exporting says so, and there is nothing to download.
+  await page.getByRole('list', { name: 'Clips' }).getByRole('button', { name: 'Export MP4' }).click();
+  await expect(page.getByRole('alert')).toContainText('Nothing was recorded in that time.');
   await page.getByRole('button', { name: 'Close case' }).click();
   await expect(page.getByRole('button', { name: 'Reopen case' })).toBeVisible();
+  await page.getByRole('link', { name: 'Exports' }).click();
+  await expect(page.getByText('No exports yet.', { exact: false })).toBeVisible();
 
   // Clean up for the other tests: they expect no cameras.
   for (const id of ['gate', 'yard']) {
