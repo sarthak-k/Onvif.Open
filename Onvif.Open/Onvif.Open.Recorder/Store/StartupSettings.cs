@@ -17,10 +17,11 @@ namespace Onvif.Open.Recorder.Store
     {
         #region Constructor
 
-        private StartupSettings(IReadOnlyList<CameraOptions> cameras, IReadOnlyList<StoredPlugin> plugins)
+        private StartupSettings(IReadOnlyList<CameraOptions> cameras, IReadOnlyList<StoredPlugin> plugins, Gateways.Gateway gateway)
         {
             Cameras = cameras;
             Plugins = plugins;
+            Gateway = gateway;
         }
 
         #endregion
@@ -30,20 +31,27 @@ namespace Onvif.Open.Recorder.Store
         public IReadOnlyList<CameraOptions> Cameras { get; }
         public IReadOnlyList<StoredPlugin> Plugins { get; }
 
+        /// <summary>The recorder's own gateway (its backup applies from the start); null before the first-run setup.</summary>
+        public Gateways.Gateway Gateway { get; }
+
         #endregion
 
         #region Public Methods
 
-        /// <summary>Creates missing tables, then reads the cameras (with their policies applied, filling <paramref name="directory"/>) and plugins.</summary>
-        public static async Task<StartupSettings> LoadAsync(IDbContextFactory<RecorderDbContext> contexts, ISettingsStore store, Tenancy.ITenancyStore tenancy, Tenancy.CameraDirectory directory, CancellationToken cancellationToken = default)
+        /// <summary>
+        /// Creates missing tables, then reads the recorder's gateway, the cameras (with their policies applied, filling
+        /// <paramref name="directory"/>) and plugins.
+        /// </summary>
+        public static async Task<StartupSettings> LoadAsync(IDbContextFactory<RecorderDbContext> contexts, ISettingsStore store, Tenancy.ITenancyStore tenancy, Tenancy.CameraDirectory directory, Gateways.GatewayService gateways, CancellationToken cancellationToken = default)
         {
             await DatabaseConfiguration.EnsureCreatedAsync(contexts, cancellationToken).ConfigureAwait(false);
+            var gateway = await gateways.StartAsync(cancellationToken).ConfigureAwait(false);
             var cameras = Configuration.CameraConfigurationService.Resolve(
                 await store.GetCamerasAsync(cancellationToken).ConfigureAwait(false),
                 await tenancy.GetPoliciesAsync(null, cancellationToken).ConfigureAwait(false),
                 directory);
 
-            return new StartupSettings(cameras, await store.GetPluginsAsync(cancellationToken).ConfigureAwait(false));
+            return new StartupSettings(cameras, await store.GetPluginsAsync(cancellationToken).ConfigureAwait(false), gateway);
         }
 
         #endregion

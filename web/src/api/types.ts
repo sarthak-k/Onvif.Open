@@ -201,7 +201,8 @@ export interface AuditEntry {
   targetType?: string | null;
   targetId?: string | null;
   targetName?: string | null;
-  details?: string | null;
+  /** What the recorder recorded about the action: usually an object of names and values. */
+  details?: unknown;
   ipAddress?: string | null;
 }
 
@@ -212,4 +213,51 @@ export interface AuditQuery {
   /** Only entries older than this time (the next page). */
   before?: string;
   limit?: number;
+}
+
+/** Disk space limits in GB; null: no limit. */
+export interface StorageLimits {
+  minFreeSpaceGB: number | null;
+  maxSizePerCameraGB: number | null;
+  maxTotalSizeGB: number | null;
+}
+
+export interface GatewayHealth {
+  cameras: number;
+  recording: number;
+  /** Cameras that should record but cannot (reconnecting). */
+  failing: number;
+  freeBytes: number | null;
+  recordedBytes: number;
+  backupProvider: string | null;
+  pendingUploads: number | null;
+  backupError: string | null;
+}
+
+/** What records a site's cameras: today the recorder itself (embedded). */
+export interface Gateway {
+  id: string;
+  name: string;
+  location: 'Local' | 'Cloud';
+  embedded: boolean;
+  /** Online: reported in the last two minutes; Waiting: never reported yet. */
+  status: 'Online' | 'Offline' | 'Waiting';
+  version: string | null;
+  startedAt: string | null;
+  lastSeenAt: string | null;
+  health: GatewayHealth | null;
+  /** A saved backup change applies when the recorder restarts. */
+  restartRequired: boolean;
+  /** The settings: only for administrators who see every site (null otherwise). */
+  storage: StorageLimits | null;
+  backup: { provider: string | null; prefix: string | null; keepLocalCopyHours: number; settings: string[] } | null;
+  discovery: { multicast: boolean; addresses: string[] } | null;
+}
+
+export interface GatewayRequest {
+  name?: string;
+  storage?: StorageLimits;
+  /** Empty provider: no backup. Settings null: keep the stored ones. */
+  backup?: { provider: string; prefix: string | null; keepLocalCopyHours: number; settings: Record<string, string> | null };
+  discovery?: { multicast: boolean; addresses: string[] };
 }

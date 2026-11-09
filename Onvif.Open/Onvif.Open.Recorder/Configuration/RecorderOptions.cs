@@ -23,9 +23,7 @@ namespace Onvif.Open.Recorder.Configuration
 
         public RotationOptions Rotation { get; set; } = new RotationOptions();
 
-        public RetentionOptions Retention { get; set; } = new RetentionOptions();
-
-        /// <summary>Optional long-term storage (cloud, NAS) that completed segments are uploaded to.</summary>
+        /// <summary>How backups are uploaded. Whether there is a backup, and where, is a setting of the gateway (database).</summary>
         public ArchiveOptions Archive { get; set; } = new ArchiveOptions();
 
         public TimeSpan RetentionInterval { get; set; } = TimeSpan.FromMinutes(1);
@@ -41,7 +39,8 @@ namespace Onvif.Open.Recorder.Configuration
     }
 
     /// <summary>
-    /// The "Discovery" section of appsettings.json.
+    /// How discovery probes: "Discovery:Timeout" comes from appsettings.json, multicast and the addresses from the
+    /// gateway's settings (database).
     /// </summary>
     public sealed class DiscoveryOptions
     {
@@ -152,39 +151,22 @@ namespace Onvif.Open.Recorder.Configuration
     }
 
     /// <summary>
-    /// "Recording:Archive": where completed segments are stored long term. Without a provider, recordings stay
-    /// in StorageDirectory. With one, StorageDirectory is a local buffer and Retention applies to the archive.
+    /// "Recording:Archive": tuning of the uploads to the gateway's backup (see Gateways.BackupSettings).
     /// </summary>
     public sealed class ArchiveOptions
     {
         #region Public Variables
 
-        /// <summary>
-        /// "FileSystem" (built in: a NAS share or another disk, Settings:Path) or the folder name of a storage
-        /// plugin in Plugins:Directory, e.g. "Onvif.Open.Storage.S3". Empty: no archive.
-        /// </summary>
-        public string Provider { get; set; }
-
-        /// <summary>Prepended to every key, e.g. "site-a".</summary>
-        public string Prefix { get; set; }
-
-        /// <summary>How long the local copy is kept after upload. Default: removed right away.</summary>
-        public TimeSpan KeepLocalCopyFor { get; set; } = TimeSpan.Zero;
-
         public int MaxConcurrentUploads { get; set; } = 2;
 
         public TimeSpan RefreshInterval { get; set; } = TimeSpan.FromMinutes(15);
-
-        // Settings ("Recording:Archive:Settings") are read as a flat dictionary by StorageConfiguration.
-
-        public bool IsEnabled => !string.IsNullOrWhiteSpace(Provider);
 
         #endregion
     }
 
     /// <summary>
-    /// A segment is deleted as soon as any configured rule selects it (oldest first).
-    /// With an archive, the rules apply to the archive and MinFreeSpaceGB protects the local buffer.
+    /// Recorder-wide retention rules (from the gateway's storage limits): a segment is deleted as soon as any rule
+    /// selects it (oldest first). With a backup, the rules apply to the backup and MinFreeSpaceGB protects the local disk.
     /// </summary>
     public sealed class RetentionOptions
     {
@@ -219,6 +201,9 @@ namespace Onvif.Open.Recorder.Configuration
 
         /// <summary>The recording policy: it sets <see cref="Mode"/>, <see cref="PreRoll"/>, <see cref="PostRoll"/> and retention.</summary>
         public string PolicyId { get; set; }
+
+        /// <summary>The gateway that records the camera (set by the recorder: its own gateway).</summary>
+        public string GatewayId { get; set; }
 
         public bool Enabled { get; set; } = true;
 

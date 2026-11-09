@@ -35,9 +35,10 @@ namespace Onvif.Open.Recorder.Store
         public DbSet<PluginRecord> Plugins => Set<PluginRecord>();
         public DbSet<EventRecord> Events => Set<EventRecord>();
         public DbSet<AuditRecord> Audit => Set<AuditRecord>();
+        public DbSet<GatewayRecord> Gateways => Set<GatewayRecord>();
 
         /// <summary>Every table of the model, for creating the ones a database lacks.</summary>
-        public static readonly string[] TableNames = { "oo_organizations", "oo_sites", "oo_recording_policies", "oo_cameras", "oo_users", "oo_memberships", "oo_layouts", "oo_plugins", "oo_events", "oo_audit" };
+        public static readonly string[] TableNames = { "oo_organizations", "oo_sites", "oo_recording_policies", "oo_cameras", "oo_users", "oo_memberships", "oo_layouts", "oo_plugins", "oo_events", "oo_audit", "oo_gateways" };
 
         #endregion
 
@@ -85,6 +86,7 @@ namespace Onvif.Open.Recorder.Store
                 camera.Property(c => c.OrganizationId).HasMaxLength(36).IsRequired();
                 camera.Property(c => c.SiteId).HasMaxLength(36).IsRequired();
                 camera.Property(c => c.PolicyId).HasMaxLength(36).IsRequired();
+                camera.Property(c => c.GatewayId).HasMaxLength(36).IsRequired();
                 camera.Property(c => c.Name).HasMaxLength(100).IsRequired();
                 camera.Property(c => c.Options).IsRequired();
                 camera.HasIndex(c => c.OrganizationId);
@@ -163,6 +165,20 @@ namespace Onvif.Open.Recorder.Store
                 audit.HasIndex(a => new { a.OrganizationId, a.CreatedAt });
             });
 
+            modelBuilder.Entity<GatewayRecord>(gateway =>
+            {
+                gateway.ToTable("oo_gateways");
+                gateway.HasKey(g => g.Id);
+                gateway.Property(g => g.Id).HasMaxLength(36);
+                gateway.Property(g => g.OrganizationId).HasMaxLength(36).IsRequired();
+                gateway.Property(g => g.Name).HasMaxLength(100).IsRequired();
+                gateway.Property(g => g.Location).HasMaxLength(16).IsRequired();
+                gateway.Property(g => g.Version).HasMaxLength(64);
+                gateway.Property(g => g.BackupProvider).HasMaxLength(200);
+                gateway.Property(g => g.BackupPrefix).HasMaxLength(200);
+                gateway.HasIndex(g => g.OrganizationId);
+            });
+
             modelBuilder.Entity<PluginRecord>(plugin =>
             {
                 plugin.ToTable("oo_plugins");
@@ -236,6 +252,10 @@ namespace Onvif.Open.Recorder.Store
         public string OrganizationId { get; set; }
         public string SiteId { get; set; }
         public string PolicyId { get; set; }
+
+        /// <summary>The gateway that records the camera.</summary>
+        public string GatewayId { get; set; }
+
         public string Name { get; set; }
         public bool Enabled { get; set; }
 
@@ -378,6 +398,40 @@ namespace Onvif.Open.Recorder.Store
     }
 
     /// <summary>A plugin folder row: <see cref="Key"/> is the lower-cased folder name.</summary>
+    /// <summary>A gateway: what records cameras, its settings and its last heartbeat (see Gateways.Gateway).</summary>
+    public sealed class GatewayRecord
+    {
+        public string Id { get; set; }
+        public string OrganizationId { get; set; }
+        public string Name { get; set; }
+        public string Location { get; set; }
+        public bool Embedded { get; set; }
+        public string Version { get; set; }
+        public DateTime? StartedAt { get; set; }
+        public DateTime? LastSeenAt { get; set; }
+
+        /// <summary>JSON: the last reported health.</summary>
+        public string Health { get; set; }
+
+        public double? MinFreeSpaceGB { get; set; }
+        public double? MaxSizePerCameraGB { get; set; }
+        public double? MaxTotalSizeGB { get; set; }
+        public string BackupProvider { get; set; }
+        public string BackupPrefix { get; set; }
+        public int BackupKeepLocalCopyHours { get; set; }
+
+        /// <summary>Encrypted JSON: the backup provider's settings.</summary>
+        public string BackupSettings { get; set; }
+
+        public bool DiscoveryMulticast { get; set; }
+
+        /// <summary>JSON array of addresses probed directly.</summary>
+        public string DiscoveryAddresses { get; set; }
+
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
+    }
+
     public sealed class PluginRecord
     {
         public string Key { get; set; }

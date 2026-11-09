@@ -75,9 +75,9 @@ namespace Onvif.Open.Recorder.Store
 
             await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
             {
-                if (string.IsNullOrEmpty(camera.Id) || string.IsNullOrEmpty(camera.OrganizationId) || string.IsNullOrEmpty(camera.SiteId) || string.IsNullOrEmpty(camera.PolicyId))
+                if (string.IsNullOrEmpty(camera.Id) || string.IsNullOrEmpty(camera.OrganizationId) || string.IsNullOrEmpty(camera.SiteId) || string.IsNullOrEmpty(camera.PolicyId) || string.IsNullOrEmpty(camera.GatewayId))
                 {
-                    throw new ArgumentException("A camera needs an id, an organization, a site and a recording policy.", nameof(camera));
+                    throw new ArgumentException("A camera needs an id, an organization, a site, a recording policy and a gateway.", nameof(camera));
                 }
 
                 var key = Key(camera.Id);
@@ -98,10 +98,12 @@ namespace Onvif.Open.Recorder.Store
                 options.OrganizationId = null;
                 options.SiteId = null;
                 options.PolicyId = null;
+                options.GatewayId = null;
 
                 record.OrganizationId = camera.OrganizationId;
                 record.SiteId = camera.SiteId;
                 record.PolicyId = camera.PolicyId;
+                record.GatewayId = camera.GatewayId;
                 record.Name = string.IsNullOrWhiteSpace(camera.Name) ? camera.Id : camera.Name.Trim();
                 record.Enabled = camera.Enabled;
                 record.Options = JsonSerializer.Serialize(options, Json);
@@ -190,6 +192,7 @@ namespace Onvif.Open.Recorder.Store
             camera.OrganizationId = record.OrganizationId;
             camera.SiteId = record.SiteId;
             camera.PolicyId = record.PolicyId;
+            camera.GatewayId = record.GatewayId;
             camera.Name = record.Name;
             camera.Enabled = record.Enabled;
             camera.Password = record.Password == null ? null : _passwords.Unprotect(record.Password);

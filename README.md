@@ -19,7 +19,7 @@ Targets **.NET 10 (LTS)** and runs on Windows, Linux and macOS.
 | `Onvif.Open.Streaming` | Dependency-free RTSP/RTP client: Basic/Digest auth, RTP over TCP (interleaved) or UDP, H.264 and H.265 depacketizing |
 | `Onvif.Open.Camera` | The `Camera` façade tying everything together |
 | `Onvif.Open.Recording` | Multi-camera recording to files: segment rotation, retention, reconnects, MPEG-TS muxer |
-| `Onvif.Open.Recorder` | Backend service: records the cameras from `appsettings.json`, hosts plugins and exposes a REST API |
+| `Onvif.Open.Recorder` | Backend service (all-in-one: the gateway that records and the API the web app uses): records the cameras from its settings database, hosts plugins and exposes a REST API |
 | `Onvif.Open.Plugins` | Plugin runtime: isolated delivery of frames, camera state changes, segments and events; folder loader |
 | `Onvif.Open.Plugins.Sample` | Template plugin project |
 | `Onvif.Open.Storage.S3` / `.Azure` / `.Gcs` | Storage plugins: archive recordings to Amazon S3 (and S3-compatible), Azure Blob Storage, Google Cloud Storage |
@@ -306,16 +306,32 @@ var live = new HlsLiveStream();                                           // fee
 
 ### Recorder service
 
-`Onvif.Open.Recorder` runs the recording manager as a service. Recording policies, storage and archive are configured
-in `Onvif.Open/Onvif.Open.Recorder/appsettings.json` (see `appsettings.Example.json`).
+`Onvif.Open.Recorder` runs the recording manager as a service. `Onvif.Open/Onvif.Open.Recorder/appsettings.json` (see
+`appsettings.Example.json`) only says how it starts (address, database, key and recording folders) and tunes the
+engine (file rotation, reconnect delays, live view, upload concurrency); customers never need to edit it.
 
 Everything a customer sets up lives in a settings database and is managed through the API while the recorder runs:
 the **organization** (with its data region, Asia or US, chosen at setup), its **sites** (each with a time zone), its
-**recording policies**, **cameras** (each at a site, following a policy), **users** (a role, and optionally only some
-sites), saved live view layouts and plugin assignments. Camera ids are UUIDs assigned by the recorder, so recordings
+**gateways**, its **recording policies**, **cameras** (each at a site, following a policy, recorded by a gateway),
+**users** (a role, and optionally only some sites), saved live view layouts and plugin assignments.
+
+**Gateways.** A gateway records the cameras of a site and keeps their video. The recorder is its organization's first
+gateway ("this server", created at setup, named after the machine or `Gateway:Name`, `Gateway:Location` `Local` or
+`Cloud`); later versions pair more gateways. It reports its health every 30 s (cameras recording and failing, disk
+space, backup state, version) and shows as offline after two minutes without a report. Its settings:
+
+* **Storage limits**: the free space to keep (1 GB by default), the space per camera and in total; the oldest
+  recordings go first, on top of each camera's policy. Applied at the next retention run.
+* **Cloud backup**: completed recordings are copied to a folder or NAS share, Amazon S3, Azure Blob Storage or Google
+  Cloud Storage (see [docs/STORAGE.md](docs/STORAGE.md)). The settings (keys) are stored encrypted and never returned.
+  Applied when the recorder restarts (`restartRequired` says when one is due).
+* **Finding cameras**: multicast on the local network, plus addresses asked directly (other subnets). Applied at once.
+
+Camera ids are UUIDs assigned by the recorder, so recordings
 never depend on a name someone typed; names can change at any time. Bring the database you use (EF Core; the `oo_*`
 tables are created on first start, also inside an existing database, and tables added by later versions are created
-in a database from an earlier one):
+in a database from an earlier one; until the first release, columns added to existing tables are not, so recreate a
+database from an earlier build, e.g. delete `data/onvif-open.db`):
 
 ```json
 "Database": { "Provider": "PostgreSql", "ConnectionString": "Host=db;Database=onvif;Username=onvif;Password=..." }
@@ -328,7 +344,7 @@ in a database from an earlier one):
 | `PostgreSql` | Npgsql.EntityFrameworkCore.PostgreSQL | |
 | `MySql` | MySql.EntityFrameworkCore (Oracle) | MySQL 8+; MariaDB is not supported by this provider |
 
-Camera passwords and plugin settings are encrypted by the recorder (ASP.NET Core Data Protection, keys in `data/keys`,
+Camera passwords, plugin settings and backup settings are encrypted by the recorder (ASP.NET Core Data Protection, keys in `data/keys`,
 see `DataProtection:KeysDirectory`) before they reach the database: back up the keys with the database, and protect
 both. Keep connection strings with passwords out of the file, e.g. `Database__ConnectionString` as an environment variable.
 
@@ -375,13 +391,22 @@ POST /api/auth/refresh  { "refreshToken": "..." }   → new tokens
 "Recording": {
   "StorageDirectory": "/var/recordings",
   "Rotation": { "SegmentDuration": "00:10:00", "MaxSegmentSizeMB": 512 },
-  "Retention": { "MaxSizePerCameraGB": 100, "MinFreeSpaceGB": 5 },   // limits of this recorder; how long video is kept comes from each camera's policy
-  "Archive": {
-    "Provider": "Onvif.Open.Storage.S3",          // or "FileSystem" (NAS), "Onvif.Open.Storage.Azure", "Onvif.Open.Storage.Gcs"
-    "Settings": { "Bucket": "my-recordings", "Region": "eu-west-1" }
-  }
-}
+  "Archive": { "MaxConcurrentUploads": 2 }    // how backups upload; where to, and the storage limits, are gateway settings
+},
+"Gateway": { "Name": "Back office", "Location": "Local" }   // the name and place of the recorder's own gateway when it is created
 ```
+
+The gateway's settings, as sent to `PUT /api/gateways/{id}` (each part optional):
+
+```json
+{ "name": "Back office",
+  "storage": { "minFreeSpaceGB": 5, "maxSizePerCameraGB": 100, "maxTotalSizeGB": null },
+  "backup": { "provider": "Onvif.Open.Storage.S3", "prefix": "back-office", "keepLocalCopyHours": 24,
+              "settings": { "Bucket": "my-recordings", "Region": "eu-west-1" } },
+  "discovery": { "multicast": true, "addresses": [ "10.0.5.20" ] } }
+```
+
+`"settings": null` keeps the stored backup settings; `"provider": ""` turns the backup off.
 
 A camera, as sent to `POST /api/config/cameras`:
 
@@ -453,7 +478,9 @@ dotnet run --project Onvif.Open/Onvif.Open.Recorder
 | `POST /api/cameras/{id}/ptz/position` `{pan, tilt, zoom}` | Absolute move |
 | `GET .../ptz/presets`, `PUT/DELETE .../ptz/presets/{name}`, `POST .../ptz/presets/{name}/goto` | Presets |
 | `POST/PUT /api/cameras/{id}/ptz/home` | Go to / set home position |
-| `GET /api/discovery` | ONVIF devices on the network (WS-Discovery), with `configuredCameraId` for those already set up |
+| `GET /api/discovery` | ONVIF devices on the network (WS-Discovery, with the gateway's discovery settings), with `configuredCameraId` for those already set up |
+| `GET /api/gateways`, `GET .../{id}` | Gateways with `status` (Online, Offline, Waiting), version, last report, `health` and `restartRequired`; the settings only for administrators who see all sites |
+| `PUT /api/gateways/{id}` `{name, storage, backup, discovery}` | Change a gateway's settings (administrators who see all sites); backup setting values are write-only |
 | `GET /api/layouts`, `POST /api/layouts` `{name, grid, cameras, shared}`, `PUT .../{id}`, `DELETE .../{id}` | Live view layouts: each user's own, plus shared ones (managed by administrators); the grid is the web app's template id and `cameras` the camera of each tile |
 | `GET /api/plugins` | Plugin state, delivered/dropped frames, errors |
 | `GET /api/events?cameraId=&siteId=&category=&from=&to=&before=&limit=` | Stored events, newest first: what cameras report (motion, tamper, inputs), detections (person, vehicle, object), cameras going offline, and plugin findings; each with its start and end. `category` is one of motion, person, vehicle, object, intrusion, tamper, input, offline, plugin, other; `before` pages |
@@ -468,8 +495,8 @@ a network: bearer tokens and passwords must not travel in clear text.
 `web/` is a React + TypeScript app for the recorder: first-run setup, sign-in, live view (several cameras in a grid: single, 2 × 2 up to
 5 × 5, or one large tile with smaller ones; arrange cameras by picking or dragging, enlarge one with a double click,
 full screen; layouts saved per user or shared by administrators), cameras (status for everyone; adding, editing and
-removing for administrators, with discovery and a connection test), settings (sites, recording policies, users with
-roles and site access, the audit log, the organization) and the own account. It is a
+removing for administrators, with discovery and a connection test), settings (sites, recording policies, gateways with their
+health, storage limits, cloud backup and discovery, users with roles and site access, the audit log, the organization) and the own account. It is a
 static site served separately from the recorder:
 
 ```

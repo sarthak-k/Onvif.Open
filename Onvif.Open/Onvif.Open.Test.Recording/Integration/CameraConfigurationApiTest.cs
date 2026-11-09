@@ -54,7 +54,6 @@ namespace Onvif.Open.Test.Recording.Integration
             {
                 _settings.Apply(builder);
                 builder.UseSetting("Recording:StorageDirectory", _storage.Path);
-                builder.UseSetting("Recording:Retention:MinFreeSpaceGB", "0");
                 builder.UseSetting("Recording:MinReconnectDelay", "00:00:00.050");
                 builder.UseSetting("Recording:MaxReconnectDelay", "00:00:00.100");
             });

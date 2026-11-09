@@ -15,7 +15,7 @@ using Xunit;
 namespace Onvif.Open.Test.Recording.Integration
 {
     /// <summary>
-    /// The recorder with "Recording:Archive" configured: a segment on the local disk is moved to the archive
+    /// The recorder with a cloud backup set on its gateway: a segment on the local disk is moved to the archive
     /// and can still be listed, downloaded and deleted through the API.
     /// </summary>
     public sealed class RecorderArchiveTest : IDisposable
@@ -26,7 +26,14 @@ namespace Onvif.Open.Test.Recording.Integration
         {
             _storage = new TempDirectory();
             _archive = new TempDirectory();
-            _settings = new TestSettings().Camera(new Onvif.Open.Recorder.Configuration.CameraOptions { Id = "cam1", RtspUrl = "rtsp://127.0.0.1:1/stream" });
+            _settings = new TestSettings()
+                .Camera(new Onvif.Open.Recorder.Configuration.CameraOptions { Id = "cam1", RtspUrl = "rtsp://127.0.0.1:1/stream" })
+                .Gateway(g => g.Backup = new Onvif.Open.Recorder.Gateways.BackupSettings
+                {
+                    Provider = "FileSystem",
+                    Prefix = "site-a",
+                    Settings = { ["Path"] = _archive.Path }
+                });
 
             var day = Path.Combine(_storage.Path, "cam1", "2026-11-01");
             Directory.CreateDirectory(day);
@@ -36,11 +43,7 @@ namespace Onvif.Open.Test.Recording.Integration
             {
                 _settings.Apply(builder);
                 builder.UseSetting("Recording:StorageDirectory", _storage.Path);
-                builder.UseSetting("Recording:Retention:MinFreeSpaceGB", "0");
                 builder.UseSetting("Recording:RetentionInterval", "00:00:00.200");
-                builder.UseSetting("Recording:Archive:Provider", "FileSystem");
-                builder.UseSetting("Recording:Archive:Prefix", "site-a");
-                builder.UseSetting("Recording:Archive:Settings:Path", _archive.Path);
             });
 
             _client = TestSettings.Authenticate(_factory.CreateClient());
@@ -93,16 +96,14 @@ namespace Onvif.Open.Test.Recording.Integration
             // Checked on the configuration directly: a second web host in this class made the test timing-sensitive.
             var configuration = Microsoft.Extensions.Configuration.MemoryConfigurationBuilderExtensions.AddInMemoryCollection(
                     new Microsoft.Extensions.Configuration.ConfigurationBuilder(),
-                    new System.Collections.Generic.Dictionary<string, string>
-                {
-                    ["Recording:Archive:Provider"] = "Onvif.Open.Storage.Missing",
-                    ["Plugins:Directory"] = _archive.Path
-                })
+                    new System.Collections.Generic.Dictionary<string, string> { ["Plugins:Directory"] = _archive.Path })
                 .Build();
 
             var error = Assert.Throws<FileNotFoundException>(() =>
             {
-                Onvif.Open.Recorder.Configuration.StorageConfiguration.CreateArchive(configuration, _storage.Path, Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance);
+                Onvif.Open.Recorder.Configuration.StorageConfiguration.CreateArchive(
+                    new Onvif.Open.Recorder.Gateways.BackupSettings { Provider = "Onvif.Open.Storage.Missing" },
+                    configuration, _storage.Path, Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance);
             });
             Assert.Contains("Onvif.Open.Storage.Missing", error.Message);
         }

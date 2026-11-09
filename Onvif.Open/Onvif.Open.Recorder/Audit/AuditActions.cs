@@ -32,6 +32,7 @@ namespace Onvif.Open.Recorder.Audit
         public const string CameraDelete = "camera.delete";
 
         public const string PluginUpdate = "plugin.update";
+        public const string GatewayUpdate = "gateway.update";
         public const string PluginDelete = "plugin.delete";
 
         public const string LayoutCreate = "layout.create";

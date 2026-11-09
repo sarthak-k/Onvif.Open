@@ -82,8 +82,9 @@ describe('settings', () => {
     expect(screen.getByLabelText('Name')).toBeDisabled();
     expect(screen.getByText('United States')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
-    // Viewers see only the organization in settings.
+    // Viewers see the gateways and the organization in settings, nothing they cannot change.
     expect(screen.queryByRole('link', { name: 'Sites' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Gateways' })).toBeInTheDocument();
     client.signOut();
   });
 

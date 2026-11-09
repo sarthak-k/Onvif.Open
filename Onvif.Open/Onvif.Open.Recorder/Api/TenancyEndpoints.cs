@@ -32,12 +32,15 @@ namespace Onvif.Open.Recorder.Api
             }).AllowAnonymous();
 
             // Creates the organization, first site, default policies and owner, and signs the owner in.
-            app.MapPost("/api/setup", async (SetupRequest request, TenancyService tenancy, AuditLog audit, HttpContext http, CancellationToken ct) =>
+            app.MapPost("/api/setup", async (SetupRequest request, TenancyService tenancy, Gateways.GatewayHeartbeat heartbeat, AuditLog audit, HttpContext http, CancellationToken ct) =>
             {
                 var result = await tenancy.CompleteSetupAsync(request, ct);
                 if (result.Status == ServiceStatus.Ok)
                 {
                     audit.Record(http, result.Value, null, null, AuditActions.Setup, new { region = request.Region });
+
+                    // The recorder's gateway exists from now on, with its first heartbeat.
+                    await heartbeat.ReportNowAsync(ct);
                 }
 
                 return result.Status == ServiceStatus.Ok ? AuthEndpoints.SignIn(result.Value) : ToResult(result);
@@ -132,12 +135,12 @@ namespace Onvif.Open.Recorder.Api
             isDefault = policy.IsDefault
         };
 
-        private static IResult ToResult<T>(ServiceResult<T> result, System.Func<T, object> toDto)
+        internal static IResult ToResult<T>(ServiceResult<T> result, System.Func<T, object> toDto)
         {
             return result.Status == ServiceStatus.Ok ? Results.Ok(toDto(result.Value)) : ToResult(result);
         }
 
-        private static IResult ToResult<T>(ServiceResult<T> result)
+        internal static IResult ToResult<T>(ServiceResult<T> result)
         {
             switch (result.Status)
             {

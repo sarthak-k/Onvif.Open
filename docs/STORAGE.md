@@ -22,10 +22,10 @@ camera ──► local disk (StorageDirectory) ──upload──► archive sto
   slows down a recording.
 * Each completed segment is uploaded. Failed uploads are retried with back-off (1 s up to 5 min). Nothing is kept in
   memory only: segments that were not uploaded before a restart are found on the disk and uploaded then.
-* Once uploaded, the local copy is removed. Set `KeepLocalCopyFor` to keep it longer, e.g. for fast playback of the
+* Once uploaded, the local copy is removed. Set `keepLocalCopyHours` to keep it longer, e.g. for fast playback of the
   last day.
-* **Retention** (`MaxAge`, `MaxTotalSizeGB`, `MaxSizePerCameraGB`) applies to the archive. `MinFreeSpaceGB` protects the
-  local disk. When the disk runs short, local copies are removed oldest first: uploaded ones first, and as a last resort
+* **Retention** (each camera's recording policy, and the gateway's `maxTotalSizeGB` and `maxSizePerCameraGB`) applies to
+  the archive. `minFreeSpaceGB` protects the local disk. When the disk runs short, local copies are removed oldest first: uploaded ones first, and as a last resort
   ones that could not be uploaded yet, because recording must go on. A warning is logged for each of those.
 * The API and plugins see both places as one: `GET /api/cameras/{id}/segments` lists local and archived segments
   (`isLocal`, `isArchived`), downloads are served from wherever the segment is, deletes remove it everywhere.
@@ -35,24 +35,30 @@ camera ──► local disk (StorageDirectory) ──upload──► archive sto
 
 ## Configuration
 
-`Recording:Archive` in `appsettings.json`:
+The backup is a setting of the gateway that records (web app: Settings › Gateways › Edit › Cloud backup, or
+`PUT /api/gateways/{id}` with `backup`). It applies when the recorder restarts.
 
 | Setting | Default | |
 | --- | --- | --- |
-| `Provider` | empty (no archive) | `FileSystem`, or the folder name of a storage plugin in `Plugins:Directory` |
-| `Prefix` | empty | Key prefix, e.g. `site-a` when several recorders share a bucket |
-| `KeepLocalCopyFor` | `00:00:00` | Keep the local copy this long after upload |
+| `provider` | empty (no backup) | `FileSystem`, or the folder name of a storage plugin in `Plugins:Directory` |
+| `prefix` | empty | Key prefix, e.g. `site-a` when several gateways share a bucket |
+| `keepLocalCopyHours` | `0` | Keep the gateway's copy this long after upload |
+| `settings` | | Provider settings, see below. Stored encrypted, never returned; `null` keeps the stored ones |
+
+The gateway's storage limits (`minFreeSpaceGB`, `maxSizePerCameraGB`, `maxTotalSizeGB`) are set the same way, with
+`storage`. Upload tuning stays in `appsettings.json`, `Recording:Archive`:
+
+| Setting | Default | |
+| --- | --- | --- |
 | `MaxConcurrentUploads` | `2` | |
 | `RefreshInterval` | `00:15:00` | How often the archive is listed again (notices objects removed by lifecycle rules) |
-| `Settings` | | Provider settings, see below |
 
-Keep secrets out of `appsettings.json`: prefer the cloud's own identity (IAM role, managed identity, workload identity)
-or pass keys as environment variables, e.g. `Recording__Archive__Settings__SecretKey`.
+Prefer the cloud's own identity (IAM role, managed identity, workload identity) over keys in the settings where you can.
 
 ### NAS / another disk (`FileSystem`, built in)
 
 ```json
-"Archive": { "Provider": "FileSystem", "Settings": { "Path": "/mnt/nas/recordings" } }
+"backup": { "provider": "FileSystem", "settings": { "Path": "/mnt/nas/recordings" } }
 ```
 
 `Path` can be a mounted share (NFS, SMB/CIFS) or a UNC path on Windows (`\\nas\recordings`). Files are written to a
@@ -61,9 +67,9 @@ temporary name and then renamed, so a crash never leaves a half-written segment 
 ### Amazon S3 and S3-compatible storage (`Onvif.Open.Storage.S3`)
 
 ```json
-"Archive": {
-  "Provider": "Onvif.Open.Storage.S3",
-  "Settings": { "Bucket": "my-recordings", "Region": "eu-west-1", "StorageClass": "STANDARD_IA" }
+"backup": {
+  "provider": "Onvif.Open.Storage.S3",
+  "settings": { "Bucket": "my-recordings", "Region": "eu-west-1", "StorageClass": "STANDARD_IA" }
 }
 ```
 
@@ -82,9 +88,9 @@ and `s3:ListBucket` on the bucket.
 ### Azure Blob Storage (`Onvif.Open.Storage.Azure`)
 
 ```json
-"Archive": {
-  "Provider": "Onvif.Open.Storage.Azure",
-  "Settings": { "AccountUrl": "https://myaccount.blob.core.windows.net", "Container": "recordings", "AccessTier": "Cool" }
+"backup": {
+  "provider": "Onvif.Open.Storage.Azure",
+  "settings": { "AccountUrl": "https://myaccount.blob.core.windows.net", "Container": "recordings", "AccessTier": "Cool" }
 }
 ```
 
@@ -100,9 +106,9 @@ The identity needs the *Storage Blob Data Contributor* role.
 ### Google Cloud Storage (`Onvif.Open.Storage.Gcs`)
 
 ```json
-"Archive": {
-  "Provider": "Onvif.Open.Storage.Gcs",
-  "Settings": { "Bucket": "my-recordings", "StorageClass": "NEARLINE" }
+"backup": {
+  "provider": "Onvif.Open.Storage.Gcs",
+  "settings": { "Bucket": "my-recordings", "StorageClass": "NEARLINE" }
 }
 ```
 

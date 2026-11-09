@@ -33,7 +33,6 @@ namespace Onvif.Open.Test.Plugins.Integration
             {
                 settings.Apply(builder);
                 builder.UseSetting("Recording:StorageDirectory", storage);
-                builder.UseSetting("Recording:Retention:MinFreeSpaceGB", "0");
                 builder.UseSetting("Plugins:Directory", plugins);
             });
         }

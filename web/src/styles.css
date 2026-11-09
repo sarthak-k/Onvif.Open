@@ -130,7 +130,7 @@ caption { text-align: left; font-weight: 600; padding: 4px 8px; }
 .devices li { display: flex; justify-content: space-between; align-items: center; gap: var(--gap); padding: 8px 0; border-top: 1px solid var(--border); }
 
 .backdrop { position: fixed; inset: 0; background: rgb(0 0 0 / 0.45); display: grid; place-items: center; padding: 16px; z-index: 10; }
-.dialog { background: var(--surface); border-radius: var(--radius); padding: 20px; width: 100%; max-width: 440px; display: flex; flex-direction: column; gap: var(--gap); }
+.dialog { background: var(--surface); border-radius: var(--radius); padding: 20px; width: 100%; max-width: 440px; max-height: calc(100vh - 32px); overflow-y: auto; display: flex; flex-direction: column; gap: var(--gap); }
 
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 

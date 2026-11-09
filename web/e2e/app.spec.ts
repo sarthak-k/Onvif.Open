@@ -72,12 +72,27 @@ test('an administrator manages sites and cameras', async ({ page }) => {
   await page.getByRole('dialog').getByRole('button', { name: 'Delete' }).click();
   await expect(page.getByRole('row', { name: /Warehouse/ })).toHaveCount(0);
 
+  // The recorder is the organization's gateway; its storage limit is a setting, applied at once.
+  await page.getByRole('link', { name: 'Gateways' }).click();
+  const gateway = page.getByRole('article');
+  await expect(gateway).toContainText('this server');
+  await expect(gateway).toContainText('Online');
+  await expect(gateway).toContainText('On a local machine');
+  await gateway.getByRole('button', { name: 'Edit' }).click();
+  await page.getByRole('dialog').getByLabel('Per camera (GB)').fill('25');
+  await page.getByRole('dialog').getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await gateway.getByRole('button', { name: 'Edit' }).click();
+  await expect(page.getByRole('dialog').getByLabel('Per camera (GB)')).toHaveValue('25');
+  await page.getByRole('dialog').getByRole('button', { name: 'Cancel' }).click();
+
   // All of it is in the audit log, newest first.
   await page.getByRole('link', { name: 'Audit log' }).click();
   await expect(page.getByRole('row', { name: /Removed a site.*Warehouse/ })).toBeVisible();
   await expect(page.getByRole('row', { name: /Removed a camera.*Loading gate/ })).toBeVisible();
   await expect(page.getByRole('row', { name: /Changed a camera.*Loading gate/ })).toBeVisible();
   await expect(page.getByRole('row', { name: /Added a camera.*Gate/ })).toBeVisible();
+  await expect(page.getByRole('row', { name: /Changed a gateway/ })).toBeVisible();
   await page.getByLabel('Show').selectOption('auth');
   await expect(page.getByRole('row', { name: /Signed in/ }).first()).toBeVisible();
   await expect(page.getByRole('row', { name: /a site/ })).toHaveCount(0);
@@ -106,7 +121,7 @@ test('a new user chooses a password and sees only their pages', async ({ page })
 
   await expect(page.getByRole('heading', { name: 'Cameras' })).toBeVisible();
   await page.getByRole('link', { name: 'Settings' }).click();
-  await expect(page.getByRole('heading', { name: 'Organization' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Gateways' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Users' })).toHaveCount(0);
   await page.getByRole('link', { name: 'Cameras', exact: true }).click();
   await expect(page.getByRole('link', { name: 'Add camera' })).toHaveCount(0);

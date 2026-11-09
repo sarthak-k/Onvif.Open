@@ -3,6 +3,7 @@
 
 using System;
 using System.Net;
+using System.Net.Http.Json;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
@@ -67,13 +68,14 @@ namespace Onvif.Open.Test.Recording.Integration
                 {
                     settings.Apply(builder);
                     builder.UseSetting("Recording:StorageDirectory", storage.Path);
-                    builder.UseSetting("Recording:Retention:MinFreeSpaceGB", "0");
-                    builder.UseSetting("Discovery:Multicast", "false");
                     builder.UseSetting("Discovery:Timeout", "00:00:00.500");
-                    builder.UseSetting("Discovery:Targets:0", $"127.0.0.1:{port}");
                 }))
                 using (var client = TestSettings.Authenticate(factory.CreateClient()))
                 {
+                    // Where the gateway looks is a gateway setting, applied at once.
+                    var changed = await client.PutAsJsonAsync($"/api/gateways/{TestSettings.GatewayId}", new { discovery = new { multicast = false, addresses = new[] { $"127.0.0.1:{port}" } } });
+                    Assert.Equal(HttpStatusCode.OK, changed.StatusCode);
+
                     var devices = JsonDocument.Parse(await client.GetStringAsync("/api/discovery")).RootElement;
 
                     var found = Assert.Single(devices.EnumerateArray());

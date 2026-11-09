@@ -19,6 +19,7 @@ const actionLabels: Record<string, string> = {
   'camera.create': 'Added a camera',
   'camera.update': 'Changed a camera',
   'camera.delete': 'Removed a camera',
+  'gateway.update': 'Changed a gateway',
   'plugin.update': 'Configured a plugin',
   'plugin.delete': 'Removed a plugin',
   'layout.create': 'Saved a layout',
@@ -45,6 +46,7 @@ export const auditAreas = [
   { value: 'site', label: 'Sites' },
   { value: 'policy', label: 'Recording policies' },
   { value: 'layout', label: 'Layouts' },
+  { value: 'gateway', label: 'Gateways' },
   { value: 'plugin', label: 'Plugins' },
   { value: 'io', label: 'Device outputs' },
   { value: 'organization', label: 'Organization' },
@@ -54,22 +56,26 @@ export function describeAction(action: string): string {
   return actionLabels[action] ?? action;
 }
 
-/** Details as "name: value" pairs when the recorder sent an object, else as sent. */
+/** Details as "name: value" pairs when they are an object (also as JSON text), else as text. */
 export function describeDetails(details: AuditEntry['details']): string {
-  if (!details) {
+  if (details === null || details === undefined || details === '') {
     return '';
   }
 
-  try {
-    const parsed: unknown = JSON.parse(details);
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return Object.entries(parsed)
-        .filter(([, value]) => value !== null && value !== undefined)
-        .map(([name, value]) => `${name}: ${Array.isArray(value) ? value.join(', ') || 'none' : String(value)}`)
-        .join('; ');
+  let value = details;
+  if (typeof value === 'string') {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      return details as string;
     }
-  } catch {
-    // Plain text.
   }
-  return details;
+
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return Object.entries(value)
+      .filter(([, item]) => item !== null && item !== undefined)
+      .map(([name, item]) => `${name}: ${Array.isArray(item) ? item.join(', ') || 'none' : typeof item === 'object' ? JSON.stringify(item) : String(item)}`)
+      .join('; ');
+  }
+  return typeof details === 'string' ? details : JSON.stringify(details);
 }

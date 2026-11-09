@@ -26,6 +26,7 @@ namespace Onvif.Open.Test.Recording.Fakes
             Store = CreateStore("Sqlite", $"Data Source={Database}", Keys, out var contexts);
             Tenancy = new Onvif.Open.Recorder.Tenancy.EfTenancyStore(contexts);
             Users = new EfUserStore(contexts);
+            Gateways = new Onvif.Open.Recorder.Gateways.EfGatewayStore(contexts, Protection(Keys));
 
             if (seeded)
             {
@@ -38,9 +39,20 @@ namespace Onvif.Open.Test.Recording.Fakes
         public const string SiteId = "00000000-0000-0000-0000-00000000b001";
         public const string AlwaysPolicyId = "00000000-0000-0000-0000-00000000c001";
         public const string EventsPolicyId = "00000000-0000-0000-0000-00000000c002";
+        public const string GatewayId = "00000000-0000-0000-0000-00000000e001";
 
         public Onvif.Open.Recorder.Tenancy.ITenancyStore Tenancy { get; }
         public IUserStore Users { get; }
+        public Onvif.Open.Recorder.Gateways.IGatewayStore Gateways { get; }
+
+        /// <summary>Changes the seeded gateway's settings before the recorder starts.</summary>
+        public TestSettings Gateway(Action<Onvif.Open.Recorder.Gateways.Gateway> change)
+        {
+            var gateway = Gateways.FindAsync(GatewayId).GetAwaiter().GetResult();
+            change(gateway);
+            Gateways.SaveAsync(gateway).GetAwaiter().GetResult();
+            return this;
+        }
 
         /// <summary>A second site of the organization, for site access tests.</summary>
         public string AddSite(string name)
@@ -57,6 +69,18 @@ namespace Onvif.Open.Test.Recording.Fakes
             Tenancy.SaveSiteAsync(new SiteRecord { Id = SiteId, OrganizationId = OrganizationId, Name = "Main site", TimeZone = "UTC", CreatedAt = now, UpdatedAt = now }).GetAwaiter().GetResult();
             Tenancy.SavePolicyAsync(new RecordingPolicyRecord { Id = AlwaysPolicyId, OrganizationId = OrganizationId, Name = "Always record", Mode = "Always", PreRollSeconds = 5, PostRollSeconds = 10, ContinuousRetentionDays = 7, EventRetentionDays = 30, IsDefault = true, CreatedAt = now, UpdatedAt = now }).GetAwaiter().GetResult();
             Tenancy.SavePolicyAsync(new RecordingPolicyRecord { Id = EventsPolicyId, OrganizationId = OrganizationId, Name = "Events only", Mode = "EventsOnly", PreRollSeconds = 5, PostRollSeconds = 10, ContinuousRetentionDays = 7, EventRetentionDays = 30, CreatedAt = now, UpdatedAt = now }).GetAwaiter().GetResult();
+
+            // The recorder's own gateway; no free-space limit, so test machines with little disk keep their recordings.
+            Gateways.SaveAsync(new Onvif.Open.Recorder.Gateways.Gateway
+            {
+                Id = GatewayId,
+                OrganizationId = OrganizationId,
+                Name = "Test gateway",
+                Embedded = true,
+                Storage = new Onvif.Open.Recorder.Gateways.StorageLimits { MinFreeSpaceGB = null },
+                CreatedAt = now,
+                UpdatedAt = now
+            }).GetAwaiter().GetResult();
 
             var owner = new UserRecord { Id = "00000000-0000-0000-0000-00000000d001", UserName = AdminName, Enabled = true, SecurityStamp = Guid.NewGuid().ToString("N"), CreatedAt = now };
             owner.PasswordHash = new Microsoft.AspNetCore.Identity.PasswordHasher<UserRecord>().HashPassword(owner, AdminPassword);
@@ -105,6 +129,7 @@ namespace Onvif.Open.Test.Recording.Fakes
             camera.SiteId ??= SiteId;
             camera.PolicyId ??= camera.Mode == Onvif.Open.Core.Recording.RecordingMode.Triggered ? EventsPolicyId : AlwaysPolicyId;
             camera.Name ??= camera.Id;
+            camera.GatewayId ??= GatewayId;
             Store.SaveCameraAsync(camera).GetAwaiter().GetResult();
             return this;
         }
@@ -121,8 +146,11 @@ namespace Onvif.Open.Test.Recording.Fakes
             var options = DatabaseConfiguration.Configure(new DbContextOptionsBuilder<RecorderDbContext>(), provider, connectionString, Path.GetTempPath());
             contexts = new PooledDbContextFactory<RecorderDbContext>((DbContextOptions<RecorderDbContext>)options.Options);
             DatabaseConfiguration.EnsureCreatedAsync(contexts).GetAwaiter().GetResult();
-            return new EfSettingsStore(contexts, DataProtectionProvider.Create(new DirectoryInfo(keys), b => b.SetApplicationName("Onvif.Open.Recorder")));
+            return new EfSettingsStore(contexts, Protection(keys));
         }
+
+        private static IDataProtectionProvider Protection(string keys) =>
+            DataProtectionProvider.Create(new DirectoryInfo(keys), b => b.SetApplicationName("Onvif.Open.Recorder"));
 
         public void Dispose()
         {

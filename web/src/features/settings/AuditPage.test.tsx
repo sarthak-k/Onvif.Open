@@ -31,7 +31,7 @@ describe('audit log', () => {
     const queries: string[] = [];
     const firstPage = [
       entry(0, { action: 'auth.signin_failed', targetType: null, targetId: null, targetName: null }),
-      entry(1, { action: 'user.update', targetName: 'ana', details: JSON.stringify({ role: 'Operator', sites: [] }) }),
+      entry(1, { action: 'user.update', targetName: 'ana', details: { role: 'Operator', sites: [] } }),
       ...Array.from({ length: auditPageSize - 2 }, (_, i) => entry(i + 2)),
     ];
     const { user, client } = renderApp('/settings/audit', {
@@ -73,5 +73,7 @@ describe('audit log', () => {
   it('shows unknown details as sent', () => {
     expect(describeDetails('from 10:00 to 10:05')).toBe('from 10:00 to 10:05');
     expect(describeDetails(null)).toBe('');
+    expect(describeDetails('{"from":"10:00"}')).toBe('from: 10:00');
+    expect(describeDetails({ backup: 'none', storage: false, range: { from: 1 } })).toBe('backup: none; storage: false; range: {"from":1}');
   });
 });
