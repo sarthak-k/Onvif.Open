@@ -3,9 +3,9 @@ import type { UserRequest } from '../api/types';
 import { useApi } from './ApiContext';
 import { queryKeys } from './queryKeys';
 
-export function useUsers() {
+export function useUsers(enabled = true) {
   const api = useApi();
-  return useQuery({ queryKey: queryKeys.users.all, queryFn: api.users.list });
+  return useQuery({ queryKey: queryKeys.users.all, queryFn: api.users.list, enabled });
 }
 
 function useInvalidateUsers() {

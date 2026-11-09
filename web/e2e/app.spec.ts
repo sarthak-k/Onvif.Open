@@ -15,8 +15,12 @@ async function signIn(page: Page, userName: string, password: string) {
 
 test('an administrator manages sites and cameras', async ({ page }) => {
   await signIn(page, 'admin', e2e.adminPassword);
-  await expect(page.getByRole('heading', { name: 'Cameras' })).toBeVisible();
-  await expect(page.getByText('No cameras yet.')).toBeVisible();
+
+  // Home first: nothing to watch yet, and what is left to set up.
+  await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
+  await expect(page.getByRole('status')).toContainText('No cameras yet.');
+  await expect(page.getByRole('region', { name: 'Set up' }).getByRole('link', { name: 'Add your cameras' })).toBeVisible();
+  await expect(page.getByRole('list', { name: 'Sites' })).toContainText('Main site');
 
   // A second site, in its own time zone.
   await page.getByRole('link', { name: 'Settings' }).click();
@@ -131,7 +135,8 @@ test('a new user chooses a password and sees only their pages', async ({ page })
   await page.getByLabel('Repeat new password').fill('Olivia-Own-Password-2');
   await page.getByRole('button', { name: 'Change password' }).click();
 
-  await expect(page.getByRole('heading', { name: 'Cameras' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Home' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Set up' })).toHaveCount(0);
   await page.getByRole('link', { name: 'Settings' }).click();
   await expect(page.getByRole('heading', { name: 'Gateways' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Users' })).toHaveCount(0);
@@ -140,6 +145,7 @@ test('a new user chooses a password and sees only their pages', async ({ page })
 
   // The session survives a reload only with "keep me signed in" or in the same tab.
   await page.reload();
+  await expect(page.getByRole('link', { name: 'Add cameras' })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Cameras' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Sign out' }).click();

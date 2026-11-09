@@ -33,7 +33,7 @@ export default function SetupPage() {
   });
 
   // Just set up: on to the first camera. Already signed in otherwise: nothing to set up.
-  if (user) return <Navigate to={setup.isPending || setup.isSuccess ? '/cameras/new' : '/live'} replace />;
+  if (user) return <Navigate to={setup.isPending || setup.isSuccess ? '/cameras/add' : '/home'} replace />;
   if (status.isLoading) return <p className="loading">Loading…</p>;
   if (status.data && !status.data.required) return <Navigate to="/login" replace />;
 

@@ -240,3 +240,12 @@ details[open] > summary { margin-bottom: 8px; }
 .state-ready { color: var(--ok-text); }
 .state-failed { color: var(--danger); }
 .state-queued, .state-running, .state-expired { color: var(--muted); }
+
+/* Home */
+.problems, .site-cards, .checklist { list-style: none; margin: 0; padding: 0; }
+.problems { display: flex; flex-direction: column; gap: 8px; }
+.problem { display: flex; flex-direction: column; gap: 2px; border-left: 4px solid var(--warn); }
+.problem.critical { border-left-color: var(--danger); }
+.site-cards { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.checklist { display: flex; flex-direction: column; gap: 6px; }
+a.event-card { color: inherit; text-decoration: none; border: 1px solid var(--border); border-radius: 6px; }

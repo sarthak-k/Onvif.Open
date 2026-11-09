@@ -28,5 +28,6 @@ export const queryKeys = {
   events: {
     search: (filter: object) => ['events', 'search', filter] as const,
     between: (siteId: string, from: number, to: number) => ['events', 'between', siteId, from, to] as const,
+    since: (from: number) => ['events', 'since', from] as const,
   },
 };

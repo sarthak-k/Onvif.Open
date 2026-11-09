@@ -12,7 +12,7 @@ export default function ChangePasswordPage() {
       <div className="card stack narrow">
         <h1>Choose a new password</h1>
         <p className="muted">Your password was set by an administrator. Choose your own to continue.</p>
-        <PasswordForm onChanged={() => navigate('/cameras', { replace: true })} />
+        <PasswordForm onChanged={() => navigate('/home', { replace: true })} />
         <button type="button" className="link" onClick={signOut}>
           Sign out
         </button>

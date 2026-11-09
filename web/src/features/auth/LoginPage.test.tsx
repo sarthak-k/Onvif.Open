@@ -52,7 +52,7 @@ describe('sign in', () => {
     await user.type(screen.getByLabelText('Repeat new password'), 'a-new-password');
     await user.click(screen.getByRole('button', { name: 'Change password' }));
 
-    expect(await screen.findByRole('heading', { name: 'Cameras' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Home' })).toBeInTheDocument();
     client.signOut();
   });
 

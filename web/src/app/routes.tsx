@@ -2,6 +2,7 @@ import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
 import type { Permission } from '../features/auth/permissions';
 
 // Pages load on first use (code splitting): signing in does not download the camera editor.
+const HomePage = lazy(() => import('../features/home/HomePage'));
 const LivePage = lazy(() => import('../features/live/LivePage'));
 const InvestigatePage = lazy(() => import('../features/investigate/InvestigatePage'));
 const CasesPage = lazy(() => import('../features/cases/CasesPage'));
@@ -30,6 +31,7 @@ export interface AppRoute {
 
 /** The signed-in pages; a new page is one entry here (navigation and access follow from it). */
 export const appRoutes: readonly AppRoute[] = [
+  { path: '/home', page: HomePage, permission: 'cameras.view', nav: 'Home' },
   { path: '/live', page: LivePage, permission: 'cameras.view', nav: 'Live' },
   { path: '/investigate', page: InvestigatePage, permission: 'cameras.view', nav: 'Investigate' },
   { path: '/cases', page: CasesPage, permission: 'cameras.view', nav: 'Cases' },
@@ -50,6 +52,7 @@ export const appRoutes: readonly AppRoute[] = [
 
 /** The main navigation in order: pages that have a nav label, and the settings area. */
 export const navItems: readonly { path: string; label: string; permission: Permission }[] = [
+  { path: '/home', label: 'Home', permission: 'cameras.view' },
   { path: '/live', label: 'Live', permission: 'cameras.view' },
   { path: '/investigate', label: 'Investigate', permission: 'cameras.view' },
   { path: '/cases', label: 'Cases', permission: 'cameras.view' },

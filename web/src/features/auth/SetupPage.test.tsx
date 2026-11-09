@@ -33,7 +33,8 @@ describe('first-run setup', () => {
     await user.type(screen.getByLabelText('Repeat password'), 'Dana-Owner-Pass-1');
     await user.click(screen.getByRole('button', { name: 'Create organization' }));
 
-    expect(await screen.findByRole('heading', { name: 'Add camera' })).toBeInTheDocument();
+    // A new owner goes straight to adding cameras.
+    expect(await screen.findByRole('heading', { name: 'Add cameras' })).toBeInTheDocument();
     expect(request).toEqual({ organizationName: 'Riverside Shops', region: 'asia', siteName: 'Head office', timeZone: 'America/New_York', userName: 'dana', password: 'Dana-Owner-Pass-1' });
     client.signOut();
   });
