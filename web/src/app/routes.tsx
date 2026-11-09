@@ -5,7 +5,10 @@ import type { Permission } from '../features/auth/permissions';
 const LivePage = lazy(() => import('../features/live/LivePage'));
 const CamerasPage = lazy(() => import('../features/cameras/CamerasPage'));
 const CameraEditorPage = lazy(() => import('../features/cameras/editor/CameraEditorPage'));
-const UsersPage = lazy(() => import('../features/users/UsersPage'));
+const UsersPage = lazy(() => import('../features/settings/UsersPage'));
+const SitesPage = lazy(() => import('../features/settings/SitesPage'));
+const PoliciesPage = lazy(() => import('../features/settings/PoliciesPage'));
+const OrganizationPage = lazy(() => import('../features/settings/OrganizationPage'));
 const AccountPage = lazy(() => import('../features/auth/AccountPage'));
 
 export interface AppRoute {
@@ -14,6 +17,8 @@ export interface AppRoute {
   permission: Permission;
   /** Shown in the main navigation under this label. */
   nav?: string;
+  /** Shown inside the settings area (with its sub-navigation). */
+  settings?: boolean;
 }
 
 /** The signed-in pages; a new page is one entry here (navigation and access follow from it). */
@@ -22,6 +27,17 @@ export const appRoutes: readonly AppRoute[] = [
   { path: '/cameras', page: CamerasPage, permission: 'cameras.view', nav: 'Cameras' },
   { path: '/cameras/new', page: CameraEditorPage, permission: 'cameras.manage' },
   { path: '/cameras/:id', page: CameraEditorPage, permission: 'cameras.manage' },
-  { path: '/users', page: UsersPage, permission: 'users.manage', nav: 'Users' },
+  { path: '/settings/sites', page: SitesPage, permission: 'settings.manage', settings: true },
+  { path: '/settings/policies', page: PoliciesPage, permission: 'settings.manage', settings: true },
+  { path: '/settings/users', page: UsersPage, permission: 'users.manage', settings: true },
+  { path: '/settings/organization', page: OrganizationPage, permission: 'cameras.view', settings: true },
   { path: '/account', page: AccountPage, permission: 'cameras.view', nav: 'Account' },
+];
+
+/** The main navigation in order: pages that have a nav label, and the settings area. */
+export const navItems: readonly { path: string; label: string; permission: Permission }[] = [
+  { path: '/live', label: 'Live', permission: 'cameras.view' },
+  { path: '/cameras', label: 'Cameras', permission: 'cameras.view' },
+  { path: '/settings', label: 'Settings', permission: 'cameras.view' },
+  { path: '/account', label: 'Account', permission: 'cameras.view' },
 ];

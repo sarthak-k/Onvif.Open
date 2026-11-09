@@ -1,11 +1,35 @@
 import type { ApiClient } from './client';
-import type { CameraConfig, CameraStatus, DiscoveredDevice, Layout, LayoutRequest, ProbeResult, User, UserRequest } from './types';
+import type { CameraConfig, CameraStatus, DiscoveredDevice, Layout, LayoutRequest, Me, Organization, ProbeResult, RecordingPolicy, RecordingPolicyRequest, SetupStatus, Site, SiteRequest, User, UserRequest } from './types';
 
 // The recorder's API by area. Pages depend on these interfaces, not on HTTP, so tests and later back ends can
 // provide their own implementation (dependency inversion, interface segregation).
 
 export interface AuthApi {
-  me(): Promise<User>;
+  me(): Promise<Me>;
+}
+
+export interface SetupApi {
+  /** Whether the recorder still needs its first owner (no sign-in needed). */
+  status(): Promise<SetupStatus>;
+}
+
+export interface OrganizationApi {
+  get(): Promise<Organization>;
+  rename(name: string): Promise<Organization>;
+}
+
+export interface SitesApi {
+  list(): Promise<Site[]>;
+  create(site: SiteRequest): Promise<Site>;
+  update(siteId: string, site: SiteRequest): Promise<Site>;
+  remove(siteId: string): Promise<void>;
+}
+
+export interface PoliciesApi {
+  list(): Promise<RecordingPolicy[]>;
+  create(policy: RecordingPolicyRequest): Promise<RecordingPolicy>;
+  update(policyId: string, policy: Partial<RecordingPolicyRequest>): Promise<RecordingPolicy>;
+  remove(policyId: string): Promise<void>;
 }
 
 export interface CamerasApi {
@@ -49,6 +73,10 @@ export interface MediaApi {
 
 export interface RecorderApi {
   auth: AuthApi;
+  setup: SetupApi;
+  organization: OrganizationApi;
+  sites: SitesApi;
+  policies: PoliciesApi;
   cameras: CamerasApi;
   recording: RecordingApi;
   users: UsersApi;
@@ -62,6 +90,25 @@ export function createRecorderApi(client: ApiClient): RecorderApi {
   return {
     auth: {
       me: () => client.get('/api/auth/me'),
+    },
+    setup: {
+      status: () => client.anonymous('GET', '/api/setup'),
+    },
+    organization: {
+      get: () => client.get('/api/organization'),
+      rename: (name) => client.put('/api/organization', { name }),
+    },
+    sites: {
+      list: () => client.get('/api/sites'),
+      create: (site) => client.post('/api/sites', site),
+      update: (id, site) => client.put(`/api/sites/${segment(id)}`, site),
+      remove: (id) => client.delete(`/api/sites/${segment(id)}`),
+    },
+    policies: {
+      list: () => client.get('/api/recording-policies'),
+      create: (policy) => client.post('/api/recording-policies', policy),
+      update: (id, policy) => client.put(`/api/recording-policies/${segment(id)}`, policy),
+      remove: (id) => client.delete(`/api/recording-policies/${segment(id)}`),
     },
     cameras: {
       list: () => client.get('/api/config/cameras'),

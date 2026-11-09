@@ -4,7 +4,7 @@ import { useCameraConfigs, useDiscovery } from '../../../data/cameras';
 import { ErrorMessage } from '../../../shared/ui/ErrorMessage';
 
 interface Props {
-  /** A device to add; `taken` lists the ids already in use. */
+  /** A device to add; `taken` lists the camera names already in use. */
   onUse(device: DiscoveredDevice, taken: string[]): void;
 }
 
@@ -12,7 +12,7 @@ interface Props {
 export const DiscoveryPanel = memo(function DiscoveryPanel({ onUse }: Props) {
   const configs = useCameraConfigs();
   const find = useDiscovery();
-  const taken = configs.data?.map((c) => c.id) ?? [];
+  const taken = configs.data?.map((c) => c.name) ?? [];
 
   return (
     <div className="card stack">
@@ -33,7 +33,7 @@ export const DiscoveryPanel = memo(function DiscoveryPanel({ onUse }: Props) {
                 <div className="muted small">{device.deviceServiceUri}</div>
               </div>
               {device.configuredCameraId ? (
-                <span className="badge">added as {device.configuredCameraId}</span>
+                <span className="badge">added as {device.configuredCameraName ?? device.configuredCameraId}</span>
               ) : (
                 <button type="button" onClick={() => onUse(device, taken)}>
                   Use

@@ -15,7 +15,7 @@ async function signIn(page: Page) {
 
 async function addCamera(page: Page, id: string) {
   await page.goto('/cameras/new');
-  await page.getByLabel('Id').fill(id);
+  await page.getByLabel('Name', { exact: true }).fill(id);
   await page.getByLabel('RTSP stream only').check();
   // Nothing listens there: the camera is configured but sends no video.
   await page.getByLabel('RTSP URL').fill(`rtsp://127.0.0.1:9/${id}`);
@@ -34,7 +34,7 @@ test('live view plays through the recorder and keeps saved layouts', async ({ pa
 
   // hls.js fetches the playlist from the recorder (another origin, bearer token in a header); the recorder has no
   // video for the camera and says so, and the tile shows it.
-  const playlist = page.waitForRequest((r) => r.url().endsWith('/api/cameras/gate/live.m3u8'));
+  const playlist = page.waitForRequest((r) => /\/api\/cameras\/[0-9a-f-]{36}\/live\.m3u8$/.test(r.url()));
   expect((await playlist).headers()['authorization']).toMatch(/^Bearer /);
   await expect(gate.getByRole('alert')).toContainText('No video from the camera yet.', { timeout: 30_000 });
 
@@ -44,7 +44,7 @@ test('live view plays through the recorder and keeps saved layouts', async ({ pa
   await page.getByLabel('Camera in tile 1').selectOption('yard');
   await page.getByLabel('Camera in tile 2').selectOption('gate');
   await page.getByRole('button', { name: 'Save as…' }).click();
-  await page.getByRole('dialog').getByLabel('Name').fill('Yard first');
+  await page.getByRole('dialog').getByLabel('Name', { exact: true }).fill('Yard first');
   await page.getByRole('dialog').getByRole('button', { name: 'Save' }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 

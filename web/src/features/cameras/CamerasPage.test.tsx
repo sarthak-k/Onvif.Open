@@ -1,9 +1,12 @@
 import { screen, within } from '@testing-library/react';
 import { renderApp } from '../../test/renderApp';
-import { admin, tokens } from '../../test/fakeRecorder';
+import { admin, mainSite, tenancyRoutes, tokens } from '../../test/fakeRecorder';
 
 const config = {
   id: 'front',
+  name: 'Front door',
+  siteId: mainSite.id,
+  policyId: 'p-always',
   enabled: true,
   onvifUrl: 'http://10.0.0.5/onvif/device_service',
   hasPassword: true,
@@ -16,9 +19,10 @@ const config = {
   analytics: { enabled: false, triggerClasses: [], minLikelihood: 0.5 },
   audio: { enabled: false },
 };
-const status = { cameraId: 'front', state: 'Recording', mode: 'Continuous', isTriggered: false, codec: 'H264', recordsAudio: false, framesRecorded: 10, bytesRecorded: 2048, segmentsCompleted: 0 };
+const status = { cameraId: 'front', name: 'Front door', siteId: mainSite.id, state: 'Recording', mode: 'Continuous', isTriggered: false, codec: 'H264', recordsAudio: false, framesRecorded: 10, bytesRecorded: 2048, segmentsCompleted: 0 };
 
 const signedIn = (role: string) => ({
+  ...tenancyRoutes,
   'POST /api/auth/refresh': () => ({ body: tokens(1) }),
   'GET /api/auth/me': () => ({ body: { ...admin, role } }),
   'GET /api/cameras': () => ({ body: [status] }),
@@ -28,7 +32,8 @@ describe('cameras', () => {
   it('shows configuration and status to administrators', async () => {
     const { client } = renderApp('/cameras', { ...signedIn('Admin'), 'GET /api/config/cameras': () => ({ body: [config] }) });
 
-    const row = (await screen.findByRole('link', { name: 'front' })).closest('tr')!;
+    const row = (await screen.findByRole('link', { name: 'Front door' })).closest('tr')!;
+    expect(within(row).getByText('Main St')).toBeInTheDocument();
     expect(within(row).getByText('ONVIF 10.0.0.5')).toBeInTheDocument();
     expect(within(row).getByText('Recording')).toBeInTheDocument();
     expect(within(row).getByText('2.0 KB')).toBeInTheDocument();
@@ -42,7 +47,7 @@ describe('cameras', () => {
     expect(await screen.findByText('Recording')).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: 'Add camera' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Stop' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Users' })).not.toBeInTheDocument();
+    
     expect(calls.some((c) => c.path === '/api/config/cameras')).toBe(false);
     client.signOut();
   });

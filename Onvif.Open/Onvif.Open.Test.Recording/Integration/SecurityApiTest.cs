@@ -131,7 +131,8 @@ namespace Onvif.Open.Test.Recording.Integration
                     .Select(e => e.RoutePattern.RawText)
                     .OrderBy(p => p, StringComparer.Ordinal);
 
-                Assert.Equal(new[] { "/api/auth/login", "/api/auth/refresh", "/health" }, anonymous);
+                // Setup only works while there are no users (and with Security:SetupToken when one is configured).
+                Assert.Equal(new[] { "/api/auth/login", "/api/auth/refresh", "/api/setup", "/api/setup", "/health" }, anonymous);
             }
         }
 
@@ -230,7 +231,7 @@ namespace Onvif.Open.Test.Recording.Integration
         }
 
         [Fact]
-        public async Task AnEnabledAdminShouldAlwaysRemain()
+        public async Task AnEnabledOwnerShouldAlwaysRemain()
         {
             using (var factory = Factory())
             using (var admin = TestSettings.Authenticate(factory.CreateClient()))
@@ -272,21 +273,6 @@ namespace Onvif.Open.Test.Recording.Integration
                 Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync("/api/cameras/cam1/segments/cam1_20261101T080000000Z.ts")).StatusCode);
 
                 Assert.Equal(HttpStatusCode.ServiceUnavailable, (await client.GetAsync($"/api/cameras/cam1/live.m3u8?access_token={token}")).StatusCode);
-            }
-        }
-
-        [Fact]
-        public async Task WithoutAConfiguredPasswordTheFirstAdminMustChooseOne()
-        {
-            using (var factory = Factory(("Security:InitialAdmin:Password", "")))
-            using (var client = factory.CreateClient())
-            {
-                Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/health")).StatusCode);
-
-                var admin = Assert.Single(await factory.Services.GetRequiredService<IUserStore>().GetUsersAsync());
-                Assert.Equal("admin", admin.UserName);
-                Assert.Equal("Admin", admin.Role);
-                Assert.True(admin.MustChangePassword);
             }
         }
 

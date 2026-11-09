@@ -47,7 +47,7 @@ namespace Onvif.Open.Recorder.Layouts
 
         public async Task<IReadOnlyList<Layout>> GetAsync(LayoutUser user, CancellationToken cancellationToken = default)
         {
-            return (await _store.GetVisibleAsync(user.Id, cancellationToken).ConfigureAwait(false)).Select(l => ToLayout(l, user)).ToList();
+            return (await _store.GetVisibleAsync(user.OrganizationId, user.Id, cancellationToken).ConfigureAwait(false)).Select(l => ToLayout(l, user)).ToList();
         }
 
         public async Task<LayoutResult> CreateAsync(LayoutUser user, LayoutRequest request, CancellationToken cancellationToken = default)
@@ -72,6 +72,7 @@ namespace Onvif.Open.Recorder.Layouts
             var record = new LayoutRecord
             {
                 Id = Guid.NewGuid().ToString(),
+                OrganizationId = user.OrganizationId,
                 OwnerId = request.Shared ? null : user.Id,
                 CreatedAt = now
             };
@@ -122,7 +123,7 @@ namespace Onvif.Open.Recorder.Layouts
         {
             var record = string.IsNullOrEmpty(id) ? null : await _store.FindAsync(id, cancellationToken).ConfigureAwait(false);
 
-            if (record == null || (record.OwnerId != null && record.OwnerId != user.Id))
+            if (record == null || record.OrganizationId != user.OrganizationId || (record.OwnerId != null && record.OwnerId != user.Id))
             {
                 return (null, LayoutResult.NotFound());
             }
@@ -191,8 +192,8 @@ namespace Onvif.Open.Recorder.Layouts
         #endregion
     }
 
-    /// <summary>Who is asking: the signed-in user's id and whether they are an administrator.</summary>
-    public readonly record struct LayoutUser(string Id, bool IsAdmin);
+    /// <summary>Who is asking: the signed-in user, their organization and whether they administer it.</summary>
+    public readonly record struct LayoutUser(string Id, string OrganizationId, bool IsAdmin);
 
     public sealed class LayoutRequest
     {

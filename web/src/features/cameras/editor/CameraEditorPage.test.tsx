@@ -1,11 +1,12 @@
 import { screen, within } from '@testing-library/react';
 import { renderApp } from '../../../test/renderApp';
-import { admin, tokens } from '../../../test/fakeRecorder';
+import { admin, lyonSite, mainSite, tenancyRoutes, tokens } from '../../../test/fakeRecorder';
 
 const signedIn = {
+  ...tenancyRoutes,
   'POST /api/auth/refresh': () => ({ body: tokens(1) }),
   'GET /api/auth/me': () => ({ body: admin }),
-  'GET /api/config/cameras': () => ({ body: [{ id: 'cam' }] }),
+  'GET /api/config/cameras': () => ({ body: [{ id: 'c-old', name: 'Lobby', siteId: mainSite.id }] }),
   'GET /api/cameras': () => ({ body: [] }),
 };
 
@@ -16,8 +17,8 @@ describe('camera editor', () => {
       ...signedIn,
       'GET /api/discovery': () => ({
         body: [
-          { name: 'Cam', deviceServiceUri: 'http://10.0.0.7/onvif/device_service', serviceAddresses: [], configuredCameraId: null },
-          { name: 'Old', deviceServiceUri: 'http://10.0.0.8/onvif/device_service', serviceAddresses: [], configuredCameraId: 'cam' },
+          { name: 'Lobby', deviceServiceUri: 'http://10.0.0.7/onvif/device_service', serviceAddresses: [], configuredCameraId: null },
+          { name: 'Old', deviceServiceUri: 'http://10.0.0.8/onvif/device_service', serviceAddresses: [], configuredCameraId: 'c-old', configuredCameraName: 'Lobby' },
         ],
       }),
       'POST /api/config/cameras/test': () => ({
@@ -33,30 +34,34 @@ describe('camera editor', () => {
       }),
       'POST /api/config/cameras': ({ body }) => {
         saved = body;
-        return { status: 201, body };
+        return { status: 201, body: { ...(body as object), id: 'c-new' } };
       },
     });
 
     await user.click(await screen.findByRole('button', { name: 'Search' }));
-    expect(await screen.findByText('added as cam')).toBeInTheDocument();
+    expect(await screen.findByText('added as Lobby')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Use' }));
 
-    expect(screen.getByLabelText('Id')).toHaveValue('cam-2');
+    // A free name from the device, the first site, and the default policy.
+    expect(screen.getByLabelText('Name')).toHaveValue('Lobby 2');
+    expect(screen.getByLabelText('Site')).toHaveValue(mainSite.id);
+    expect(screen.getByLabelText('Recording policy')).toHaveValue('p-always');
+    expect(screen.getByText(/Records always · keeps video 7 days, around events 30 days/)).toBeInTheDocument();
     expect(screen.getByLabelText('Device service URL')).toHaveValue('http://10.0.0.7/onvif/device_service');
 
+    await user.selectOptions(screen.getByLabelText('Site'), lyonSite.id);
     await user.type(screen.getByLabelText('User name'), 'admin');
     await user.type(screen.getByLabelText('Password'), 'secret');
     await user.click(screen.getByRole('button', { name: 'Test connection' }));
 
     const report = await screen.findByRole('status');
     expect(report).toHaveTextContent('Acme X1, firmware 2.1');
-    expect(report).toHaveTextContent('Supports: PTZ, Imaging');
     await user.click(within(report).getByLabelText('Record profile Sub'));
-    expect(screen.getByLabelText('Media profile token')).toHaveValue('sub');
 
     await user.click(screen.getByRole('button', { name: 'Add camera' }));
     expect(await screen.findByRole('heading', { name: 'Cameras' })).toBeInTheDocument();
-    expect(saved).toMatchObject({ id: 'cam-2', onvifUrl: 'http://10.0.0.7/onvif/device_service', username: 'admin', password: 'secret', profileToken: 'sub' });
+    expect(saved).toMatchObject({ name: 'Lobby 2', siteId: lyonSite.id, policyId: null, onvifUrl: 'http://10.0.0.7/onvif/device_service', username: 'admin', password: 'secret', profileToken: 'sub' });
+    expect(saved).not.toHaveProperty('id');
     expect(calls.find((c) => c.path === '/api/config/cameras/test')?.body).toMatchObject({ password: 'secret' });
     client.signOut();
   });
@@ -73,41 +78,49 @@ describe('camera editor', () => {
     client.signOut();
   });
 
-  it('edits a camera and keeps its stored password', async () => {
+  it('renames a camera, changes its policy and keeps its stored password', async () => {
     let saved: Record<string, unknown> | undefined;
-    const { user, client } = renderApp('/cameras/gate', {
+    const { user, calls, client } = renderApp('/cameras/c-gate', {
       ...signedIn,
-      'GET /api/config/cameras/gate': () => ({
+      'GET /api/config/cameras/c-gate': () => ({
         body: {
-          id: 'gate',
+          id: 'c-gate',
+          name: 'Gate',
+          siteId: mainSite.id,
+          policyId: 'p-always',
           enabled: true,
           rtspUrl: 'rtsp://10.0.0.9/s1',
           hasPassword: true,
           transport: 'Rtsp',
           mediaVersion: 'Auto',
           mode: 'Continuous',
-          preRoll: '00:00:05',
-          postRoll: '00:00:10',
           events: { enabled: true, triggerTopics: [] },
           analytics: { enabled: false, triggerClasses: [], minLikelihood: 0.5 },
           audio: { enabled: false },
         },
       }),
-      'PUT /api/config/cameras/gate': ({ body }) => {
+      'POST /api/config/cameras/test': () => ({ body: { ok: true, stream: { codec: 'H264' } } }),
+      'PUT /api/config/cameras/c-gate': ({ body }) => {
         saved = body as Record<string, unknown>;
         return { body };
       },
     });
 
-    expect(await screen.findByLabelText('RTSP URL')).toHaveValue('rtsp://10.0.0.9/s1');
-    expect(screen.getByLabelText('Id')).toBeDisabled();
-    await user.click(screen.getByLabelText('On events and detections only'));
-    await user.clear(screen.getByLabelText('Post-roll (seconds)'));
-    await user.type(screen.getByLabelText('Post-roll (seconds)'), '30');
-    await user.click(screen.getByRole('button', { name: 'Save' }));
+    expect(await screen.findByRole('heading', { name: 'Gate' })).toBeInTheDocument();
+    expect(screen.getByLabelText('RTSP URL')).toHaveValue('rtsp://10.0.0.9/s1');
+    await user.clear(screen.getByLabelText('Name'));
+    await user.type(screen.getByLabelText('Name'), 'Main gate');
+    await user.selectOptions(screen.getByLabelText('Recording policy'), 'p-events');
+    expect(screen.getByText(/Records around events \(5 s before, 10 s after\)/)).toBeInTheDocument();
 
+    // The connection test of a saved camera sends its id, so the stored password is used.
+    await user.click(screen.getByRole('button', { name: 'Test connection' }));
+    await screen.findByRole('status');
+    expect(calls.find((c) => c.path === '/api/config/cameras/test')?.body).toMatchObject({ id: 'c-gate', password: null });
+
+    await user.click(screen.getByRole('button', { name: 'Save' }));
     expect(await screen.findByRole('heading', { name: 'Cameras' })).toBeInTheDocument();
-    expect(saved).toMatchObject({ mode: 'Triggered', postRoll: '00:00:30', password: null, onvifUrl: null });
+    expect(saved).toMatchObject({ name: 'Main gate', policyId: 'p-events', password: null, onvifUrl: null });
     client.signOut();
   });
 
@@ -117,7 +130,7 @@ describe('camera editor', () => {
       'POST /api/config/cameras': () => ({ status: 400, body: { errors: ["Camera 'x': OnvifUrl is not a valid URL."] } }),
     });
 
-    await user.type(await screen.findByLabelText('Id'), 'x');
+    await user.type(await screen.findByLabelText('Name'), 'x');
     await user.type(screen.getByLabelText('Device service URL'), 'http://x');
     await user.click(screen.getByRole('button', { name: 'Add camera' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('OnvifUrl is not a valid URL.');

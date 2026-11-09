@@ -1,10 +1,13 @@
 import { fromSeconds, toSeconds } from '../../../api/timespan';
 import type { FieldSetter } from '../../../shared/form/useForm';
-import type { CameraConfig, MediaVersion, RecordingMode, Transport } from '../../../api/types';
+import type { CameraConfig, MediaVersion, Transport } from '../../../api/types';
 
 /** The editor's state: text for every input, converted to and from the API's camera configuration. */
 export interface CameraForm {
-  id: string;
+  name: string;
+  siteId: string;
+  /** Empty: the organization's default policy. */
+  policyId: string;
   enabled: boolean;
   source: 'onvif' | 'rtsp';
   onvifUrl: string;
@@ -17,9 +20,6 @@ export interface CameraForm {
   profileToken: string;
   transport: Transport;
   mediaVersion: MediaVersion;
-  mode: RecordingMode;
-  preRollSeconds: string;
-  postRollSeconds: string;
   segmentMinutes: string;
   maxSegmentSizeMB: string;
   alignToClockMinutes: string;
@@ -33,7 +33,9 @@ export interface CameraForm {
 }
 
 export const emptyCameraForm: CameraForm = {
-  id: '',
+  name: '',
+  siteId: '',
+  policyId: '',
   enabled: true,
   source: 'onvif',
   onvifUrl: '',
@@ -45,9 +47,6 @@ export const emptyCameraForm: CameraForm = {
   profileToken: '',
   transport: 'Rtsp',
   mediaVersion: 'Auto',
-  mode: 'Continuous',
-  preRollSeconds: '5',
-  postRollSeconds: '10',
   segmentMinutes: '',
   maxSegmentSizeMB: '',
   alignToClockMinutes: '',
@@ -70,7 +69,9 @@ const span = (value: string, scale = 1) => {
 
 export function toForm(camera: CameraConfig): CameraForm {
   return {
-    id: camera.id,
+    name: camera.name,
+    siteId: camera.siteId,
+    policyId: camera.policyId ?? '',
     enabled: camera.enabled,
     source: camera.rtspUrl && !camera.onvifUrl ? 'rtsp' : 'onvif',
     onvifUrl: camera.onvifUrl ?? '',
@@ -82,9 +83,6 @@ export function toForm(camera: CameraConfig): CameraForm {
     profileToken: camera.profileToken ?? '',
     transport: camera.transport,
     mediaVersion: camera.mediaVersion,
-    mode: camera.mode,
-    preRollSeconds: text(toSeconds(camera.preRoll)),
-    postRollSeconds: text(toSeconds(camera.postRoll)),
     segmentMinutes: text(toSeconds(camera.rotation?.segmentDuration), 60),
     maxSegmentSizeMB: text(camera.rotation?.maxSegmentSizeMB),
     alignToClockMinutes: text(toSeconds(camera.rotation?.alignToClock), 60),
@@ -105,7 +103,9 @@ export function toCamera(form: CameraForm): CameraConfig {
   const alignToClock = span(form.alignToClockMinutes, 60);
 
   return {
-    id: form.id.trim(),
+    name: form.name.trim(),
+    siteId: form.siteId,
+    policyId: form.policyId || null,
     enabled: form.enabled,
     onvifUrl: onvif ? form.onvifUrl.trim() : null,
     rtspUrl: onvif ? null : form.rtspUrl.trim(),
@@ -116,9 +116,6 @@ export function toCamera(form: CameraForm): CameraConfig {
     transport: form.transport,
     mediaVersion: form.mediaVersion,
     rotation: segmentDuration || maxSegmentSizeMB != null || alignToClock ? { segmentDuration, maxSegmentSizeMB, alignToClock } : null,
-    mode: form.mode,
-    preRoll: span(form.preRollSeconds) ?? '00:00:05',
-    postRoll: span(form.postRollSeconds) ?? '00:00:10',
     events: { enabled: form.eventsEnabled, triggerTopics: list(form.triggerTopics) },
     analytics: {
       enabled: form.analyticsEnabled,
@@ -130,18 +127,18 @@ export function toCamera(form: CameraForm): CameraConfig {
   };
 }
 
-/** A camera id from a discovered device's name or host: lower case letters, digits and dashes. */
-export function suggestId(name: string | null | undefined, url: string | null | undefined, taken: string[]): string {
+/** A name for a discovered device: its own name, else its host; numbered when already taken. */
+export function suggestName(name: string | null | undefined, url: string | null | undefined, taken: string[]): string {
   let host = '';
   try {
     host = url ? new URL(url).hostname : '';
   } catch {
     // Not a URL.
   }
-  const base = (name || host || 'camera').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'camera';
-  let id = base;
-  for (let n = 2; taken.includes(id); n++) id = `${base}-${n}`;
-  return id;
+  const base = (name || host || 'Camera').trim().slice(0, 90);
+  let candidate = base;
+  for (let n = 2; taken.some((t) => t.toLowerCase() === candidate.toLowerCase()); n++) candidate = `${base} ${n}`;
+  return candidate;
 }
 
 /** Props of each editor section: the values and the setter. */

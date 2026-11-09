@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using System.Net.Http;
+using System.Security.Claims;
 using System.Threading;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -14,6 +15,7 @@ using Onvif.Open.Core.Plugin;
 using Onvif.Open.Recorder.Configuration;
 
 using Onvif.Open.Recorder.Security;
+using Onvif.Open.Recorder.Tenancy;
 
 namespace Onvif.Open.Recorder.Api
 {
@@ -30,7 +32,7 @@ namespace Onvif.Open.Recorder.Api
 
             api.MapGet("/plugins", (IPluginHost host) => host.GetStatus()).RequireAuthorization(Policies.Admin);
 
-            api.MapGet("/events", (IPluginHost host, IRecordingManager manager, string cameraId, string type, string source, DateTimeOffset? since, PluginEventSeverity? severity, int? limit) =>
+            api.MapGet("/events", (IPluginHost host, IRecordingManager manager, ClaimsPrincipal user, CameraDirectory directory, string cameraId, string type, string source, DateTimeOffset? since, PluginEventSeverity? severity, int? limit) =>
             {
                 var events = host.GetEvents(new PluginEventQuery
                 {
@@ -42,7 +44,8 @@ namespace Onvif.Open.Recorder.Api
                     Limit = Math.Clamp(limit ?? 100, 1, 1000)
                 });
 
-                return events.Select(e => new
+                // Camera events of the sites the user sees; events about no camera only for users who see every site.
+                return events.Where(e => e.CameraId == null ? user.HasAllSites() : user.CanSeeCamera(directory, e.CameraId)).Select(e => new
                 {
                     e.Id,
                     e.Source,

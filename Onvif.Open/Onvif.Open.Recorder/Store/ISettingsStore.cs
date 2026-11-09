@@ -16,13 +16,13 @@ namespace Onvif.Open.Recorder.Store
     {
         #region Public Methods
 
-        /// <summary>All cameras in the order they were added, with their passwords.</summary>
+        /// <summary>All cameras of all organizations in the order they were added, with their passwords.</summary>
         Task<IReadOnlyList<CameraOptions>> GetCamerasAsync(CancellationToken cancellationToken = default);
 
         /// <summary>One camera (id case-insensitive) with its password, or null.</summary>
         Task<CameraOptions> GetCameraAsync(string cameraId, CancellationToken cancellationToken = default);
 
-        /// <summary>Inserts the camera or replaces the one with the same id; the id keeps its first spelling.</summary>
+        /// <summary>Inserts the camera or replaces the one with the same id (ids are stored lower-cased).</summary>
         Task SaveCameraAsync(CameraOptions camera, CancellationToken cancellationToken = default);
 
         Task<bool> DeleteCameraAsync(string cameraId, CancellationToken cancellationToken = default);

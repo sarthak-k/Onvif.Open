@@ -23,6 +23,7 @@ using Onvif.Open.Recorder.Hosting;
 using Onvif.Open.Recorder.Layouts;
 using Onvif.Open.Recorder.Security;
 using Onvif.Open.Recorder.Store;
+using Onvif.Open.Recorder.Tenancy;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -41,10 +42,17 @@ builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(Path.GetFullPath(Path.Combine(
         builder.Environment.ContentRootPath, builder.Configuration["DataProtection:KeysDirectory"] ?? Path.Combine("data", "keys")))));
 
+// Organizations, sites and recording policies; the cameras' owners and retention, kept in memory.
+builder.Services.AddSingleton<ITenancyStore, EfTenancyStore>();
+builder.Services.AddSingleton<CameraDirectory>();
+builder.Services.AddSingleton<TenancyService>();
+
 // Read once at startup: the cameras to record and the plugins to load. Later changes go through the API.
 builder.Services.AddSingleton(sp => StartupSettings.LoadAsync(
     sp.GetRequiredService<Microsoft.EntityFrameworkCore.IDbContextFactory<RecorderDbContext>>(),
-    sp.GetRequiredService<ISettingsStore>()).GetAwaiter().GetResult());
+    sp.GetRequiredService<ISettingsStore>(),
+    sp.GetRequiredService<ITenancyStore>(),
+    sp.GetRequiredService<CameraDirectory>()).GetAwaiter().GetResult());
 builder.Services.AddSingleton(sp =>
     sp.GetRequiredService<IConfiguration>().GetSection(RecorderOptions.SectionName).Get<RecorderOptions>() ?? new RecorderOptions());
 builder.Services.AddSingleton(sp =>
@@ -55,7 +63,8 @@ builder.Services.AddSingleton(sp =>
         StorageConfiguration.CreateArchive(
             sp.GetRequiredService<IConfiguration>(),
             sp.GetRequiredService<IHostEnvironment>().ContentRootPath,
-            sp.GetRequiredService<ILoggerFactory>())));
+            sp.GetRequiredService<ILoggerFactory>()),
+        sp.GetRequiredService<CameraDirectory>().RetentionFor));
 builder.Services.AddSingleton<IRecordingManager>(sp => sp.GetRequiredService<ConfiguredRecording>().Manager);
 builder.Services.AddSingleton<CameraConfigurationService>();
 builder.Services.AddSingleton<ILayoutStore, EfLayoutStore>();
@@ -84,6 +93,9 @@ builder.Services.AddHostedService<RecordingHostedService>();
 
 var app = builder.Build();
 app.UseRecorderSecurity();
+app.UseCameraAccess();
+app.MapSetupApi();
+app.MapTenancyApi();
 app.MapAuthApi();
 app.MapRecordingApi();
 app.MapCameraConfigurationApi();

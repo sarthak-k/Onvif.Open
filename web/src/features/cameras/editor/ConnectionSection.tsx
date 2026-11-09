@@ -1,18 +1,20 @@
-import { CheckboxField, RadioGroup, Section, TextField } from '../../../shared/form/fields';
+import type { Site } from '../../../api/types';
+import { CheckboxField, RadioGroup, Section, SelectField, TextField } from '../../../shared/form/fields';
 import { ErrorMessage } from '../../../shared/ui/ErrorMessage';
 import { useCameraTest } from '../../../data/cameras';
 import { toCamera, type SectionProps } from './cameraForm';
 import { sourceOptions } from './options';
 import { ProbeReport } from './ProbeReport';
 
-export function ConnectionSection({ form, set, isNew }: SectionProps & { isNew: boolean }) {
+export function ConnectionSection({ form, set, cameraId, sites }: SectionProps & { cameraId?: string; sites: readonly Site[] }) {
   const probe = useCameraTest();
   const url = form.source === 'onvif' ? form.onvifUrl : form.rtspUrl;
 
   return (
     <Section title="Connection">
       <div className="row">
-        <TextField label="Id" required disabled={!isNew} value={form.id} onChange={(v) => set('id', v)} placeholder="front-door" />
+        <TextField label="Name" required maxLength={100} value={form.name} onChange={(v) => set('name', v)} placeholder="Front door" />
+        <SelectField label="Site" value={form.siteId} options={sites.map((s) => ({ value: s.id, label: s.name }))} onChange={(v) => set('siteId', v)} />
         <CheckboxField label="Record this camera" checked={form.enabled} onChange={(v) => set('enabled', v)} />
       </div>
       <RadioGroup legend="Connect with" value={form.source} options={sourceOptions} onChange={(v) => set('source', v)} />
@@ -42,7 +44,7 @@ export function ConnectionSection({ form, set, isNew }: SectionProps & { isNew: 
         {form.hasPassword && <CheckboxField label="Remove the stored password" checked={form.removePassword} onChange={(v) => set('removePassword', v)} />}
       </div>
       <div className="actions start">
-        <button type="button" onClick={() => probe.mutate(toCamera(form))} disabled={probe.isPending || !url}>
+        <button type="button" onClick={() => probe.mutate({ ...toCamera(form), id: cameraId })} disabled={probe.isPending || !url}>
           {probe.isPending ? 'Testing…' : 'Test connection'}
         </button>
       </div>

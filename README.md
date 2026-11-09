@@ -309,9 +309,13 @@ var live = new HlsLiveStream();                                           // fee
 `Onvif.Open.Recorder` runs the recording manager as a service. Recording policies, storage and archive are configured
 in `Onvif.Open/Onvif.Open.Recorder/appsettings.json` (see `appsettings.Example.json`).
 
-Cameras and plugin assignments live in a settings database and are managed through the API while the recorder runs
-(`/api/config/cameras`, `/api/config/plugins`). Bring the database you use (EF Core; tables `onvif_cameras` and
-`onvif_plugins` are created on first start, also inside an existing database):
+Everything a customer sets up lives in a settings database and is managed through the API while the recorder runs:
+the **organization** (with its data region, Asia or US, chosen at setup), its **sites** (each with a time zone), its
+**recording policies**, **cameras** (each at a site, following a policy), **users** (a role, and optionally only some
+sites), saved live view layouts and plugin assignments. Camera ids are UUIDs assigned by the recorder, so recordings
+never depend on a name someone typed; names can change at any time. Bring the database you use (EF Core; the `oo_*`
+tables are created on first start, also inside an existing database, and tables added by later versions are created
+in a database from an earlier one):
 
 ```json
 "Database": { "Provider": "PostgreSql", "ConnectionString": "Host=db;Database=onvif;Username=onvif;Password=..." }
@@ -330,14 +334,25 @@ both. Keep connection strings with passwords out of the file, e.g. `Database__Co
 
 #### Users and sign-in
 
-Every endpoint needs a signed-in user, except `/health` and sign-in. Users have one of three roles, each including the
-ones before it:
+**First run.** A recorder without users opens the web application's setup page: organization name and data region,
+the first site and its time zone, and the owner's account (`GET/POST /api/setup`, open only until the first owner
+exists; with `Security:SetupToken` configured it also asks for that token). Automated installs set
+`Security:InitialAdmin:Password` instead (and optionally `UserName`, `OrganizationName`, `Region`, `SiteName`,
+`TimeZone`): the organization and owner are then created at startup. Setup creates two recording policies: *Always
+record* (the default: video kept 7 days, video around events 30 days) and *Events only* (video kept 30 days).
+
+Every endpoint needs a signed-in user, except `/health`, sign-in and setup. Users have one of four roles in their
+organization, each including the ones before it, and see either all sites or only the ones they were given:
 
 | Role | Can |
 | --- | --- |
 | `Viewer` | Live view, recordings, clips, snapshots, camera status and events |
 | `Operator` | Also start/stop/trigger recording, PTZ (also presets), focus, relays |
-| `Admin` | Also cameras, plugins, users, imaging settings, relay settings, deleting recordings, retention, discovery |
+| `Admin` | Also cameras, plugins, imaging settings, relay settings, deleting recordings, retention, discovery; with all sites also sites, recording policies and users |
+| `Owner` | Also owners (only owners make or change owners) and the organization's name; one enabled owner with all sites always remains |
+
+A camera of a site the user may not see does not exist for them: every `/api/cameras/{id}/...` route answers 404, and
+lists (cameras, events, layouts) leave it out.
 
 ```
 POST /api/auth/login    { "userName": "admin", "password": "..." }
@@ -346,10 +361,9 @@ GET  /api/cameras        Authorization: Bearer <accessToken>
 POST /api/auth/refresh  { "refreshToken": "..." }   → new tokens
 ```
 
-* The first admin is created on the first start: with `Security:InitialAdmin:Password`, or with a generated password
-  that is logged once and must be changed at the first sign-in. Users created by an admin also choose their own
-  password first; until then only `/api/auth/me` and `/api/auth/password` work.
-* Changing a user's password, role or state, or the user's own password change, ends its sessions (within 30 s).
+* Users created by an administrator choose their own password first; until then only `/api/auth/me` and
+  `/api/auth/password` work.
+* Changing a user's password, role, sites or state, or the user's own password change, ends its sessions (within 30 s).
 * After 5 wrong passwords an account is locked for 5 minutes; sign-ins are limited to 10 per minute and address.
 * Video players and downloads that cannot send a header may pass the token as `?access_token=` on video requests only
   (playlists, segments, clips, snapshots, exports); playlists then carry it to their segments. Prefer the header
@@ -361,7 +375,7 @@ POST /api/auth/refresh  { "refreshToken": "..." }   → new tokens
 "Recording": {
   "StorageDirectory": "/var/recordings",
   "Rotation": { "SegmentDuration": "00:10:00", "MaxSegmentSizeMB": 512 },
-  "Retention": { "MaxAge": "7.00:00:00", "MaxSizePerCameraGB": 100, "MinFreeSpaceGB": 5 },
+  "Retention": { "MaxSizePerCameraGB": 100, "MinFreeSpaceGB": 5 },   // limits of this recorder; how long video is kept comes from each camera's policy
   "Archive": {
     "Provider": "Onvif.Open.Storage.S3",          // or "FileSystem" (NAS), "Onvif.Open.Storage.Azure", "Onvif.Open.Storage.Gcs"
     "Settings": { "Bucket": "my-recordings", "Region": "eu-west-1" }
@@ -372,14 +386,16 @@ POST /api/auth/refresh  { "refreshToken": "..." }   → new tokens
 A camera, as sent to `POST /api/config/cameras`:
 
 ```json
-{ "id": "entrance", "onvifUrl": "http://192.168.1.13", "username": "admin", "password": "...",
-  "mode": "Triggered", "preRoll": "00:00:05", "postRoll": "00:00:10",
+{ "name": "Entrance", "siteId": "<a site id>", "policyId": "<a policy id; omitted: the default>",
+  "onvifUrl": "http://192.168.1.13", "username": "admin", "password": "...",
   "events": { "triggerTopics": [ "RuleEngine/CellMotionDetector/Motion" ] },
   "analytics": { "triggerClasses": [ "Human", "Vehicle" ], "minLikelihood": 0.6 },
   "audio": { "enabled": true } }
 ```
 
-RTSP-only cameras use `rtspUrl` (optionally `"transport": "Udp"`). `analytics` uses the camera's own object detection
+The recorder answers with the camera's `id`. Its policy sets how it records (always, or only around events with pre-
+and post-roll) and how long its video is kept; `triggerTopics` and `triggerClasses` choose the events that start a
+recording. RTSP-only cameras use `rtspUrl` (optionally `"transport": "Udp"`). `analytics` uses the camera's own object detection
 (ONVIF Profile M): `triggerClasses` records while such an object is in view (instead of on every motion event), and
 `"enabled": true` passes detected objects to plugins.
 
@@ -409,10 +425,14 @@ dotnet run --project Onvif.Open/Onvif.Open.Recorder
 | `GET /api/config/cameras`, `GET .../{id}` | Camera configuration (also disabled cameras); passwords are never returned (`hasPassword`) |
 | `POST /api/auth/login`, `POST /api/auth/refresh` | Sign in (access + refresh token), renew the access token |
 | `GET /api/auth/me`, `POST /api/auth/password` `{currentPassword, newPassword}` | The own account; a password change returns new tokens |
-| `GET /api/users`, `POST /api/users` `{userName, password, role}`, `PUT .../{id}` `{role, enabled, password}`, `DELETE .../{id}` | Users (admins); an enabled admin always remains |
+| `GET /api/setup`, `POST /api/setup` `{organizationName, region, siteName, timeZone, userName, password, setupToken?}` | First-run setup (anonymous, until the first owner exists); returns the owner's tokens |
+| `GET /api/organization`, `PUT /api/organization` `{name}` | The organization (name, data region); owners rename it |
+| `GET /api/sites`, `POST /api/sites` `{name, timeZone, address}`, `PUT .../{id}`, `DELETE .../{id}` | Sites the user sees; a site with cameras, and the last site, cannot be deleted |
+| `GET /api/recording-policies`, `POST` `{name, mode: Always/EventsOnly, preRollSeconds, postRollSeconds, continuousRetentionDays, eventRetentionDays, isDefault}`, `PUT .../{id}`, `DELETE .../{id}` | Recording policies; a change applies to its cameras at once; the default and policies in use cannot be deleted |
+| `GET /api/users`, `POST /api/users` `{userName, password, role, sites}`, `PUT .../{id}` `{role, sites, enabled, password}`, `DELETE .../{id}` | Members of the organization (administrators who see all sites); `sites: []` = all sites |
 | `GET /api/config/plugins`, `PUT .../{folder}` `{enabled, cameras, settings}`, `DELETE .../{folder}` | Plugin assignments (applied at the next start); setting values are write-only |
 | `POST /api/config/cameras/test` | Try a camera before saving it: sign-in, device, media profiles and capabilities (ONVIF) or codec (RTSP). With `id` and no password the stored password is used |
-| `POST /api/config/cameras`, `PUT .../{id}`, `DELETE .../{id}` | Add, change (password omitted: kept, `""`: removed) or remove a camera; applied immediately. Removing a camera assigned to a plugin is refused |
+| `POST /api/config/cameras`, `PUT .../{id}`, `DELETE .../{id}` | Add (the recorder assigns the id), change (name, site, policy, connection; password omitted: kept, `""`: removed) or remove a camera; applied immediately. Removing a camera assigned to a plugin is refused |
 | `GET /api/cameras/{id}/device-recordings` | Recordings stored on the camera (Profile G) and their time span |
 | `GET /api/cameras/{id}/device-recordings/{token}/export?from=...&to=...` | Download a clip from the camera's own storage as MPEG-TS (up to 6 hours) |
 | `GET /api/cameras/{id}/io` | Relay outputs and digital inputs |
@@ -433,10 +453,11 @@ a network: bearer tokens and passwords must not travel in clear text.
 
 ## Web app
 
-`web/` is a React + TypeScript app for the recorder: sign-in, live view (several cameras in a grid: single, 2 × 2 up to
+`web/` is a React + TypeScript app for the recorder: first-run setup, sign-in, live view (several cameras in a grid: single, 2 × 2 up to
 5 × 5, or one large tile with smaller ones; arrange cameras by picking or dragging, enlarge one with a double click,
 full screen; layouts saved per user or shared by administrators), cameras (status for everyone; adding, editing and
-removing for administrators, with discovery and a connection test), users and roles, and the own account. It is a
+removing for administrators, with discovery and a connection test), settings (sites, recording policies, users with
+roles and site access, the organization) and the own account. It is a
 static site served separately from the recorder:
 
 ```

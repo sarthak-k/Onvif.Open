@@ -45,11 +45,31 @@ export function memoryStorage(initial: string | null = null): TokenStorage & { v
 
 export const tokens = (n: number) => ({ tokenType: 'Bearer', accessToken: `access-${n}`, expiresIn: 900, refreshToken: `refresh-${n}` });
 
+export const organization = { id: 'org-1', name: 'Riverside Shops', region: 'us' as const };
+
+export const mainSite = { id: 'site-main', name: 'Main St', timeZone: 'UTC', address: null };
+export const lyonSite = { id: 'site-lyon', name: 'Lyon', timeZone: 'Europe/Paris', address: null };
+
+export const policies = [
+  { id: 'p-always', name: 'Always record', mode: 'Always' as const, preRollSeconds: 5, postRollSeconds: 10, continuousRetentionDays: 7, eventRetentionDays: 30, isDefault: true },
+  { id: 'p-events', name: 'Events only', mode: 'EventsOnly' as const, preRollSeconds: 5, postRollSeconds: 10, continuousRetentionDays: 7, eventRetentionDays: 30, isDefault: false },
+];
+
+/** The signed-in user (/api/auth/me): an administrator who sees every site. */
 export const admin = {
   id: 'u1',
   userName: 'admin',
   role: 'Admin' as const,
+  sites: [] as string[],
   enabled: true,
   mustChangePassword: false,
   createdAt: '2026-11-01T00:00:00Z',
+  organization,
+};
+
+/** Routes every signed-in page needs: sites and policies. */
+export const tenancyRoutes = {
+  'GET /api/sites': () => ({ body: [mainSite, lyonSite] }),
+  'GET /api/recording-policies': () => ({ body: policies }),
+  'GET /api/setup': () => ({ body: { required: false, tokenRequired: false, regions: [] } }),
 };

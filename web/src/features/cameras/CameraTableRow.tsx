@@ -5,6 +5,7 @@ import { describeSource, describeState, type CameraRow } from './cameraRows';
 
 interface Props {
   row: CameraRow;
+  siteName?: string;
   canManage: boolean;
   canControl: boolean;
   onToggleRecording(id: string, action: 'start' | 'stop'): void;
@@ -12,16 +13,17 @@ interface Props {
 }
 
 /** One camera; re-rendered only when its own data changes (the list polls every few seconds). */
-export const CameraTableRow = memo(function CameraTableRow({ row, canManage, canControl, onToggleRecording, onDelete }: Props) {
-  const { id, config, status } = row;
+export const CameraTableRow = memo(function CameraTableRow({ row, siteName, canManage, canControl, onToggleRecording, onDelete }: Props) {
+  const { id, name, config, status } = row;
   const stopped = status?.state === 'Stopped';
 
   return (
     <tr>
       <td>
-        {canManage ? <Link to={`/cameras/${encodeURIComponent(id)}`}>{id}</Link> : id}
+        {canManage ? <Link to={`/cameras/${encodeURIComponent(id)}`}>{name}</Link> : name}
         {config && !config.enabled && <span className="badge">disabled</span>}
       </td>
+      <td>{siteName ?? '—'}</td>
       {canManage && <td>{describeSource(config)}</td>}
       <td>{status?.mode ?? config?.mode ?? '—'}</td>
       <td>

@@ -7,9 +7,10 @@ using Microsoft.EntityFrameworkCore;
 namespace Onvif.Open.Recorder.Store
 {
     /// <summary>
-    /// The settings database (EF Core): works on SQLite, SQL Server, PostgreSQL and MySQL. Camera options are one JSON
-    /// column, so adding an option needs no schema change; tables are prefixed "onvif_" so they can live in a shared
-    /// database.
+    /// The settings database (EF Core): works on SQLite, SQL Server, PostgreSQL and MySQL. Everything a customer owns
+    /// belongs to an organization; cameras belong to a site. Ids are UUIDs and names are labels that can change.
+    /// Camera connection options are one JSON column, so adding an option needs no schema change. Tables are prefixed
+    /// "oo_" so they can live in a shared database.
     /// </summary>
     public sealed class RecorderDbContext : DbContext
     {
@@ -24,10 +25,17 @@ namespace Onvif.Open.Recorder.Store
 
         #region Public Variables
 
+        public DbSet<OrganizationRecord> Organizations => Set<OrganizationRecord>();
+        public DbSet<SiteRecord> Sites => Set<SiteRecord>();
+        public DbSet<RecordingPolicyRecord> RecordingPolicies => Set<RecordingPolicyRecord>();
         public DbSet<CameraRecord> Cameras => Set<CameraRecord>();
-        public DbSet<PluginRecord> Plugins => Set<PluginRecord>();
         public DbSet<UserRecord> Users => Set<UserRecord>();
+        public DbSet<MembershipRecord> Memberships => Set<MembershipRecord>();
         public DbSet<LayoutRecord> Layouts => Set<LayoutRecord>();
+        public DbSet<PluginRecord> Plugins => Set<PluginRecord>();
+
+        /// <summary>Every table of the model, for creating the ones a database lacks.</summary>
+        public static readonly string[] TableNames = { "oo_organizations", "oo_sites", "oo_recording_policies", "oo_cameras", "oo_users", "oo_memberships", "oo_layouts", "oo_plugins" };
 
         #endregion
 
@@ -35,62 +43,168 @@ namespace Onvif.Open.Recorder.Store
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            modelBuilder.Entity<CameraRecord>(camera =>
+            modelBuilder.Entity<OrganizationRecord>(organization =>
             {
-                camera.ToTable("onvif_cameras");
-                camera.HasKey(c => c.Key);
-                camera.Property(c => c.Key).HasMaxLength(64);
-                camera.Property(c => c.Id).HasMaxLength(64).IsRequired();
-                camera.Property(c => c.Options).IsRequired();
-                camera.HasIndex(c => c.CreatedAt);
+                organization.ToTable("oo_organizations");
+                organization.HasKey(o => o.Id);
+                organization.Property(o => o.Id).HasMaxLength(36);
+                organization.Property(o => o.Name).HasMaxLength(100).IsRequired();
+                organization.Property(o => o.Region).HasMaxLength(16).IsRequired();
             });
 
-            modelBuilder.Entity<PluginRecord>(plugin =>
+            modelBuilder.Entity<SiteRecord>(site =>
             {
-                plugin.ToTable("onvif_plugins");
-                plugin.HasKey(p => p.Key);
-                plugin.Property(p => p.Key).HasMaxLength(255);
-                plugin.Property(p => p.Folder).HasMaxLength(255).IsRequired();
-                plugin.Property(p => p.Cameras).IsRequired();
+                site.ToTable("oo_sites");
+                site.HasKey(s => s.Id);
+                site.Property(s => s.Id).HasMaxLength(36);
+                site.Property(s => s.OrganizationId).HasMaxLength(36).IsRequired();
+                site.Property(s => s.Name).HasMaxLength(100).IsRequired();
+                site.Property(s => s.TimeZone).HasMaxLength(64).IsRequired();
+                site.Property(s => s.Address).HasMaxLength(200);
+                site.HasIndex(s => s.OrganizationId);
+            });
+
+            modelBuilder.Entity<RecordingPolicyRecord>(policy =>
+            {
+                policy.ToTable("oo_recording_policies");
+                policy.HasKey(p => p.Id);
+                policy.Property(p => p.Id).HasMaxLength(36);
+                policy.Property(p => p.OrganizationId).HasMaxLength(36).IsRequired();
+                policy.Property(p => p.Name).HasMaxLength(64).IsRequired();
+                policy.Property(p => p.Mode).HasMaxLength(16).IsRequired();
+                policy.HasIndex(p => p.OrganizationId);
+            });
+
+            modelBuilder.Entity<CameraRecord>(camera =>
+            {
+                camera.ToTable("oo_cameras");
+                camera.HasKey(c => c.Id);
+                camera.Property(c => c.Id).HasMaxLength(64);
+                camera.Property(c => c.OrganizationId).HasMaxLength(36).IsRequired();
+                camera.Property(c => c.SiteId).HasMaxLength(36).IsRequired();
+                camera.Property(c => c.PolicyId).HasMaxLength(36).IsRequired();
+                camera.Property(c => c.Name).HasMaxLength(100).IsRequired();
+                camera.Property(c => c.Options).IsRequired();
+                camera.HasIndex(c => c.OrganizationId);
+                camera.HasIndex(c => c.SiteId);
+                camera.HasIndex(c => c.CreatedAt);
             });
 
             modelBuilder.Entity<UserRecord>(user =>
             {
-                user.ToTable("onvif_users");
+                user.ToTable("oo_users");
                 user.HasKey(u => u.Id);
                 user.Property(u => u.Id).HasMaxLength(36);
                 user.Property(u => u.UserName).HasMaxLength(64).IsRequired();
                 user.Property(u => u.NormalizedUserName).HasMaxLength(64).IsRequired();
                 user.HasIndex(u => u.NormalizedUserName).IsUnique();
                 user.Property(u => u.PasswordHash).IsRequired();
-                user.Property(u => u.Role).HasMaxLength(16).IsRequired();
                 user.Property(u => u.SecurityStamp).HasMaxLength(36).IsRequired();
+            });
+
+            modelBuilder.Entity<MembershipRecord>(membership =>
+            {
+                membership.ToTable("oo_memberships");
+                membership.HasKey(m => m.Id);
+                membership.Property(m => m.Id).HasMaxLength(36);
+                membership.Property(m => m.UserId).HasMaxLength(36).IsRequired();
+                membership.Property(m => m.OrganizationId).HasMaxLength(36).IsRequired();
+                membership.Property(m => m.Role).HasMaxLength(16).IsRequired();
+                membership.Property(m => m.Sites).IsRequired();
+                membership.HasIndex(m => new { m.UserId, m.OrganizationId }).IsUnique();
+                membership.HasIndex(m => m.OrganizationId);
             });
 
             modelBuilder.Entity<LayoutRecord>(layout =>
             {
-                layout.ToTable("onvif_layouts");
+                layout.ToTable("oo_layouts");
                 layout.HasKey(l => l.Id);
                 layout.Property(l => l.Id).HasMaxLength(36);
+                layout.Property(l => l.OrganizationId).HasMaxLength(36).IsRequired();
                 layout.Property(l => l.OwnerId).HasMaxLength(36);
                 layout.Property(l => l.Name).HasMaxLength(64).IsRequired();
                 layout.Property(l => l.Grid).HasMaxLength(32).IsRequired();
                 layout.Property(l => l.Cameras).IsRequired();
-                layout.HasIndex(l => l.OwnerId);
+                layout.HasIndex(l => new { l.OrganizationId, l.OwnerId });
+            });
+
+            modelBuilder.Entity<PluginRecord>(plugin =>
+            {
+                plugin.ToTable("oo_plugins");
+                plugin.HasKey(p => p.Key);
+                plugin.Property(p => p.Key).HasMaxLength(255);
+                plugin.Property(p => p.Folder).HasMaxLength(255).IsRequired();
+                plugin.Property(p => p.Cameras).IsRequired();
             });
         }
 
         #endregion
     }
 
-    /// <summary>A camera row: <see cref="Key"/> is the lower-cased id (ids are case-insensitive).</summary>
+    /// <summary>A customer: everything else belongs to one. Its data stays in its region.</summary>
+    public sealed class OrganizationRecord
+    {
+        public string Id { get; set; }
+        public string Name { get; set; }
+
+        /// <summary>Data region chosen at sign-up (see <see cref="Tenancy.Regions"/>); it does not change.</summary>
+        public string Region { get; set; }
+
+        public DateTime CreatedAt { get; set; }
+    }
+
+    /// <summary>A place with cameras; times there are shown in its time zone.</summary>
+    public sealed class SiteRecord
+    {
+        public string Id { get; set; }
+        public string OrganizationId { get; set; }
+        public string Name { get; set; }
+
+        /// <summary>IANA time zone, e.g. "Asia/Kolkata".</summary>
+        public string TimeZone { get; set; }
+
+        public string Address { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
+    }
+
+    /// <summary>How cameras record and how long the video is kept; cameras refer to one.</summary>
+    public sealed class RecordingPolicyRecord
+    {
+        public string Id { get; set; }
+        public string OrganizationId { get; set; }
+        public string Name { get; set; }
+
+        /// <summary>"Always" or "EventsOnly" (see <see cref="Tenancy.RecordingModes"/>).</summary>
+        public string Mode { get; set; }
+
+        public int PreRollSeconds { get; set; }
+        public int PostRollSeconds { get; set; }
+
+        /// <summary>Days continuous video is kept.</summary>
+        public int ContinuousRetentionDays { get; set; }
+
+        /// <summary>Days video around events is kept.</summary>
+        public int EventRetentionDays { get; set; }
+
+        /// <summary>The policy new cameras get unless another is chosen; one per organization.</summary>
+        public bool IsDefault { get; set; }
+
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
+    }
+
+    /// <summary>A camera. Its id (a UUID) names its recordings on disk; its name is only a label.</summary>
     public sealed class CameraRecord
     {
-        public string Key { get; set; }
         public string Id { get; set; }
+        public string OrganizationId { get; set; }
+        public string SiteId { get; set; }
+        public string PolicyId { get; set; }
+        public string Name { get; set; }
         public bool Enabled { get; set; }
 
-        /// <summary>The camera options as JSON, without the password.</summary>
+        /// <summary>The connection and stream options as JSON, without the password.</summary>
         public string Options { get; set; }
 
         /// <summary>The password, encrypted (Data Protection); null without one.</summary>
@@ -100,7 +214,7 @@ namespace Onvif.Open.Recorder.Store
         public DateTime UpdatedAt { get; set; }
     }
 
-    /// <summary>A user of the recorder (see <see cref="Security.Roles"/>).</summary>
+    /// <summary>A person who signs in; what they may do comes from their memberships.</summary>
     public sealed class UserRecord
     {
         public string Id { get; set; }
@@ -112,13 +226,12 @@ namespace Onvif.Open.Recorder.Store
         /// <summary>PBKDF2 hash (ASP.NET Core Identity password hasher).</summary>
         public string PasswordHash { get; set; }
 
-        public string Role { get; set; }
         public bool Enabled { get; set; }
 
-        /// <summary>Set for generated passwords: the user must choose a new one before doing anything else.</summary>
+        /// <summary>Set for passwords an administrator chose: the user must choose a new one before anything else.</summary>
         public bool MustChangePassword { get; set; }
 
-        /// <summary>Changes when the password, role or state changes: tokens issued before become invalid.</summary>
+        /// <summary>Changes when the password, role, sites or state changes: tokens issued before become invalid.</summary>
         public string SecurityStamp { get; set; }
 
         public int FailedLogins { get; set; }
@@ -128,13 +241,30 @@ namespace Onvif.Open.Recorder.Store
         public DateTime UpdatedAt { get; set; }
     }
 
+    /// <summary>A user's role in an organization, optionally limited to some of its sites.</summary>
+    public sealed class MembershipRecord
+    {
+        public string Id { get; set; }
+        public string UserId { get; set; }
+        public string OrganizationId { get; set; }
+
+        /// <summary>See <see cref="Security.Roles"/>.</summary>
+        public string Role { get; set; }
+
+        /// <summary>The site ids the user may see, as a JSON array; empty: all sites.</summary>
+        public string Sites { get; set; }
+
+        public DateTime CreatedAt { get; set; }
+    }
+
     /// <summary>
-    /// A saved live view: which cameras show in which tiles of a grid. Private to its owner, or shared with everyone
-    /// (no owner; managed by administrators).
+    /// A saved live view: which cameras show in which tiles of a grid. Private to its owner, or shared with the
+    /// organization (no owner; managed by administrators).
     /// </summary>
     public sealed class LayoutRecord
     {
         public string Id { get; set; }
+        public string OrganizationId { get; set; }
 
         /// <summary>The user the layout belongs to; null: shared.</summary>
         public string OwnerId { get; set; }
@@ -158,10 +288,10 @@ namespace Onvif.Open.Recorder.Store
         public string Folder { get; set; }
         public bool Enabled { get; set; }
 
-        /// <summary>Assigned camera ids as a JSON array (empty: all cameras).</summary>
+        /// <summary>Camera ids as a JSON array; empty: all cameras.</summary>
         public string Cameras { get; set; }
 
-        /// <summary>The settings as JSON, encrypted (they may hold secrets); null without settings.</summary>
+        /// <summary>The settings JSON, encrypted (Data Protection); null without settings.</summary>
         public string Settings { get; set; }
 
         public DateTime UpdatedAt { get; set; }

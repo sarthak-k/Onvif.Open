@@ -12,8 +12,11 @@ import { createHlsPlayer } from '../features/live/player/hlsPlayer';
 import type { PlayerFactory } from '../features/live/player/types';
 import { Layout } from './Layout';
 import { appRoutes } from './routes';
+import { SettingsHome } from './SettingsHome';
 
 const LoginPage = lazy(() => import('../features/auth/LoginPage'));
+const SetupPage = lazy(() => import('../features/auth/SetupPage'));
+const SettingsLayout = lazy(() => import('../features/settings/SettingsLayout'));
 const ChangePasswordPage = lazy(() => import('../features/auth/ChangePasswordPage'));
 
 export function createQueryClient(): QueryClient {
@@ -48,6 +51,7 @@ export function App({ client, queryClient, api, player = createHlsPlayer }: Prop
             <Suspense fallback={<p className="loading">Loading…</p>}>
               <Routes>
                 <Route path="/login" element={<LoginPage />} />
+                <Route path="/setup" element={<SetupPage />} />
                 <Route
                   path="/change-password"
                   element={
@@ -63,17 +67,35 @@ export function App({ client, queryClient, api, player = createHlsPlayer }: Prop
                     </RequireAuth>
                   }
                 >
-                  {appRoutes.map(({ path, page: Page, permission }) => (
-                    <Route
-                      key={path}
-                      path={path}
-                      element={
-                        <RequirePermission permission={permission}>
-                          <Page />
-                        </RequirePermission>
-                      }
-                    />
-                  ))}
+                  {appRoutes
+                    .filter((route) => !route.settings)
+                    .map(({ path, page: Page, permission }) => (
+                      <Route
+                        key={path}
+                        path={path}
+                        element={
+                          <RequirePermission permission={permission}>
+                            <Page />
+                          </RequirePermission>
+                        }
+                      />
+                    ))}
+                  <Route path="/settings" element={<SettingsLayout />}>
+                    <Route index element={<SettingsHome />} />
+                    {appRoutes
+                      .filter((route) => route.settings)
+                      .map(({ path, page: Page, permission }) => (
+                        <Route
+                          key={path}
+                          path={path}
+                          element={
+                            <RequirePermission permission={permission}>
+                              <Page />
+                            </RequirePermission>
+                          }
+                        />
+                      ))}
+                  </Route>
                 </Route>
                 <Route path="*" element={<Navigate to="/cameras" replace />} />
               </Routes>

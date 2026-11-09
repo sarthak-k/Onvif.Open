@@ -52,7 +52,7 @@ namespace Onvif.Open.Recorder.Store
             await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
             {
                 var records = await db.Cameras.AsNoTracking().ToListAsync(cancellationToken).ConfigureAwait(false);
-                return records.OrderBy(r => r.CreatedAt).ThenBy(r => r.Key, StringComparer.Ordinal).Select(ToCamera).ToList();
+                return records.OrderBy(r => r.CreatedAt).ThenBy(r => r.Id, StringComparer.Ordinal).Select(ToCamera).ToList();
             }
         }
 
@@ -60,7 +60,8 @@ namespace Onvif.Open.Recorder.Store
         {
             await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
             {
-                var record = await db.Cameras.AsNoTracking().FirstOrDefaultAsync(c => c.Key == Key(cameraId), cancellationToken).ConfigureAwait(false);
+                var key = Key(cameraId);
+                var record = await db.Cameras.AsNoTracking().FirstOrDefaultAsync(c => c.Id == key, cancellationToken).ConfigureAwait(false);
                 return record == null ? null : ToCamera(record);
             }
         }
@@ -74,21 +75,34 @@ namespace Onvif.Open.Recorder.Store
 
             await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
             {
+                if (string.IsNullOrEmpty(camera.Id) || string.IsNullOrEmpty(camera.OrganizationId) || string.IsNullOrEmpty(camera.SiteId) || string.IsNullOrEmpty(camera.PolicyId))
+                {
+                    throw new ArgumentException("A camera needs an id, an organization, a site and a recording policy.", nameof(camera));
+                }
+
                 var key = Key(camera.Id);
                 var now = DateTime.UtcNow;
-                var record = await db.Cameras.FirstOrDefaultAsync(c => c.Key == key, cancellationToken).ConfigureAwait(false);
+                var record = await db.Cameras.FirstOrDefaultAsync(c => c.Id == key, cancellationToken).ConfigureAwait(false);
 
                 if (record == null)
                 {
-                    record = new CameraRecord { Key = key, Id = camera.Id, CreatedAt = now };
+                    record = new CameraRecord { Id = key, CreatedAt = now };
                     db.Cameras.Add(record);
                 }
 
-                // The password is kept apart, encrypted; the options never contain it.
+                // The password is kept apart, encrypted; the options never contain it, nor what has its own column.
                 var options = Copy(camera);
-                options.Id = record.Id;
+                options.Id = null;
                 options.Password = null;
+                options.Name = null;
+                options.OrganizationId = null;
+                options.SiteId = null;
+                options.PolicyId = null;
 
+                record.OrganizationId = camera.OrganizationId;
+                record.SiteId = camera.SiteId;
+                record.PolicyId = camera.PolicyId;
+                record.Name = string.IsNullOrWhiteSpace(camera.Name) ? camera.Id : camera.Name.Trim();
                 record.Enabled = camera.Enabled;
                 record.Options = JsonSerializer.Serialize(options, Json);
                 record.Password = string.IsNullOrEmpty(camera.Password) ? null : _passwords.Protect(camera.Password);
@@ -102,7 +116,8 @@ namespace Onvif.Open.Recorder.Store
         {
             await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
             {
-                return await db.Cameras.Where(c => c.Key == Key(cameraId)).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false) > 0;
+                var key = Key(cameraId);
+                return await db.Cameras.Where(c => c.Id == key).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false) > 0;
             }
         }
 
@@ -154,7 +169,8 @@ namespace Onvif.Open.Recorder.Store
         {
             await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
             {
-                return await db.Plugins.Where(p => p.Key == Key(folder)).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false) > 0;
+                var key = Key(folder);
+                return await db.Plugins.Where(p => p.Key == key).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false) > 0;
             }
         }
 
@@ -171,6 +187,10 @@ namespace Onvif.Open.Recorder.Store
         {
             var camera = JsonSerializer.Deserialize<CameraOptions>(record.Options, Json);
             camera.Id = record.Id;
+            camera.OrganizationId = record.OrganizationId;
+            camera.SiteId = record.SiteId;
+            camera.PolicyId = record.PolicyId;
+            camera.Name = record.Name;
             camera.Enabled = record.Enabled;
             camera.Password = record.Password == null ? null : _passwords.Unprotect(record.Password);
             return camera;

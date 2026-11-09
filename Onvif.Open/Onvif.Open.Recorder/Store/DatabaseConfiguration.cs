@@ -107,10 +107,14 @@ namespace Onvif.Open.Recorder.Store
         {
             var probes = new (string Table, Func<CancellationToken, Task<bool>> Probe)[]
             {
-                ("onvif_cameras", ct => db.Cameras.AnyAsync(ct)),
-                ("onvif_plugins", ct => db.Plugins.AnyAsync(ct)),
-                ("onvif_users", ct => db.Users.AnyAsync(ct)),
-                ("onvif_layouts", ct => db.Layouts.AnyAsync(ct))
+                ("oo_organizations", ct => db.Organizations.AnyAsync(ct)),
+                ("oo_sites", ct => db.Sites.AnyAsync(ct)),
+                ("oo_recording_policies", ct => db.RecordingPolicies.AnyAsync(ct)),
+                ("oo_cameras", ct => db.Cameras.AnyAsync(ct)),
+                ("oo_users", ct => db.Users.AnyAsync(ct)),
+                ("oo_memberships", ct => db.Memberships.AnyAsync(ct)),
+                ("oo_layouts", ct => db.Layouts.AnyAsync(ct)),
+                ("oo_plugins", ct => db.Plugins.AnyAsync(ct))
             };
             var missing = new List<string>();
 
