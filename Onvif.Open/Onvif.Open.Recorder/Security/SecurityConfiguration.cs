@@ -147,6 +147,7 @@ namespace Onvif.Open.Recorder.Security
             var path = request.Path.Value ?? string.Empty;
             return path.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith(".ts", StringComparison.OrdinalIgnoreCase)
+                   || path.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("/clip", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("/snapshot", StringComparison.OrdinalIgnoreCase)
                    || path.EndsWith("/export", StringComparison.OrdinalIgnoreCase)

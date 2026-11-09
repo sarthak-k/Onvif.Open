@@ -132,8 +132,9 @@ namespace Onvif.Open.Test.Recording.Integration
 
                 // Setup only works while there are no users (and with Security:SetupToken when one is configured).
                 // Gateways ask for a pairing code (rate-limited; pairs nothing until an administrator enters it), collect
-                // their token with the pairing's secret, and report with their token.
-                Assert.Equal(new[] { "/api/auth/login", "/api/auth/refresh", "/api/gateways/heartbeat", "/api/gateways/pairing", "/api/gateways/pairing/{id}", "/api/setup", "/api/setup", "/health" }, anonymous);
+                // their token with the pairing's secret, and report with their token. A share link downloads one export until it
+                // expires or is revoked.
+                Assert.Equal(new[] { "/api/auth/login", "/api/auth/refresh", "/api/gateways/heartbeat", "/api/gateways/pairing", "/api/gateways/pairing/{id}", "/api/setup", "/api/setup", "/api/shared/{token}/video.mp4", "/health" }, anonymous);
             }
         }
 

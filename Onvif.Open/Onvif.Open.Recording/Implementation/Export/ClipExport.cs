@@ -91,8 +91,13 @@ namespace Onvif.Open.Recording.Implementation.Export
             // Frames of the current GOP before "from": the clip starts at its key frame.
             private readonly List<(DateTimeOffset Time, DemuxedFrame Frame)> _pending = new List<(DateTimeOffset, DemuxedFrame)>();
 
+            /// <summary>How long the clip waits for the camera's audio before it is written without.</summary>
+            private static readonly TimeSpan AudioWait = TimeSpan.FromSeconds(1);
+
             private ISegmentMuxer _muxer;
             private VideoCodec _codec;
+            private AudioFormat _audio;
+            private bool _startFound;
             private DateTimeOffset _clipStart;
             private bool _done;
 
@@ -109,6 +114,11 @@ namespace Onvif.Open.Recording.Implementation.Export
                     if (!frame.IsAudio)
                     {
                         firstVideoPts ??= frame.Pts;
+                    }
+                    else
+                    {
+                        // The clip has audio when the recording has: its format, as soon as it is known.
+                        _audio ??= frame.Audio;
                     }
 
                     if (!firstVideoPts.HasValue)
@@ -132,30 +142,31 @@ namespace Onvif.Open.Recording.Implementation.Export
 
                     if (_muxer == null)
                     {
-                        if (!frame.IsAudio && frame.IsKeyFrame)
+                        if (!_startFound)
                         {
-                            // A new GOP: what came before "from" is not needed.
-                            _pending.Clear();
-                        }
+                            if (!frame.IsAudio && frame.IsKeyFrame)
+                            {
+                                // A new GOP: what came before "from" is not needed.
+                                _pending.Clear();
+                            }
 
-                        if (_pending.Count == 0 && (frame.IsAudio || !frame.IsKeyFrame))
-                        {
-                            // Wait for a key frame to start the GOP.
-                            continue;
+                            if (_pending.Count == 0 && (frame.IsAudio || !frame.IsKeyFrame))
+                            {
+                                // Wait for a key frame to start the GOP.
+                                continue;
+                            }
+
+                            _startFound = time >= _from && !frame.IsAudio;
                         }
 
                         _pending.Add((time, frame));
+                        _pendingCodec = frame.IsAudio ? _pendingCodec : demuxer.Codec;
 
-                        if (time >= _from && !frame.IsAudio)
+                        // The clip's tracks are fixed when it starts: a clip starting on a key frame waits briefly for
+                        // the audio that follows it, so it is not written without.
+                        if (_startFound && (_audio != null || time - _pending[0].Time >= AudioWait))
                         {
-                            Start(demuxer.Codec);
-                            foreach (var (pendingTime, pendingFrame) in _pending)
-                            {
-                                Write(pendingTime, pendingFrame);
-                            }
-
-                            _pending.Clear();
-                            await FlushAsync(cancellationToken).ConfigureAwait(false);
+                            await StartAsync(demuxer.Codec, cancellationToken).ConfigureAwait(false);
                         }
 
                         continue;
@@ -177,17 +188,32 @@ namespace Onvif.Open.Recording.Implementation.Export
 
             public async Task CompleteAsync(CancellationToken cancellationToken)
             {
+                if (_muxer == null && _startFound && _pending.Count > 0)
+                {
+                    // The recordings ended while waiting for audio.
+                    await StartAsync(_pendingCodec, cancellationToken).ConfigureAwait(false);
+                }
+
                 _muxer?.Dispose();
                 await FlushAsync(cancellationToken).ConfigureAwait(false);
                 await _output.FlushAsync(cancellationToken).ConfigureAwait(false);
             }
 
-            private void Start(VideoCodec codec)
+            private VideoCodec _pendingCodec;
+
+            private async Task StartAsync(VideoCodec codec, CancellationToken cancellationToken)
             {
                 _codec = codec;
                 _clipStart = _pending[0].Time;
-                var audio = _pending.FirstOrDefault(p => p.Frame.IsAudio).Frame?.Audio;
-                _muxer = SegmentFormats.MpegTs.CreateMuxer(_buffer, codec, audio);
+                _muxer = SegmentFormats.MpegTs.CreateMuxer(_buffer, codec, _audio ?? _pending.FirstOrDefault(p => p.Frame.IsAudio).Frame?.Audio);
+
+                foreach (var (pendingTime, pendingFrame) in _pending)
+                {
+                    Write(pendingTime, pendingFrame);
+                }
+
+                _pending.Clear();
+                await FlushAsync(cancellationToken).ConfigureAwait(false);
             }
 
             private void Write(DateTimeOffset time, DemuxedFrame frame)

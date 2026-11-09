@@ -237,3 +237,6 @@ details[open] > summary { margin-bottom: 8px; }
 .timeline-clip { position: absolute; top: 0; bottom: 0; background: var(--accent); opacity: 0.35; pointer-events: none; }
 .clip-marks { align-items: center; }
 .clip-note { margin: 0; white-space: pre-wrap; }
+.state-ready { color: var(--ok-text); }
+.state-failed { color: var(--danger); }
+.state-queued, .state-running, .state-expired { color: var(--muted); }

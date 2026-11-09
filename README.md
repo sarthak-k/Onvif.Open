@@ -453,7 +453,19 @@ clips, and close or reopen them; administrators delete them. While a case is ope
 overlaps one of its clips, whatever the cameras' policies say (the gateway's disk limits still apply); once it is
 closed, that video follows the policies again.
 
-**Audit log.** Changes (cameras, sites, policies, users, layouts, plugins, gateways, cases, the organization), sign-ins, password
+**Exports and share links.** A stretch of up to an hour of one camera can be exported as an MP4 (H.264/AAC) with a
+watermark drawn into every frame: the organization, site and camera, who exported it and when, a reference, and the
+site time of the frame. Exports are made in the background, one at a time (and resumed after a restart), with
+ffmpeg (`Export:Ffmpeg`, default `ffmpeg` on the path; the watermark font is `Export:FontFile`, else a common font
+found on the machine, else fontconfig's default), kept in `Export:Directory` (default `data/exports`) for 7 days
+with their SHA-256, and downloaded by whoever may see the camera. Operators and above share an export with a link that
+works without signing in for 1 hour to 7 days (or until the export expires), and revoke it; the token is shown once and
+only its hash is stored; every download through a link is in the audit log.
+
+Times in the web app (Investigate, the player and its timeline, cases, exports) are shown in the time zone of the
+camera's site, with the zone's short name.
+
+**Audit log.** Changes (cameras, sites, policies, users, layouts, plugins, gateways, cases, share links, the organization), sign-ins, password
 changes, starting and stopping recording, relay switching, and who watched live video, played recordings or exported
 video (a view is recorded once per user and camera every 10 minutes) go to the audit log, kept for
 `Audit:RetentionDays` (365 by default). Refused requests are not recorded, failed sign-ins are.
@@ -510,6 +522,9 @@ dotnet run --project Onvif.Open/Onvif.Open.Recorder
 | `GET /api/events?cameraId=&siteId=&category=&from=&to=&before=&limit=` | Stored events, newest first: what cameras report (motion, tamper, inputs), detections (person, vehicle, object), cameras going offline, and plugin findings; each with its start and end. `category` is one of motion, person, vehicle, object, intrusion, tamper, input, offline, plugin, other; `before` pages |
 | `GET /api/cases?status=Open/Closed`, `GET .../{id}`, `POST /api/cases` `{name, description}`, `PUT .../{id}` `{name, description, status}`, `DELETE .../{id}` | Cases (reading for everyone, changes for operators and above, deleting for administrators); a case lists the clips of the sites the user sees |
 | `POST /api/cases/{id}/clips` `{cameraIds, from, to, note, eventId}`, `PUT .../clips/{clipId}` `{note}`, `DELETE .../clips/{clipId}` | Clips of a case (operators and above); not on closed cases |
+| `POST /api/exports` `{cameraId, from, to, caseId}`, `GET /api/exports`, `GET .../{id}`, `GET .../{id}/video.mp4` | Watermarked MP4 exports (up to an hour, kept 7 days); the file supports range requests |
+| `GET /api/exports/{id}/links`, `POST .../links` `{hours}`, `DELETE .../links/{linkId}` | Share links of an export (operators and above); a new link's `path` carries its token, shown once |
+| `GET /api/shared/{token}/video.mp4` | Download through a share link, without signing in, until it expires or is revoked |
 | `GET /api/audit?userId=&action=&from=&to=&before=&limit=` | The audit log (administrators who see all sites): changes, sign-ins (also failed ones), who watched live or recorded video and who exported it; `action` is an action (`camera.update`) or an area (`camera`) |
 | `GET /health` | Liveness |
 
@@ -525,7 +540,8 @@ camera, kind and time, newest first; open one to play its camera from 5 s before
 site in sync, with one timeline of what each recorded and the site's events: play, pause, speed up to 8×, ±10 s, click
 the timeline or an event mark to move all cameras there; operators mark the start and end of what matters and save
 it, with a note, to a case), **Cases** (incidents being looked into: their clips with notes, played back in sync;
-closed when done, deleted by administrators), cameras (status for everyone; for administrators an
+closed when done, deleted by administrators), **Exports** (watermarked MP4s to download, and share links that expire),
+cameras (status for everyone; for administrators an
 **Add cameras** wizard: it lists what the gateway found on the network (or a typed address), signs in to all of them
 with one shared password (a camera that refuses it gets its own), shows each camera's picture, chooses its streams,
 and adds them named, at a site and with a recording policy; one camera can also be added and edited in full), settings (sites, recording policies, gateways with their

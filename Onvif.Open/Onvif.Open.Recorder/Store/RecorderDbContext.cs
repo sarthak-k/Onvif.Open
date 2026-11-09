@@ -38,9 +38,11 @@ namespace Onvif.Open.Recorder.Store
         public DbSet<GatewayRecord> Gateways => Set<GatewayRecord>();
         public DbSet<CaseRecord> Cases => Set<CaseRecord>();
         public DbSet<CaseClipRecord> CaseClips => Set<CaseClipRecord>();
+        public DbSet<ExportRecord> Exports => Set<ExportRecord>();
+        public DbSet<ShareLinkRecord> ShareLinks => Set<ShareLinkRecord>();
 
         /// <summary>Every table of the model, for creating the ones a database lacks.</summary>
-        public static readonly string[] TableNames = { "oo_organizations", "oo_sites", "oo_recording_policies", "oo_cameras", "oo_users", "oo_memberships", "oo_layouts", "oo_plugins", "oo_events", "oo_audit", "oo_gateways", "oo_cases", "oo_case_clips" };
+        public static readonly string[] TableNames = { "oo_organizations", "oo_sites", "oo_recording_policies", "oo_cameras", "oo_users", "oo_memberships", "oo_layouts", "oo_plugins", "oo_events", "oo_audit", "oo_gateways", "oo_cases", "oo_case_clips", "oo_exports", "oo_share_links" };
 
         #endregion
 
@@ -193,6 +195,36 @@ namespace Onvif.Open.Recorder.Store
                 clip.Property(c => c.CreatedById).HasMaxLength(36);
                 clip.Property(c => c.CreatedByName).HasMaxLength(100);
                 clip.HasIndex(c => c.CaseId);
+            });
+
+            modelBuilder.Entity<ExportRecord>(export =>
+            {
+                export.ToTable("oo_exports");
+                export.HasKey(e => e.Id);
+                export.Property(e => e.Id).HasMaxLength(36);
+                export.Property(e => e.OrganizationId).HasMaxLength(36).IsRequired();
+                export.Property(e => e.SiteId).HasMaxLength(36);
+                export.Property(e => e.CameraId).HasMaxLength(64).IsRequired();
+                export.Property(e => e.CameraName).HasMaxLength(100);
+                export.Property(e => e.CaseId).HasMaxLength(36);
+                export.Property(e => e.RequestedById).HasMaxLength(36);
+                export.Property(e => e.RequestedByName).HasMaxLength(100);
+                export.Property(e => e.Status).HasMaxLength(16).IsRequired();
+                export.Property(e => e.Sha256).HasMaxLength(64);
+                export.HasIndex(e => new { e.OrganizationId, e.CreatedAt });
+            });
+
+            modelBuilder.Entity<ShareLinkRecord>(link =>
+            {
+                link.ToTable("oo_share_links");
+                link.HasKey(l => l.Id);
+                link.Property(l => l.Id).HasMaxLength(36);
+                link.Property(l => l.ExportId).HasMaxLength(36).IsRequired();
+                link.Property(l => l.OrganizationId).HasMaxLength(36).IsRequired();
+                link.Property(l => l.TokenHash).HasMaxLength(64).IsRequired();
+                link.Property(l => l.CreatedByName).HasMaxLength(100);
+                link.HasIndex(l => l.TokenHash).IsUnique();
+                link.HasIndex(l => l.ExportId);
             });
 
             modelBuilder.Entity<GatewayRecord>(gateway =>
@@ -509,6 +541,54 @@ namespace Onvif.Open.Recorder.Store
         public string CreatedById { get; set; }
         public string CreatedByName { get; set; }
         public DateTime CreatedAt { get; set; }
+    }
+
+    /// <summary>An MP4 export of one camera, watermarked; the file is kept until <see cref="ExpiresAt"/>.</summary>
+    public sealed class ExportRecord
+    {
+        public string Id { get; set; }
+        public string OrganizationId { get; set; }
+        public string SiteId { get; set; }
+        public string CameraId { get; set; }
+        public string CameraName { get; set; }
+        public DateTime From { get; set; }
+        public DateTime To { get; set; }
+
+        /// <summary>The case it was exported for, if any.</summary>
+        public string CaseId { get; set; }
+
+        public string RequestedById { get; set; }
+        public string RequestedByName { get; set; }
+
+        /// <summary>Queued, Running, Ready, Failed or Expired.</summary>
+        public string Status { get; set; }
+
+        public string Error { get; set; }
+        public long? Size { get; set; }
+
+        /// <summary>SHA-256 (hex) of the file, to show it was not changed.</summary>
+        public string Sha256 { get; set; }
+
+        public DateTime CreatedAt { get; set; }
+        public DateTime? CompletedAt { get; set; }
+        public DateTime ExpiresAt { get; set; }
+    }
+
+    /// <summary>A link that lets anyone holding it download an export until it expires or is revoked.</summary>
+    public sealed class ShareLinkRecord
+    {
+        public string Id { get; set; }
+        public string ExportId { get; set; }
+        public string OrganizationId { get; set; }
+
+        /// <summary>SHA-256 (hex) of the token in the link (the token itself is shown once).</summary>
+        public string TokenHash { get; set; }
+
+        public string CreatedByName { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime ExpiresAt { get; set; }
+        public DateTime? RevokedAt { get; set; }
+        public int Downloads { get; set; }
     }
 
     public sealed class PluginRecord

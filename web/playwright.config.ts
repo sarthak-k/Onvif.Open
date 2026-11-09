@@ -31,6 +31,7 @@ export default defineConfig({
         Database__ConnectionString: `Data Source=${data}/e2e.db`,
         DataProtection__KeysDirectory: `${data}/keys`,
         Recording__StorageDirectory: `${data}/recordings`,
+        Export__Directory: `${data}/exports`,
         Plugins__Directory: `${data}/plugins`,
         Security__InitialAdmin__UserName: 'admin',
         Security__InitialAdmin__Password: e2e.adminPassword,

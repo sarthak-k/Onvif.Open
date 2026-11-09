@@ -103,6 +103,10 @@ namespace Onvif.Open.Test.Recording.Fakes
             builder.UseSetting("Database:ConnectionString", $"Data Source={Database}");
             builder.UseSetting("DataProtection:KeysDirectory", Keys);
             builder.UseSetting("Security:SignInsPerMinute", "1000");
+
+            // Every SQL statement at Information drowns test failures in the CI log.
+            builder.UseSetting("Logging:LogLevel:Microsoft.EntityFrameworkCore", "Warning");
+            builder.UseSetting("Logging:LogLevel:Microsoft.AspNetCore", "Warning");
         }
 
         /// <summary>Signs <paramref name="client"/> in (as the admin by default) and returns it.</summary>

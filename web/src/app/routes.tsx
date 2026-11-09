@@ -6,6 +6,7 @@ const LivePage = lazy(() => import('../features/live/LivePage'));
 const InvestigatePage = lazy(() => import('../features/investigate/InvestigatePage'));
 const CasesPage = lazy(() => import('../features/cases/CasesPage'));
 const CasePage = lazy(() => import('../features/cases/CasePage'));
+const ExportsPage = lazy(() => import('../features/exports/ExportsPage'));
 const CamerasPage = lazy(() => import('../features/cameras/CamerasPage'));
 const AddCamerasPage = lazy(() => import('../features/cameras/wizard/AddCamerasPage'));
 const CameraEditorPage = lazy(() => import('../features/cameras/editor/CameraEditorPage'));
@@ -33,6 +34,7 @@ export const appRoutes: readonly AppRoute[] = [
   { path: '/investigate', page: InvestigatePage, permission: 'cameras.view', nav: 'Investigate' },
   { path: '/cases', page: CasesPage, permission: 'cameras.view', nav: 'Cases' },
   { path: '/cases/:id', page: CasePage, permission: 'cameras.view' },
+  { path: '/exports', page: ExportsPage, permission: 'cameras.view', nav: 'Exports' },
   { path: '/cameras', page: CamerasPage, permission: 'cameras.view', nav: 'Cameras' },
   { path: '/cameras/add', page: AddCamerasPage, permission: 'cameras.manage' },
   { path: '/cameras/new', page: CameraEditorPage, permission: 'cameras.manage' },
@@ -51,6 +53,7 @@ export const navItems: readonly { path: string; label: string; permission: Permi
   { path: '/live', label: 'Live', permission: 'cameras.view' },
   { path: '/investigate', label: 'Investigate', permission: 'cameras.view' },
   { path: '/cases', label: 'Cases', permission: 'cameras.view' },
+  { path: '/exports', label: 'Exports', permission: 'cameras.view' },
   { path: '/cameras', label: 'Cameras', permission: 'cameras.view' },
   { path: '/settings', label: 'Settings', permission: 'cameras.view' },
   { path: '/account', label: 'Account', permission: 'cameras.view' },

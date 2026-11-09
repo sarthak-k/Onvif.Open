@@ -33,44 +33,12 @@ namespace Onvif.Open.Test.Recording.Integration
 
         #region Private Methods
 
-        private static void Write(ISegmentMuxer muxer, MediaFrame frame, TimeSpan offset)
-        {
-            switch (frame)
-            {
-                case VideoFrame v:
-                    muxer.Write(new VideoFrame(v.Codec, v.Data, v.IsKeyFrame, v.RtpTimestamp, v.Timestamp - offset));
-                    break;
-                case AudioFrame a:
-                    muxer.Write(a.WithTimestamp(a.Timestamp - offset));
-                    break;
-            }
-        }
+        private static void Write(ISegmentMuxer muxer, MediaFrame frame, TimeSpan offset) => RealMedia.Write(muxer, frame, offset);
 
         /// <summary>Writes the 10 s of real media as two 5 s recordings of "cam1" starting at <see cref="Start"/>.</summary>
         private static IRecordingManager Recordings(TempDirectory temp)
         {
-            var storage = new FileSystemRecordingStorage(temp.Path);
-
-            foreach (var part in new[] { 0, 5 })
-            {
-                var frames = RealMedia.Frames.Where(f => f.Timestamp.TotalSeconds >= part && f.Timestamp.TotalSeconds < part + 5).ToList();
-                var first = frames.OfType<VideoFrame>().First().Timestamp;
-
-                using (var stream = storage.CreateSegment("cam1", Start.AddSeconds(part), ".ts", out var path))
-                {
-                    using (var muxer = SegmentFormats.MpegTs.CreateMuxer(stream, VideoCodec.H264, RealMedia.Aac16k))
-                    {
-                        foreach (var frame in frames.SkipWhile(f => f is AudioFrame))
-                        {
-                            Write(muxer, frame, first);
-                        }
-                    }
-
-                    stream.Dispose();
-                    File.SetLastWriteTimeUtc(path, Start.AddSeconds(part + 5).UtcDateTime);
-                }
-            }
-
+            var storage = RealMedia.WriteRecordings(temp.Path, "cam1", Start);
             return RecordingManagerBuilder.GetBuilder().SetStorage(storage).SetRetentionPolicy(RetentionPolicies.KeepAll).Build();
         }
 
@@ -258,6 +226,29 @@ namespace Onvif.Open.Test.Recording.Integration
                 {
                     Assert.Equal(0, await ClipExport.WriteAsync(manager, "cam1", Start.AddHours(1), Start.AddHours(2), empty));
                 }
+            }
+        }
+
+        [SkippableFact]
+        public async Task ClipsStartingOnAKeyFrameShouldKeepTheirSound()
+        {
+            Skip.IfNot(RealMedia.IsAvailable, "ffmpeg is not installed.");
+
+            using (var temp = new TempDirectory())
+            {
+                var manager = Recordings(temp);
+                var path = Path.Combine(temp.Path, "clip.ts");
+
+                // 1 s is a key frame: nothing of the GOP before it is buffered, the audio comes after it.
+                using (var file = File.Create(path))
+                {
+                    await ClipExport.WriteAsync(manager, "cam1", Start.AddSeconds(1), Start.AddSeconds(3), file);
+                }
+
+                var probe = await RealMedia.ProbeAsync(path);
+                Assert.Contains("h264", probe.Streams);
+                Assert.Contains("aac,16000,1", probe.Streams);
+                Assert.InRange(probe.Duration, 1.8, 2.3);
             }
         }
 
