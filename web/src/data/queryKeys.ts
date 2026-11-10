@@ -20,6 +20,12 @@ export const queryKeys = {
   audit: (filter: object) => ['audit', filter] as const,
   gateways: ['gateways'] as const,
   exports: ['exports'] as const,
+  alertRules: ['alert-rules'] as const,
+  alerts: {
+    all: ['alerts'] as const,
+    list: (status: string) => ['alerts', 'list', status] as const,
+    summary: ['alerts', 'summary'] as const,
+  },
   cases: {
     all: ['cases'] as const,
     list: (status: string) => ['cases', 'list', status] as const,

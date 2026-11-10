@@ -198,6 +198,7 @@ namespace Onvif.Open.Recorder.Events
                 // No state: something that happened at one moment.
                 record.EndTime = time;
                 Queue(new Operation(record, null));
+                Publish(record);
             }
         }
 
@@ -299,6 +300,7 @@ namespace Onvif.Open.Recorder.Events
                 };
 
                 Queue(new Operation(record, null));
+                Publish(record);
             }
         }
 
@@ -324,6 +326,21 @@ namespace Onvif.Open.Recorder.Events
             };
         }
 
+        /// <summary>Raised when an event starts (alerts listen); handlers must be quick.</summary>
+        public event Action<EventRecord> Started;
+
+        private void Publish(EventRecord record)
+        {
+            try
+            {
+                Started?.Invoke(record);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "An event listener failed");
+            }
+        }
+
         /// <summary>Starts an event unless one with the same key is going on.</summary>
         private void Begin(string key, EventRecord record)
         {
@@ -338,6 +355,7 @@ namespace Onvif.Open.Recorder.Events
             }
 
             Queue(new Operation(record, null));
+            Publish(record);
         }
 
         private void End(string key, DateTime end)

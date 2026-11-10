@@ -397,3 +397,77 @@ export interface ShareLink {
   revokedAt: string | null;
   downloads: number;
 }
+
+export type Severity = 'Info' | 'Warning' | 'Critical';
+export type AlertKind = 'Event' | 'Offline';
+
+/** When to raise an alert and whom to tell. Empty lists mean "any". */
+export interface AlertRule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  kind: AlertKind;
+  /** Event rules: the categories that alert; none: every category. */
+  categories: EventCategory[];
+  minSeverity: Severity | null;
+  /** Offline rules: how long a camera is offline before it alerts. */
+  offlineMinutes: number;
+  siteIds: string[];
+  cameraIds: string[];
+  /** When it alerts, in the site's time zone; none: at any time. */
+  hours: ScheduleWindow[];
+  /** A rule alerts at most once per camera in this time. */
+  cooldownMinutes: number;
+  emails: string[];
+  webhookUrl: string | null;
+  hasWebhookSecret: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Every field is replaced, except `webhookSecret`: null keeps it, "" removes it. */
+export interface AlertRuleRequest {
+  name: string;
+  enabled: boolean;
+  kind: AlertKind;
+  categories: EventCategory[];
+  minSeverity: Severity | null;
+  offlineMinutes: number;
+  siteIds: string[];
+  cameraIds: string[];
+  hours: ScheduleWindow[];
+  cooldownMinutes: number;
+  emails: string[];
+  webhookUrl: string | null;
+  webhookSecret: string | null;
+}
+
+export interface DeliveryResult {
+  ok: boolean;
+  error: string | null;
+}
+
+/** An alert in the inbox. */
+export interface Alert {
+  id: string;
+  ruleId: string | null;
+  ruleName: string | null;
+  siteId: string | null;
+  cameraId: string | null;
+  cameraName: string | null;
+  eventId: string | null;
+  category: string;
+  severity: Severity;
+  title: string;
+  triggeredAt: string;
+  /** Null while it is open. */
+  acknowledgedAt: string | null;
+  acknowledgedBy: string | null;
+  /** How each notification went, by "email" and "webhook". */
+  delivery: Record<string, DeliveryResult>;
+}
+
+export interface AlertSummary {
+  open: number;
+  latest: Alert | null;
+}

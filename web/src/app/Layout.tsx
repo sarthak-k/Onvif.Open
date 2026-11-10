@@ -3,6 +3,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth, useUser } from '../features/auth/AuthContext';
 import { can } from '../features/auth/permissions';
 import { ErrorBoundary } from '../shared/ui/ErrorBoundary';
+import { useDesktopNotifications } from '../features/alerts/useDesktopNotifications';
 import { navItems } from './routes';
 
 export function Layout() {
@@ -10,6 +11,7 @@ export function Layout() {
   const { signOut } = useAuth();
   const { pathname } = useLocation();
   const nav = navItems.filter((item) => can(user, item.permission));
+  const openAlerts = useDesktopNotifications();
 
   return (
     <div className="shell">
@@ -19,6 +21,11 @@ export function Layout() {
           {nav.map((item) => (
             <NavLink key={item.path} to={item.path}>
               {item.label}
+              {item.path === '/alerts' && openAlerts > 0 && (
+                <span className="badge warn" aria-label={`${openAlerts} open`}>
+                  {openAlerts > 99 ? '99+' : openAlerts}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>

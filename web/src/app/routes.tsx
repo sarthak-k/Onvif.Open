@@ -7,6 +7,8 @@ const LivePage = lazy(() => import('../features/live/LivePage'));
 const InvestigatePage = lazy(() => import('../features/investigate/InvestigatePage'));
 const CasesPage = lazy(() => import('../features/cases/CasesPage'));
 const CasePage = lazy(() => import('../features/cases/CasePage'));
+const AlertsPage = lazy(() => import('../features/alerts/AlertsPage'));
+const AlertRulesPage = lazy(() => import('../features/settings/AlertRulesPage'));
 const ExportsPage = lazy(() => import('../features/exports/ExportsPage'));
 const CamerasPage = lazy(() => import('../features/cameras/CamerasPage'));
 const AddCamerasPage = lazy(() => import('../features/cameras/wizard/AddCamerasPage'));
@@ -34,6 +36,7 @@ export const appRoutes: readonly AppRoute[] = [
   { path: '/home', page: HomePage, permission: 'cameras.view', nav: 'Home' },
   { path: '/live', page: LivePage, permission: 'cameras.view', nav: 'Live' },
   { path: '/investigate', page: InvestigatePage, permission: 'cameras.view', nav: 'Investigate' },
+  { path: '/alerts', page: AlertsPage, permission: 'cameras.view', nav: 'Alerts' },
   { path: '/cases', page: CasesPage, permission: 'cameras.view', nav: 'Cases' },
   { path: '/cases/:id', page: CasePage, permission: 'cameras.view' },
   { path: '/exports', page: ExportsPage, permission: 'cameras.view', nav: 'Exports' },
@@ -44,6 +47,7 @@ export const appRoutes: readonly AppRoute[] = [
   { path: '/settings/sites', page: SitesPage, permission: 'settings.manage', settings: true },
   { path: '/settings/gateways', page: GatewaysPage, permission: 'cameras.view', settings: true },
   { path: '/settings/policies', page: PoliciesPage, permission: 'settings.manage', settings: true },
+  { path: '/settings/alerts', page: AlertRulesPage, permission: 'settings.manage', settings: true },
   { path: '/settings/users', page: UsersPage, permission: 'users.manage', settings: true },
   { path: '/settings/audit', page: AuditPage, permission: 'audit.view', settings: true },
   { path: '/settings/organization', page: OrganizationPage, permission: 'cameras.view', settings: true },
@@ -55,6 +59,7 @@ export const navItems: readonly { path: string; label: string; permission: Permi
   { path: '/home', label: 'Home', permission: 'cameras.view' },
   { path: '/live', label: 'Live', permission: 'cameras.view' },
   { path: '/investigate', label: 'Investigate', permission: 'cameras.view' },
+  { path: '/alerts', label: 'Alerts', permission: 'cameras.view' },
   { path: '/cases', label: 'Cases', permission: 'cameras.view' },
   { path: '/exports', label: 'Exports', permission: 'cameras.view' },
   { path: '/cameras', label: 'Cameras', permission: 'cameras.view' },

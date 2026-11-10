@@ -462,10 +462,21 @@ with their SHA-256, and downloaded by whoever may see the camera. Operators and 
 works without signing in for 1 hour to 7 days (or until the export expires), and revoke it; the token is shown once and
 only its hash is stored; every download through a link is in the audit log.
 
-Times in the web app (Investigate, the player and its timeline, cases, exports) are shown in the time zone of the
+**Alerts.** Organization administrators set up alert rules: an event of chosen kinds (person, vehicle, motion,
+tampering, camera offline, ...) of at least some severity, or a camera offline for some minutes; at chosen cameras or
+sites (none: all), optionally only during set hours in each site's time zone. A rule alerts at most once per camera in
+its quiet time (cooldown, default 5 minutes), and an offline rule once per outage. Alerts go to the inbox (everyone sees
+the alerts of their sites; operators and above acknowledge them; kept 90 days), and each rule can also notify by
+email (through the SMTP server of `Alerts:Smtp`: `Host`, `Port` (587), `EnableSsl` (true), `UserName`, `Password`,
+`From`) and by webhook: a JSON post (`type`, `text`, `title`, `category`, `severity`, `triggeredAt`, `rule`, `site`,
+`camera`, `eventId`, `link`) that, with a secret, carries `X-OnvifOpen-Signature: sha256=<hex HMAC-SHA256 of the
+body>`; secrets are encrypted and never shown again. How each notification went is noted on the alert. Links in
+notifications point at `Alerts:PublicUrl` (the web app's address) when it is set.
+
+Times in the web app (Investigate, the player and its timeline, cases, exports, alerts) are shown in the time zone of the
 camera's site, with the zone's short name.
 
-**Audit log.** Changes (cameras, sites, policies, users, layouts, plugins, gateways, cases, share links, the organization), sign-ins, password
+**Audit log.** Changes (cameras, sites, policies, users, layouts, plugins, gateways, cases, alert rules, share links, the organization), acknowledged alerts, sign-ins, password
 changes, starting and stopping recording, relay switching, and who watched live video, played recordings or exported
 video (a view is recorded once per user and camera every 10 minutes) go to the audit log, kept for
 `Audit:RetentionDays` (365 by default). Refused requests are not recorded, failed sign-ins are.
@@ -524,6 +535,8 @@ dotnet run --project Onvif.Open/Onvif.Open.Recorder
 | `POST /api/cases/{id}/clips` `{cameraIds, from, to, note, eventId}`, `PUT .../clips/{clipId}` `{note}`, `DELETE .../clips/{clipId}` | Clips of a case (operators and above); not on closed cases |
 | `POST /api/exports` `{cameraId, from, to, caseId}`, `GET /api/exports`, `GET .../{id}`, `GET .../{id}/video.mp4` | Watermarked MP4 exports (up to an hour, kept 7 days); the file supports range requests |
 | `GET /api/exports/{id}/links`, `POST .../links` `{hours}`, `DELETE .../links/{linkId}` | Share links of an export (operators and above); a new link's `path` carries its token, shown once |
+| `GET /api/alert-rules`, `GET .../{id}`, `POST /api/alert-rules`, `PUT .../{id}` `{name, enabled, kind, categories, minSeverity, offlineMinutes, siteIds, cameraIds, hours, cooldownMinutes, emails, webhookUrl, webhookSecret}`, `DELETE .../{id}`, `POST .../{id}/test` | Alert rules (organization administrators); a null `webhookSecret` keeps it, `""` removes it; `test` sends a test notification and says how each went |
+| `GET /api/alerts?status=open`, `GET /api/alerts/summary`, `POST /api/alerts/{id}/acknowledge` | The alerts inbox of the sites the user sees, newest first; the summary is the open count and the newest open alert; acknowledging is for operators and above |
 | `GET /api/shared/{token}/video.mp4` | Download through a share link, without signing in, until it expires or is revoked |
 | `GET /api/audit?userId=&action=&from=&to=&before=&limit=` | The audit log (administrators who see all sites): changes, sign-ins (also failed ones), who watched live or recorded video and who exported it; `action` is an action (`camera.update`) or an area (`camera`) |
 | `GET /health` | Liveness |
@@ -537,18 +550,20 @@ a network: bearer tokens and passwords must not travel in clear text.
 **Home** (where everyone lands: problems first, such as cameras not recording, gateways offline, a disk almost full or
 a cloud backup failing or falling behind, each with since when and where to look; then each site with its cameras
 recording, problems and today's events in its own time zone; then today's events; and for administrators, until done or
-hidden, what is left to set up: cameras, users, backup), live view (several cameras in a grid: single, 2 × 2 up to
+hidden, what is left to set up: cameras, users, backup, an alert), live view (several cameras in a grid: single, 2 × 2 up to
 5 × 5, or one large tile with smaller ones; arrange cameras by picking or dragging, enlarge one with a double click,
 full screen; layouts saved per user or shared by administrators), **Investigate** (search the stored events by site,
 camera, kind and time, newest first; open one to play its camera from 5 s before it, and up to three more cameras of the
 site in sync, with one timeline of what each recorded and the site's events: play, pause, speed up to 8×, ±10 s, click
 the timeline or an event mark to move all cameras there; operators mark the start and end of what matters and save
 it, with a note, to a case), **Cases** (incidents being looked into: their clips with notes, played back in sync;
-closed when done, deleted by administrators), **Exports** (watermarked MP4s to download, and share links that expire),
+closed when done, deleted by administrators), **Alerts** (the inbox, with the number of open alerts in the
+navigation and a desktop notification for each new one while the app is open, once allowed; acknowledge, or open
+Investigate at the camera), **Exports** (watermarked MP4s to download, and share links that expire),
 cameras (status for everyone; for administrators an
 **Add cameras** wizard: it lists what the gateway found on the network (or a typed address), signs in to all of them
 with one shared password (a camera that refuses it gets its own), shows each camera's picture, chooses its streams,
-and adds them named, at a site and with a recording policy; one camera can also be added and edited in full), settings (sites, recording policies, gateways with their
+and adds them named, at a site and with a recording policy; one camera can also be added and edited in full), settings (sites, recording policies, alert rules, gateways with their
 health, storage limits, cloud backup and discovery, users with roles and site access, the audit log, the organization) and the own account. It is a
 static site served separately from the recorder:
 
