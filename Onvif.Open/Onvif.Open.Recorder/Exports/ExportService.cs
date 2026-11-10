@@ -42,8 +42,10 @@ namespace Onvif.Open.Recorder.Exports
     {
         #region Constructor
 
-        public ExportService(IExportStore store, IRecordingManager recording, CameraDirectory directory, ITenancyStore tenancy, IMp4Encoder encoder, string directoryPath, ILogger<ExportService> logger, TimeProvider timeProvider = null)
+        /// <param name="clips">Where the video comes from (cameras of other gateways included); this recorder's recordings when null.</param>
+        public ExportService(IExportStore store, IRecordingManager recording, CameraDirectory directory, ITenancyStore tenancy, IMp4Encoder encoder, string directoryPath, ILogger<ExportService> logger, TimeProvider timeProvider = null, Tunnel.ClipSource clips = null)
         {
+            _clips = clips;
             _store = store ?? throw new ArgumentNullException(nameof(store));
             _recording = recording ?? throw new ArgumentNullException(nameof(recording));
             _directory = directory ?? throw new ArgumentNullException(nameof(directory));
@@ -73,6 +75,7 @@ namespace Onvif.Open.Recorder.Exports
 
         #region Private Variables
 
+        private readonly Tunnel.ClipSource _clips;
         private readonly IExportStore _store;
         private readonly IRecordingManager _recording;
         private readonly CameraDirectory _directory;
@@ -100,7 +103,8 @@ namespace Onvif.Open.Recorder.Exports
             {
                 errors.Add($"An export ends after it starts and lasts at most {MaxLength.TotalMinutes:0} minutes.");
             }
-            else if (!_recording.GetSegments(camera.Id).Any(s => s.StartTime <= request.To && s.LastWriteTime >= request.From))
+            // Another gateway's camera: that gateway knows what it recorded (and says so when the export runs).
+            else if ((_clips == null || _clips.IsLocal(camera.Id)) && !_recording.GetSegments(camera.Id).Any(s => s.StartTime <= request.To && s.LastWriteTime >= request.From))
             {
                 errors.Add("Nothing was recorded in that time.");
             }
@@ -239,7 +243,16 @@ namespace Onvif.Open.Recorder.Exports
             {
                 await using (var file = File.Create(clip))
                 {
-                    await ClipExport.WriteAsync(_recording, export.CameraId, new DateTimeOffset(export.From, TimeSpan.Zero), new DateTimeOffset(export.To, TimeSpan.Zero), file, cancellationToken).ConfigureAwait(false);
+                    var from = new DateTimeOffset(export.From, TimeSpan.Zero);
+                    var to = new DateTimeOffset(export.To, TimeSpan.Zero);
+                    if (_clips != null)
+                    {
+                        await _clips.WriteAsync(export.CameraId, from, to, file, cancellationToken).ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        await ClipExport.WriteAsync(_recording, export.CameraId, from, to, file, cancellationToken).ConfigureAwait(false);
+                    }
                 }
 
                 await _encoder.EncodeAsync(clip, output, await WatermarkAsync(export, cancellationToken).ConfigureAwait(false), cancellationToken).ConfigureAwait(false);

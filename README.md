@@ -354,7 +354,17 @@ dropped (its player reconnects) rather than holding up the others.
 * **Status**: `GET /api/cameras` lists them with what their gateway last reported (with each heartbeat); `Offline`
   when it has not reported for 90 s, or its tunnel is closed (requests then answer 503).
 
-Events, thumbnails and exports of a gateway's cameras reach this recorder in a later version.
+* **Events**: the gateway keeps what happens at the cameras it records for this recorder (motion, detections, offline
+  and back, plugin findings) in an outbox on disk (`data/event-outbox.jsonl`, or `ControlPlane:EventOutboxFile`) and
+  hands it over every 2 s (`POST /api/gateways/events`, with its token, in batches); a batch leaves the outbox once
+  stored here, so nothing is lost while the site is cut off, and it catches up when it is back (at most 100 000
+  changes wait). Only events of cameras that gateway records are taken, with the site and organization from here;
+  an event handed over twice is stored once. They are searchable in Investigate and raise alerts like local ones.
+* **A site going dark**: when a gateway has not reported for 2 minutes and has no tunnel, its cameras get an offline
+  event ("Gateway offline", from when it was last heard of), which offline alert rules catch; it ends when the gateway
+  is back.
+* **Exports** of a gateway's camera: the gateway sends the clip through its tunnel, and it is watermarked here like
+  any other; when the gateway is offline, the export fails and says so.
 
 Camera ids are UUIDs assigned by the recorder, so recordings
 never depend on a name someone typed; names can change at any time. Bring the database you use (EF Core; the `oo_*`

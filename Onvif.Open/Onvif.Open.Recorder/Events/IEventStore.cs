@@ -56,6 +56,9 @@ namespace Onvif.Open.Recorder.Events
 
         /// <summary>Removes events that started before <paramref name="before"/> about no camera or a camera not in <paramref name="cameraIds"/> (removed ones).</summary>
         Task<int> DeleteOthersBeforeAsync(IReadOnlyCollection<string> cameraIds, DateTime before, CancellationToken cancellationToken = default);
+
+        /// <summary>Which of these event ids are stored already, with the camera each is about.</summary>
+        Task<IReadOnlyDictionary<string, string>> FindExistingAsync(IReadOnlyCollection<string> ids, CancellationToken cancellationToken = default);
     }
 
     /// <summary>
@@ -69,6 +72,28 @@ namespace Onvif.Open.Recorder.Events
         }
 
         private readonly IDbContextFactory<RecorderDbContext> _contexts;
+
+        public async Task<IReadOnlyDictionary<string, string>> FindExistingAsync(IReadOnlyCollection<string> ids, CancellationToken cancellationToken = default)
+        {
+            var found = new Dictionary<string, string>(StringComparer.Ordinal);
+            if (ids.Count == 0)
+            {
+                return found;
+            }
+
+            await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
+            {
+                foreach (var chunk in ids.Distinct().Chunk(500))
+                {
+                    foreach (var e in await db.Events.AsNoTracking().Where(e => chunk.Contains(e.Id)).Select(e => new { e.Id, e.CameraId }).ToListAsync(cancellationToken).ConfigureAwait(false))
+                    {
+                        found[e.Id] = e.CameraId;
+                    }
+                }
+
+                return found;
+            }
+        }
 
         public async Task AddAsync(IReadOnlyCollection<EventRecord> events, CancellationToken cancellationToken = default)
         {

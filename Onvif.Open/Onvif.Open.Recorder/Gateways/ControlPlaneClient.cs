@@ -131,8 +131,9 @@ namespace Onvif.Open.Recorder.Gateways
         /// <param name="assigned">The cameras the control plane has this gateway record (kept on disk, applied at startup).</param>
         /// <param name="tunnel">Answers the requests that come through the tunnel; null: no tunnel.</param>
         public ControlPlaneClient(HttpClient http, IControlPlaneCredentials credentials, Func<GatewayHealth> measure, string name, string location, ILogger<ControlPlaneClient> logger, TimeProvider timeProvider = null,
-            ControlPlaneTransport transport = null, Func<IReadOnlyList<Tunnel.RemoteCameraStatus>> cameras = null, AssignedCameras assigned = null, Tunnel.TunnelExecutor tunnel = null)
+            ControlPlaneTransport transport = null, Func<IReadOnlyList<Tunnel.RemoteCameraStatus>> cameras = null, AssignedCameras assigned = null, Tunnel.TunnelExecutor tunnel = null, EventOutbox events = null)
         {
+            _events = events;
             _http = http ?? throw new ArgumentNullException(nameof(http));
             _credentials = credentials ?? throw new ArgumentNullException(nameof(credentials));
             _measure = measure ?? throw new ArgumentNullException(nameof(measure));
@@ -175,6 +176,9 @@ namespace Onvif.Open.Recorder.Gateways
             }
         }
 
+        public static readonly TimeSpan UploadInterval = TimeSpan.FromSeconds(2);
+        public const int UploadBatch = 500;
+
         public static readonly TimeSpan TunnelRetry = TimeSpan.FromSeconds(1);
         public static readonly TimeSpan TunnelMaxRetry = TimeSpan.FromSeconds(30);
 
@@ -197,6 +201,7 @@ namespace Onvif.Open.Recorder.Gateways
         private readonly Func<IReadOnlyList<Tunnel.RemoteCameraStatus>> _cameras;
         private readonly AssignedCameras _assigned;
         private readonly Tunnel.TunnelExecutor _tunnel;
+        private readonly EventOutbox _events;
         private volatile Tunnel.TunnelConnection _connection;
         private ControlPlaneIdentity _identity;
         private Ticket _ticket;
@@ -237,7 +242,73 @@ namespace Onvif.Open.Recorder.Gateways
                 await _assigned.LoadAsync(stoppingToken).ConfigureAwait(false);
             }
 
-            await Task.WhenAll(ReportLoopAsync(stoppingToken), _tunnel == null ? Task.CompletedTask : TunnelLoopAsync(stoppingToken)).ConfigureAwait(false);
+            await Task.WhenAll(
+                ReportLoopAsync(stoppingToken),
+                _tunnel == null ? Task.CompletedTask : TunnelLoopAsync(stoppingToken),
+                _events == null ? Task.CompletedTask : UploadLoopAsync(stoppingToken)).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Sends the control plane the events waiting in the outbox, oldest first, in batches; each batch leaves the outbox
+        /// once stored there. Returns how many were sent (also used by tests).
+        /// </summary>
+        public async Task<int> UploadEventsAsync(CancellationToken cancellationToken = default)
+        {
+            var identity = _identity;
+            var sent = 0;
+            while (identity != null && _events != null)
+            {
+                var batch = _events.Peek(UploadBatch);
+                if (batch.Count == 0)
+                {
+                    break;
+                }
+
+                using (var request = new HttpRequestMessage(HttpMethod.Post, "api/gateways/events"))
+                {
+                    request.Headers.Add(Api.GatewayEndpoints.GatewayTokenHeader, identity.Token);
+                    request.Content = JsonContent.Create(new { events = batch });
+                    var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        _logger?.LogWarning("The control plane did not take {Count} event change(s) ({Status}): keeping them", batch.Count, (int)response.StatusCode);
+                        break;
+                    }
+                }
+
+                _events.Remove(batch.Count);
+                sent += batch.Count;
+            }
+
+            return sent;
+        }
+
+        private async Task UploadLoopAsync(CancellationToken stoppingToken)
+        {
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                try
+                {
+                    await UploadEventsAsync(stoppingToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (Exception ex) when (ex is HttpRequestException || ex is TaskCanceledException || ex is IOException)
+                {
+                    _logger?.LogDebug("Events wait for the control plane: {Message}", ex.Message);
+                }
+
+                try
+                {
+                    await Task.Delay(UploadInterval, stoppingToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+            }
         }
 
         /// <summary>Keeps the tunnel open while paired: reconnects (1 s, doubling up to 30 s) whenever it closes.</summary>

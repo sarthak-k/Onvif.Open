@@ -329,6 +329,73 @@ namespace Onvif.Open.Recorder.Events
         /// <summary>Raised when an event starts (alerts listen); handlers must be quick.</summary>
         public event Action<EventRecord> Started;
 
+        /// <summary>Raised when an event that was going on ends: its id, camera, start and end. Handlers must be quick.</summary>
+        public event Action<string, string, DateTime, DateTime> Closed;
+
+        private void PublishClosed(string id, string cameraId, DateTime start, DateTime end)
+        {
+            try
+            {
+                Closed?.Invoke(id, cameraId, start, end);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "An event listener failed");
+            }
+        }
+
+        /// <summary>
+        /// Events another gateway recorded for this one's cameras: stored now (the gateway forgets them once this returns),
+        /// once each (an event already stored is skipped), and passed on like local ones (alerts, the retention index).
+        /// </summary>
+        public async Task ImportAsync(IReadOnlyCollection<EventRecord> adds, IReadOnlyCollection<(string Id, string CameraId, DateTime Start, DateTime End)> closes, CancellationToken cancellationToken = default)
+        {
+            var known = await _store.FindExistingAsync(adds.Select(a => a.Id).Concat(closes.Select(c => c.Id)).ToList(), cancellationToken).ConfigureAwait(false);
+            var fresh = adds.Where(a => !known.ContainsKey(a.Id)).GroupBy(a => a.Id).Select(g => g.First()).ToList();
+            if (fresh.Count > 0)
+            {
+                await _store.AddAsync(fresh, cancellationToken).ConfigureAwait(false);
+            }
+
+            // An end is only taken for an event of the same camera (stored before, or in this batch).
+            var cameras = fresh.ToDictionary(a => a.Id, a => a.CameraId, StringComparer.Ordinal);
+            foreach (var (id, camera) in known)
+            {
+                cameras.TryAdd(id, camera);
+            }
+
+            closes = closes.Where(c => cameras.TryGetValue(c.Id, out var camera) && string.Equals(camera, c.CameraId, StringComparison.OrdinalIgnoreCase)).ToList();
+            if (closes.Count > 0)
+            {
+                await _store.CloseAsync(closes.Select(c => (c.Id, c.End)).ToList(), cancellationToken).ConfigureAwait(false);
+            }
+
+            foreach (var add in fresh)
+            {
+                _index.Add(add.CameraId, add.StartTime, add.EndTime);
+                Publish(add);
+            }
+
+            foreach (var close in closes)
+            {
+                _index.Close(close.CameraId, close.Start, close.End);
+                PublishClosed(close.Id, close.CameraId, close.Start, close.End);
+            }
+        }
+
+        /// <summary>The gateway that records a camera stopped reporting: the camera is offline, as far as anyone here can tell.</summary>
+        public void BeginGatewayOffline(string cameraId, DateTime at)
+        {
+            var camera = _directory.Find(cameraId);
+            if (camera != null)
+            {
+                Begin($"{camera.Id}|gateway|offline", NewEvent(camera, EventCategories.Offline, "Warning", "control plane", "Gateway offline", null, at, null));
+            }
+        }
+
+        /// <summary>The gateway reports again.</summary>
+        public void EndGatewayOffline(string cameraId, DateTime at) => End($"{cameraId}|gateway|offline", at);
+
         private void Publish(EventRecord record)
         {
             try
@@ -369,7 +436,9 @@ namespace Onvif.Open.Recorder.Events
                 }
             }
 
-            Queue(new Operation(null, (open.Id, open.CameraId, open.Start, end < open.Start ? open.Start : end)));
+            var closed = end < open.Start ? open.Start : end;
+            Queue(new Operation(null, (open.Id, open.CameraId, open.Start, closed)));
+            PublishClosed(open.Id, open.CameraId, open.Start, closed);
         }
 
         /// <summary>Detections whose objects have not been seen for <see cref="DetectionGap"/> end at the last sighting.</summary>

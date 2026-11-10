@@ -45,6 +45,13 @@ namespace Onvif.Open.Recorder.Api
             public string Name { get; set; }
         }
 
+        public const int MaxEventsPerRequest = 1000;
+
+        public sealed class EventsRequest
+        {
+            public List<UpstreamEvent> Events { get; set; }
+        }
+
         public sealed class HeartbeatRequest
         {
             public string Version { get; set; }
@@ -115,6 +122,26 @@ namespace Onvif.Open.Recorder.Api
                 await service.ReportAsync(gateway, request?.Version, request?.StartedAt?.UtcDateTime ?? DateTime.UtcNow, request?.Health, ct);
                 remote.Report(gateway.Id, request?.Cameras);
                 return Results.Ok(new { id = gateway.Id, name = gateway.Name });
+            }).AllowAnonymous();
+
+            // A gateway hands over the events of its cameras (only of the cameras it records for this organization).
+            gateways.MapPost("/events", async (EventsRequest request, HttpRequest http, GatewayService service, Tenancy.CameraDirectory directory, Events.EventRecorder recorder, CancellationToken ct) =>
+            {
+                var gateway = await service.AuthenticateAsync(http.Headers[GatewayTokenHeader].ToString(), ct);
+                if (gateway == null)
+                {
+                    return Results.Unauthorized();
+                }
+
+                var changes = request?.Events ?? new List<UpstreamEvent>();
+                if (changes.Count > MaxEventsPerRequest)
+                {
+                    return Results.BadRequest(new { errors = new[] { $"At most {MaxEventsPerRequest} event changes per request." } });
+                }
+
+                var (adds, closes, rejected) = Upstream.Accept(gateway, changes, directory);
+                await recorder.ImportAsync(adds, closes, ct);
+                return Results.Ok(new { accepted = adds.Count + closes.Count, rejected });
             }).AllowAnonymous();
 
             gateways.MapDelete("/{id}", async (string id, ClaimsPrincipal user, GatewayService service, Store.ISettingsStore cameras, CancellationToken ct) =>

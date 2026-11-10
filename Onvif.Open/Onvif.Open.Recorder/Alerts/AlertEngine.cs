@@ -202,6 +202,7 @@ namespace Onvif.Open.Recorder.Alerts
             if (_events != null)
             {
                 _events.Started += OnStarted;
+                _events.Closed += OnClosed;
             }
 
             if (_recording != null)
@@ -218,6 +219,7 @@ namespace Onvif.Open.Recorder.Alerts
                 if (_events != null)
                 {
                     _events.Started -= OnStarted;
+                    _events.Closed -= OnClosed;
                 }
 
                 if (_recording != null)
@@ -232,6 +234,20 @@ namespace Onvif.Open.Recorder.Alerts
         #region Private Methods
 
         private void OnStarted(EventRecord record) => _started.Writer.TryWrite(record);
+
+        /// <summary>The offline event of a camera ended (a camera of another gateway, or its gateway, came back): recovered.</summary>
+        private void OnClosed(string eventId, string cameraId, DateTime start, DateTime end)
+        {
+            lock (_sync)
+            {
+                if (cameraId == null || !_offline.TryGetValue(cameraId, out var outage) || outage.EventId != eventId)
+                {
+                    return;
+                }
+            }
+
+            CameraRecovered(cameraId);
+        }
 
         private void OnStateChanged(object sender, CameraStateChange change)
         {
