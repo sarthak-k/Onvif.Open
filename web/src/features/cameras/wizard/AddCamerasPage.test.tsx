@@ -82,8 +82,8 @@ describe('add cameras', () => {
       [dock, 'dock-pass', 'true'],
     ]);
     expect(created).toMatchObject([
-      { name: 'Front lobby', siteId: 'site-main', onvifUrl: lobby, username: 'admin', password: 'shared-pass', profileToken: 'main', enabled: true },
-      { name: 'Dock', siteId: 'site-lyon', policyId: 'p-events', onvifUrl: dock, username: 'admin', password: 'dock-pass', profileToken: 'sub' },
+      { name: 'Front lobby', siteId: 'site-main', onvifUrl: lobby, username: 'admin', password: 'shared-pass', profileToken: 'main', subProfileToken: 'sub', enabled: true },
+      { name: 'Dock', siteId: 'site-lyon', policyId: 'p-events', onvifUrl: dock, username: 'admin', password: 'dock-pass', profileToken: 'sub', subProfileToken: null },
     ]);
     expect((created[0] as { policyId?: string | null }).policyId ?? null).toBeNull();
     client.signOut();

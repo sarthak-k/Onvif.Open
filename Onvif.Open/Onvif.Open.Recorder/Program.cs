@@ -151,7 +151,10 @@ builder.Services.AddSingleton<ILayoutStore, EfLayoutStore>();
 builder.Services.AddSingleton<LayoutService>();
 builder.Services.AddSingleton(sp => new LiveViewService(
     sp.GetRequiredService<IRecordingManager>(),
-    sp.GetRequiredService<IConfiguration>().GetSection(LiveViewOptions.SectionName).Get<LiveViewOptions>()));
+    sp.GetRequiredService<IConfiguration>().GetSection(LiveViewOptions.SectionName).Get<LiveViewOptions>(),
+    sp.GetService<TimeProvider>(),
+    sp.GetRequiredService<ConfiguredRecording>().FindSubStream,
+    sp.GetRequiredService<ILogger<LiveViewService>>()));
 builder.Services.AddSingleton(sp => new Onvif.Open.Recording.Implementation.Hls.RecordingPlaylist(sp.GetRequiredService<IRecordingManager>()));
 builder.Services.AddSingleton<Onvif.Open.Core.Abstract.Interface.Discovery.ICameraDiscovery>(sp => new GatewayDiscovery(
     () => sp.GetRequiredService<GatewayService>().Discovery,

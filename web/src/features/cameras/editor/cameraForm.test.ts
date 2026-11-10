@@ -12,6 +12,8 @@ const stored: CameraConfig = {
   username: 'admin',
   hasPassword: true,
   profileToken: 'main',
+  subProfileToken: 'sub',
+  subRtspUrl: null,
   transport: 'Udp',
   mediaVersion: 'Media2',
   rotation: { segmentDuration: '00:05:00', maxSegmentSizeMB: 256, alignToClock: null },

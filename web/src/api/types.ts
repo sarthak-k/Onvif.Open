@@ -117,6 +117,10 @@ export interface CameraConfig {
   password?: string | null;
   hasPassword?: boolean;
   profileToken?: string | null;
+  /** ONVIF: a smaller stream for live grids (opened only while watched); none: the main stream. */
+  subProfileToken?: string | null;
+  /** RTSP cameras: a smaller stream for live grids. */
+  subRtspUrl?: string | null;
   transport: Transport;
   mediaVersion: MediaVersion;
   rotation?: { segmentDuration?: string | null; maxSegmentSizeMB?: number | null; alignToClock?: string | null } | null;

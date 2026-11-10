@@ -57,3 +57,12 @@ export function findTemplate(id: string): GridTemplate {
 export function templateFor(cameraCount: number): GridTemplate {
   return gridTemplates.find((t) => t.tiles.length >= cameraCount && t.tiles.every((tile) => tile.columnSpan === 1)) ?? gridTemplates[gridTemplates.length - 1];
 }
+
+/**
+ * Whether a tile is small enough for the camera's smaller stream: not enlarged, and at most a quarter of the grid
+ * (every tile of 2 × 2 and up, the small ones of 1 + 5; not the halves of a two-camera layout, nor the large tile).
+ */
+export function isSmallTile(template: GridTemplate, placement: TilePlacement, focused: boolean): boolean {
+  if (focused) return false;
+  return placement.columnSpan * placement.rowSpan * 4 <= template.columns * template.rows;
+}

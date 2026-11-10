@@ -132,8 +132,8 @@ export interface AuditApi {
 export interface MediaApi {
   /** Live HLS playlist of a camera (absolute URL). */
   liveUrl(cameraId: string): string;
-  /** Low-latency live video of a camera: fragmented MP4, one long response (absolute URL). */
-  liveMp4Url(cameraId: string): string;
+  /** Low-latency live video of a camera: fragmented MP4, one long response (absolute URL); `sub`: its smaller stream for grids. */
+  liveMp4Url(cameraId: string, sub?: boolean): string;
   /** HLS playlist of the recordings from the file holding `from` up to `to` (absolute URL). */
   recordingsUrl(cameraId: string, from: Date, to: Date): string;
   /** The current access token, read at each request so renewals are picked up. */
@@ -221,7 +221,7 @@ export function createRecorderApi(client: ApiClient): RecorderApi {
     },
     media: {
       liveUrl: (id) => new URL(`${client.baseUrl}/api/cameras/${segment(id)}/live.m3u8`, window.location.origin).toString(),
-      liveMp4Url: (id) => new URL(`${client.baseUrl}/api/cameras/${segment(id)}/live.mp4`, window.location.origin).toString(),
+      liveMp4Url: (id, sub) => new URL(`${client.baseUrl}/api/cameras/${segment(id)}/live.mp4${sub ? '?stream=sub' : ''}`, window.location.origin).toString(),
       recordingsUrl: (id, from, to) =>
         new URL(`${client.baseUrl}/api/cameras/${segment(id)}/recordings.m3u8${queryString({ from: from.toISOString(), to: to.toISOString() })}`, window.location.origin).toString(),
       token: () => client.token,

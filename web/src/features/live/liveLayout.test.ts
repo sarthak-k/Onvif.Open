@@ -1,5 +1,5 @@
 import type { Layout } from '../../api/types';
-import { findTemplate, gridTemplates, templateFor } from './gridTemplates';
+import { findTemplate, gridTemplates, isSmallTile, templateFor } from './gridTemplates';
 import { liveLayoutReducer, newLayout } from './liveLayout';
 
 const layout = (grid: string, cameras: (string | null)[]): Layout => ({ id: 'l1', name: 'Saved', grid, cameras, shared: false, editable: true, updatedAt: '' });
@@ -35,6 +35,21 @@ describe('grid templates', () => {
     expect(templateFor(3).id).toBe('2x2');
     expect(templateFor(7).id).toBe('3x3');
     expect(templateFor(30).id).toBe('5x5');
+  });
+});
+
+describe('smaller streams', () => {
+  it('play in tiles of at most a quarter of the grid', () => {
+    const small = (id: string) => findTemplate(id).tiles.map((tile) => isSmallTile(findTemplate(id), tile, false));
+    expect(small('1')).toEqual([false]);
+    expect(small('2x1')).toEqual([false, false]);
+    expect(small('2x2').every(Boolean)).toBe(true);
+    expect(small('5x5').every(Boolean)).toBe(true);
+    // 1 + 5: the large tile plays the main stream, the others the smaller one.
+    const featured = gridTemplates.find((t) => t.tiles.some((tile) => tile.columnSpan > 1))!;
+    expect(featured.tiles.map((tile) => isSmallTile(featured, tile, false))).toEqual(featured.tiles.map((tile) => tile.columnSpan === 1));
+    // Enlarged: the main stream.
+    expect(isSmallTile(findTemplate('2x2'), findTemplate('2x2').tiles[0], true)).toBe(false);
   });
 });
 

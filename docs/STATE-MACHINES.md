@@ -27,6 +27,8 @@ state through the table, tests check the code against it, and the diagrams below
 | [Case](#case) | Backend | `Onvif.Open.Recorder/Cases/CaseHolds.cs` (`CaseStatuses.Machine`) | `CaseService.UpdateAsync` | `GET /api/cases` `status`; Cases pages; open cases keep their video |
 | [Alert](#alert) | Backend | `Onvif.Open.Recorder/Alerts/AlertRule.cs` (`AlertStates.Machine`, stored as `AcknowledgedAt`) | `AlertService.AcknowledgeAsync` | `GET /api/alerts` `status`; Alerts inbox and its count |
 | [Gateway pairing](#gateway-pairing) | Backend | `Onvif.Open.Recorder/Gateways/GatewayPairing.cs` (`PairingStatus.Machine`) | `GatewayPairing` (in memory) | `GET /api/gateways/pairing/{id}` `state` |
+| [Low-latency live stream](#low-latency-live-stream) | Backend | `Onvif.Open.Recording/Implementation/Mp4/Mp4LiveStream.cs` (`Mp4LiveStates.Machine`) | `Mp4LiveStream.Add`, `Close` | `GET /api/cameras/{id}/live.mp4` (503 while waiting, 415 when unsupported) |
+| [Grid sub-stream](#grid-sub-stream) | Backend | `Onvif.Open.Recorder/Hosting/LiveViewService.cs` (`SubStreamStates.Machine`) | `LiveViewService` (its reader, and the idle sweep) | `live.mp4?stream=sub` |
 | [Session](#session) | Web | `web/src/features/auth/session.ts` (`sessionMachine`, `sessionOf`) | `AuthContext` holds it; `RequireAuth` routes on it | sign-in, password change, sign-out |
 | [Add-camera wizard](#add-camera-wizard) | Web | `web/src/features/cameras/wizard/steps.ts` (`wizardSteps`) | `AddCamerasPage` (moves through the table) | Cameras › Add cameras |
 | [Camera in the add-camera wizard](#camera-in-the-add-camera-wizard) | Web | `web/src/features/cameras/wizard/candidates.ts` (`candidateMachine`) | `changeCandidate`, `afterSharedChange`, `startTest` | each camera's state in the wizard |
@@ -123,6 +125,41 @@ stateDiagram-v2
     Waiting --> Expired : 10 minutes passed
     Paired --> [*]
     Expired --> [*]
+```
+<!-- /machine -->
+
+### Low-latency live stream
+
+A new viewer joins at the last key frame; every drop back to waiting drops the viewers, whose players reconnect.
+
+<!-- machine: Low-latency live stream -->
+```mermaid
+stateDiagram-v2
+    [*] --> WaitingForKeyFrame
+    WaitingForKeyFrame --> Streaming : H.264 key frame with its parameter sets
+    Streaming --> WaitingForKeyFrame : camera reconnected, new parameter sets, or closed: viewers dropped
+    WaitingForKeyFrame --> Unsupported : not H.264: players use HLS
+    Streaming --> Unsupported : not H.264: players use HLS
+    Unsupported --> Streaming : H.264 key frame (the camera changed codec)
+```
+<!-- /machine -->
+
+### Grid sub-stream
+
+A connection to the camera, so it is only open while a grid tile watches it.
+
+<!-- machine: Grid sub-stream -->
+```mermaid
+stateDiagram-v2
+    [*] --> Closed
+    Closed --> Connecting : a grid tile asks for it
+    Connecting --> Streaming : the camera sends frames
+    Connecting --> Retrying : could not connect
+    Streaming --> Retrying : the stream dropped
+    Retrying --> Connecting : after 1 s, doubling up to 30 s
+    Connecting --> Closed : nobody watches, the camera changed or is gone
+    Streaming --> Closed : nobody watches, the camera changed or is gone
+    Retrying --> Closed : nobody watches, the camera changed or is gone
 ```
 <!-- /machine -->
 

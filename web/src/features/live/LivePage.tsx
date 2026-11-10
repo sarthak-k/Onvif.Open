@@ -5,7 +5,7 @@ import { useDeleteLayout, useLayouts, useSaveLayout } from '../../data/layouts';
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog';
 import { ErrorMessage } from '../../shared/ui/ErrorMessage';
 import { useCan } from '../auth/AuthContext';
-import { findTemplate } from './gridTemplates';
+import { findTemplate, isSmallTile } from './gridTemplates';
 import { liveLayoutReducer, newLayout } from './liveLayout';
 import { LiveTile } from './LiveTile';
 import { LiveToolbar } from './LiveToolbar';
@@ -128,6 +128,7 @@ export default function LivePage() {
                 cameras={cameras}
                 editing={editing}
                 focused={focused === index}
+                small={isSmallTile(state.template, placement, focused === index)}
                 onAssign={onAssign}
                 onMove={onMove}
                 onToggleFocus={onToggleFocus}

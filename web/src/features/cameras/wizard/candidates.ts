@@ -40,6 +40,8 @@ export interface Candidate {
   policyId: string;
   /** The stream to record; the recommended one unless changed under Advanced. */
   profileToken: string;
+  /** The smaller stream for live grids (the recommended one). */
+  subProfileToken: string;
   addedId?: string;
   addError?: string;
 }
@@ -65,6 +67,7 @@ function newCandidate(onvifUrl: string, label: string, hardware: string | null |
     siteId: '',
     policyId: '',
     profileToken: '',
+    subProfileToken: '',
   };
 }
 
@@ -132,6 +135,7 @@ export function withProbe(candidate: Candidate, result: ProbeResult): Candidate 
     snapshot: result.snapshot,
     profiles: result.profiles ?? [],
     profileToken: candidate.profileToken || result.recommended?.mainProfile || '',
+    subProfileToken: candidate.subProfileToken || result.recommended?.subProfile || '',
   };
 }
 
@@ -147,6 +151,7 @@ export function toCameraConfig(candidate: Candidate, shared: SharedCredentials):
     username,
     password,
     profileToken: candidate.profileToken,
+    subProfileToken: candidate.subProfileToken !== candidate.profileToken ? candidate.subProfileToken : '',
   });
 }
 

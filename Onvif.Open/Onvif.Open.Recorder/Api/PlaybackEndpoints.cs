@@ -33,6 +33,9 @@ namespace Onvif.Open.Recorder.Api
         /// <summary>The RFC 6381 codec of a low-latency stream ("avc1.64001f").</summary>
         public const string CodecHeader = "X-Video-Codec";
 
+        /// <summary>Which stream a low-latency response carries: "main", or "sub" (the smaller one, for grids).</summary>
+        public const string StreamHeader = "X-Video-Stream";
+
         /// <summary>Longest clip one download may cover.</summary>
         private static readonly TimeSpan MaxClipDuration = TimeSpan.FromHours(6);
 
@@ -65,26 +68,28 @@ namespace Onvif.Open.Recorder.Api
 
             // Low latency: one long response, the init segment then a fragment per frame (H.264; 415 for other codecs:
             // play the HLS stream instead). The codec goes in a header so the player can set up before the first bytes.
-            camera.MapGet("/live.mp4", async (string id, LiveViewService live, AuditLog audit, CameraDirectory directory, HttpContext http, CancellationToken ct) =>
+            // ?stream=sub: the camera's smaller stream, for grids (the main one when it has none; X-Video-Stream says which).
+            camera.MapGet("/live.mp4", async (string id, string stream, LiveViewService live, AuditLog audit, CameraDirectory directory, HttpContext http, CancellationToken ct) =>
             {
-                var stream = live.WatchMp4(id);
-                if (stream == null)
+                var video = live.WatchMp4(id, string.Equals(stream, "sub", StringComparison.OrdinalIgnoreCase), out var isSubStream);
+                if (video == null)
                 {
                     return Results.NotFound();
                 }
 
-                if (!await stream.WaitUntilReadyAsync(live.Options.StartTimeout, ct))
+                if (!await video.WaitUntilReadyAsync(live.Options.StartTimeout, ct))
                 {
-                    return stream.IsSupported
+                    return video.IsSupported
                         ? Results.Problem("No video from the camera yet.", statusCode: StatusCodes.Status503ServiceUnavailable)
                         : Results.Problem("This camera's video needs the HLS player.", statusCode: StatusCodes.Status415UnsupportedMediaType);
                 }
 
-                using (var viewer = stream.Watch())
+                using (var viewer = video.Watch())
                 {
                     NoCache(http);
                     http.Response.ContentType = Mp4Type;
-                    http.Response.Headers[CodecHeader] = stream.CodecString;
+                    http.Response.Headers[CodecHeader] = video.CodecString;
+                    http.Response.Headers[StreamHeader] = isSubStream ? "sub" : "main";
                     http.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpResponseBodyFeature>()?.DisableBuffering();
                     await http.Response.StartAsync(ct);
 

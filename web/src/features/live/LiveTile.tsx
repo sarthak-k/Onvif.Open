@@ -10,6 +10,8 @@ interface Props {
   cameras: readonly { id: string; name: string }[];
   editing: boolean;
   focused: boolean;
+  /** One of several tiles of one cell: it plays the camera's smaller stream. */
+  small: boolean;
   onAssign(tile: number, cameraId: string | null): void;
   onMove(from: number, to: number): void;
   onToggleFocus(tile: number): void;
@@ -18,7 +20,7 @@ interface Props {
 const dragType = 'application/x-onvif-tile';
 
 /** One tile: a camera's live video, its name, and (while editing) a camera picker; tiles swap by drag and drop. */
-export const LiveTile = memo(function LiveTile({ index, cameraId, placement, cameras, editing, focused, onAssign, onMove, onToggleFocus }: Props) {
+export const LiveTile = memo(function LiveTile({ index, cameraId, placement, cameras, editing, focused, small, onAssign, onMove, onToggleFocus }: Props) {
   const style: CSSProperties = focused
     ? { gridColumn: '1 / -1', gridRow: '1 / -1' }
     : { gridColumn: `${placement.column} / span ${placement.columnSpan}`, gridRow: `${placement.row} / span ${placement.rowSpan}` };
@@ -44,7 +46,7 @@ export const LiveTile = memo(function LiveTile({ index, cameraId, placement, cam
       onDoubleClick={() => cameraId && !missing && onToggleFocus(index)}
     >
       {cameraId && !missing ? (
-        <VideoPlayer cameraId={cameraId} label={`Live video of ${name}`} />
+        <VideoPlayer cameraId={cameraId} label={`Live video of ${name}`} small={small} />
       ) : (
         <div className="tile-empty">{missing ? 'This camera was removed, or you may not see it.' : editing ? 'Choose a camera' : 'Empty'}</div>
       )}

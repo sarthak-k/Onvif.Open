@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using Onvif.Open.Core.Abstract.Interface.Camera;
 using Onvif.Open.Camera.Implementation;
 using Onvif.Open.Core.Abstract.Interface.Recording;
+using Onvif.Open.Core.Abstract.Interface.Streaming;
 using Onvif.Open.Core.Operations;
 using Onvif.Open.Core.Recording;
 using Onvif.Open.Recording.Implementation.Archive;
@@ -66,18 +67,13 @@ namespace Onvif.Open.Recorder.Configuration
                 .SetLoggerFactory(loggerFactory)
                 .Build();
 
-            var onvifCameras = new Dictionary<string, (ICamera Camera, string ProfileToken)>(StringComparer.OrdinalIgnoreCase);
-
+            var configured = new ConfiguredRecording(manager, new Dictionary<string, (ICamera Camera, string ProfileToken)>());
             foreach (var camera in (cameras ?? Array.Empty<CameraOptions>()).Where(c => c.Enabled))
             {
-                var onvifCamera = AddCamera(manager, camera);
-                if (onvifCamera != null)
-                {
-                    onvifCameras[camera.Id] = (onvifCamera, string.IsNullOrWhiteSpace(camera.ProfileToken) ? null : camera.ProfileToken);
-                }
+                configured.AddCamera(camera);
             }
 
-            return new ConfiguredRecording(manager, onvifCameras);
+            return configured;
         }
 
         /// <summary>
@@ -133,6 +129,16 @@ namespace Onvif.Open.Recorder.Configuration
                 {
                     errors.Add($"Camera '{camera.Id}': Analytics:MinLikelihood must be between 0 and 1.");
                 }
+            }
+
+            if (!string.IsNullOrWhiteSpace(camera.SubRtspUrl) && (string.IsNullOrWhiteSpace(camera.RtspUrl) || !Uri.TryCreate(camera.SubRtspUrl, UriKind.Absolute, out var sub) || !string.Equals(sub.Scheme, "rtsp", StringComparison.OrdinalIgnoreCase)))
+            {
+                errors.Add($"Camera '{camera.Id}': SubRtspUrl is an absolute rtsp:// URL, for cameras with an RtspUrl.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(camera.SubProfileToken) && string.IsNullOrWhiteSpace(camera.OnvifUrl))
+            {
+                errors.Add($"Camera '{camera.Id}': SubProfileToken is for ONVIF cameras (use SubRtspUrl).");
             }
 
             if (!string.IsNullOrWhiteSpace(camera.RtspUrl) && (!Uri.TryCreate(camera.RtspUrl, UriKind.Absolute, out var rtsp) || !string.Equals(rtsp.Scheme, "rtsp", StringComparison.OrdinalIgnoreCase)))
@@ -327,6 +333,34 @@ namespace Onvif.Open.Recorder.Configuration
             return null;
         }
 
+        /// <summary>Opens a camera's smaller stream for live grids; null when it has none.</summary>
+        internal static Func<CancellationToken, Task<ILiveVideoStream>> SubStreamOf(CameraOptions camera, ICamera onvifCamera)
+        {
+            if (onvifCamera != null && !string.IsNullOrWhiteSpace(camera.SubProfileToken) && camera.SubProfileToken != camera.ProfileToken)
+            {
+                var media = onvifCamera.InitializeMedia();
+                var token = camera.SubProfileToken;
+                return ct => media.StartLiveStreamAsync(token, camera.Transport, false, ct);
+            }
+
+            if (!string.IsNullOrWhiteSpace(camera.SubRtspUrl) && camera.SubRtspUrl != camera.RtspUrl)
+            {
+                var uri = new Uri(camera.SubRtspUrl);
+                return ct =>
+                {
+                    var builder = LiveVideoStreamBuilder.GetBuilder().SetStreamUri(uri).SetTransport(camera.Transport);
+                    if (!string.IsNullOrWhiteSpace(camera.Username))
+                    {
+                        builder.SetCredentials(camera.Username, camera.Password);
+                    }
+
+                    return builder.BuildAsync(ct);
+                };
+            }
+
+            return null;
+        }
+
         private static ISegmentFormat ToFormat(string format)
         {
             switch ((format ?? string.Empty).Trim().ToLowerInvariant())
@@ -374,6 +408,8 @@ namespace Onvif.Open.Recorder.Configuration
         #region Private Variables
 
         private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (ICamera Camera, string ProfileToken)> _onvifCameras;
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Func<CancellationToken, Task<ILiveVideoStream>>> _subStreams =
+            new System.Collections.Concurrent.ConcurrentDictionary<string, Func<CancellationToken, Task<ILiveVideoStream>>>(StringComparer.OrdinalIgnoreCase);
 
         #endregion
 
@@ -398,12 +434,27 @@ namespace Onvif.Open.Recorder.Configuration
             {
                 _onvifCameras[camera.Id] = (onvifCamera, string.IsNullOrWhiteSpace(camera.ProfileToken) ? null : camera.ProfileToken);
             }
+
+            var sub = RecordingConfiguration.SubStreamOf(camera, onvifCamera);
+            if (sub != null)
+            {
+                _subStreams[camera.Id] = sub;
+            }
+            else
+            {
+                _subStreams.TryRemove(camera.Id, out _);
+            }
         }
+
+        /// <summary>Opens the camera's smaller stream for live grids; null when it has none (or is not recorded).</summary>
+        public Func<CancellationToken, Task<ILiveVideoStream>> FindSubStream(string cameraId) =>
+            cameraId != null && _subStreams.TryGetValue(cameraId, out var open) ? open : null;
 
         /// <summary>Stops recording a camera (closing its open segment); false when it was not recorded.</summary>
         public Task<bool> RemoveCameraAsync(string cameraId, CancellationToken cancellationToken = default)
         {
             _onvifCameras.TryRemove(cameraId ?? string.Empty, out _);
+            _subStreams.TryRemove(cameraId ?? string.Empty, out _);
             return Manager.RemoveCameraAsync(cameraId, cancellationToken);
         }
 

@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using Onvif.Open.Core.StateMachines;
 using Onvif.Open.Core.Streaming;
 
 namespace Onvif.Open.Recording.Implementation.Mp4
@@ -18,6 +19,23 @@ namespace Onvif.Open.Recording.Implementation.Mp4
     /// edge); a new stream (other parameter sets, time going backwards) drops every viewer the same way.
     /// H.264 only: for other codecs <see cref="IsSupported"/> is false and players use HLS.
     /// </summary>
+    public static class Mp4LiveStates
+    {
+        public const string WaitingForKeyFrame = "WaitingForKeyFrame";
+        public const string Streaming = "Streaming";
+        public const string Unsupported = "Unsupported";
+
+        /// <summary>A camera's low-latency stream (docs/STATE-MACHINES.md).</summary>
+        public static StateMachine<string> Machine { get; } = new StateMachine<string>(
+            "Low-latency live stream",
+            WaitingForKeyFrame,
+            (WaitingForKeyFrame, Streaming, "H.264 key frame with its parameter sets"),
+            (Streaming, WaitingForKeyFrame, "camera reconnected, new parameter sets, or closed: viewers dropped"),
+            (WaitingForKeyFrame, Unsupported, "not H.264: players use HLS"),
+            (Streaming, Unsupported, "not H.264: players use HLS"),
+            (Unsupported, Streaming, "H.264 key frame (the camera changed codec)"));
+    }
+
     public sealed class Mp4LiveStream
     {
         #region Constructor
@@ -55,6 +73,9 @@ namespace Onvif.Open.Recording.Implementation.Mp4
 
         public VideoCodec Codec { get; private set; }
 
+        /// <summary>See <see cref="Mp4LiveStates"/>.</summary>
+        public string State { get; private set; } = Mp4LiveStates.WaitingForKeyFrame;
+
         /// <summary>False once the camera sends something other than H.264.</summary>
         public bool IsSupported => Codec is VideoCodec.Unknown or VideoCodec.H264;
 
@@ -86,6 +107,15 @@ namespace Onvif.Open.Recording.Implementation.Mp4
             Codec = frame.Codec;
             if (frame.Codec != VideoCodec.H264)
             {
+                lock (_sync)
+                {
+                    if (State != Mp4LiveStates.Unsupported)
+                    {
+                        Reset();
+                        State = Mp4LiveStates.Machine.Move(State, Mp4LiveStates.Unsupported);
+                    }
+                }
+
                 _ready.TrySetResult(false);
                 return;
             }
@@ -180,6 +210,15 @@ namespace Onvif.Open.Recording.Implementation.Mp4
             return viewer;
         }
 
+        /// <summary>Ends the stream: every viewer is dropped (their players reconnect).</summary>
+        public void Close()
+        {
+            lock (_sync)
+            {
+                Reset();
+            }
+        }
+
         #endregion
 
         #region Private Methods
@@ -216,6 +255,7 @@ namespace Onvif.Open.Recording.Implementation.Mp4
                 _pps = pps;
                 _init = FragmentedMp4.InitSegment(parsed, sps, pps);
                 CodecString = parsed.CodecString;
+                State = Mp4LiveStates.Machine.Move(State, Mp4LiveStates.Streaming);
                 _first = frame.Timestamp;
                 _last = frame.Timestamp;
                 _ready.TrySetResult(true);
@@ -233,6 +273,11 @@ namespace Onvif.Open.Recording.Implementation.Mp4
             }
 
             _gop.Clear();
+            if (State == Mp4LiveStates.Streaming)
+            {
+                State = Mp4LiveStates.Machine.Move(State, Mp4LiveStates.WaitingForKeyFrame);
+            }
+
             _init = null;
             _first = null;
             _last = TimeSpan.Zero;
