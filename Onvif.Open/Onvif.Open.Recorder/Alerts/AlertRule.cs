@@ -24,6 +24,20 @@ namespace Onvif.Open.Recorder.Alerts
             : null;
     }
 
+    /// <summary>Where an alert stands in the inbox; stored as its acknowledgement (<see cref="AlertRecord.AcknowledgedAt"/>).</summary>
+    public static class AlertStates
+    {
+        public const string Open = "Open";
+        public const string Acknowledged = "Acknowledged";
+
+        public static Onvif.Open.Core.StateMachines.StateMachine<string> Machine { get; } = new Onvif.Open.Core.StateMachines.StateMachine<string>(
+            "Alert",
+            Open,
+            (Open, Acknowledged, "an operator saw to it"));
+
+        public static string Of(AlertRecord alert) => alert.AcknowledgedAt == null ? Open : Acknowledged;
+    }
+
     public static class Severities
     {
         public const string Info = "Info";

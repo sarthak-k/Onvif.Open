@@ -110,6 +110,7 @@ namespace Onvif.Open.Recorder.Api
             category = alert.Category,
             severity = alert.Severity,
             title = alert.Title,
+            status = AlertStates.Of(alert),
             triggeredAt = DateTime.SpecifyKind(alert.TriggeredAt, DateTimeKind.Utc),
             acknowledgedAt = alert.AcknowledgedAt is DateTime at ? DateTime.SpecifyKind(at, DateTimeKind.Utc) : (DateTime?)null,
             acknowledgedBy = alert.AcknowledgedBy,

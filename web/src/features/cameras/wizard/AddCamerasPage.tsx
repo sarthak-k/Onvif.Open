@@ -8,12 +8,16 @@ import { usePolicies, useSites } from '../../../data/tenancy';
 import { SelectField, TextField } from '../../../shared/form/fields';
 import { ErrorMessage } from '../../../shared/ui/ErrorMessage';
 import { messageOf } from '../../../api/errors';
+import { wizardSteps, type Step } from './steps';
 import {
+  afterSharedChange,
+  changeCandidate,
   credentialsOf,
   describeProfile,
   eachLimited,
   fromAddress,
   fromDevice,
+  startTest,
   stateLabels,
   toCameraConfig,
   withProbe,
@@ -21,7 +25,6 @@ import {
   type SharedCredentials,
 } from './candidates';
 
-type Step = 'find' | 'connect' | 'name' | 'done';
 
 const steps: { id: Step; label: string }[] = [
   { id: 'find', label: 'Find' },
@@ -51,7 +54,12 @@ export default function AddCamerasPage() {
   const [adding, setAdding] = useState(false);
 
   const taken = useMemo(() => configs.data?.map((c) => c.name) ?? [], [configs.data]);
-  const update = (key: string, change: Partial<Candidate>) => setCandidates((all) => all.map((c) => (c.key === key ? { ...c, ...change } : c)));
+  const update = (key: string, change: Partial<Candidate>) => setCandidates((all) => all.map((c) => (c.key === key ? changeCandidate(c, change) : c)));
+  const go = (to: Step) => setStep((from) => wizardSteps.move(from, to));
+  const changeShared = (next: SharedCredentials) => {
+    setShared(next);
+    setCandidates(afterSharedChange);
+  };
   const selected = candidates.filter((c) => c.selected);
   const ready = selected.filter((c) => c.state === 'ok');
 
@@ -85,7 +93,8 @@ export default function AddCamerasPage() {
   async function test(only?: Candidate[]) {
     setTesting(true);
     const targets = only ?? selected.filter((c) => c.state !== 'ok');
-    for (const c of targets) update(c.key, { state: 'testing', error: null });
+    const keys = new Set(targets.map((c) => c.key));
+    setCandidates((all) => all.map((c) => (keys.has(c.key) ? startTest(c) : c)));
     await eachLimited(targets, parallelTests, async (candidate) => {
       const { username, password } = credentialsOf(candidate, shared);
       try {
@@ -110,7 +119,7 @@ export default function AddCamerasPage() {
     }
     await queries.invalidateQueries({ queryKey: queryKeys.cameras.all });
     setAdding(false);
-    setStep('done');
+    go('done');
   }
 
   return (
@@ -141,7 +150,7 @@ export default function AddCamerasPage() {
             }
             return candidate !== null;
           }}
-          onNext={() => setStep('connect')}
+          onNext={() => go('connect')}
         />
       )}
 
@@ -150,11 +159,11 @@ export default function AddCamerasPage() {
           candidates={selected}
           shared={shared}
           testing={testing}
-          onShared={setShared}
+          onShared={changeShared}
           onChange={update}
           onTest={test}
-          onBack={() => setStep('find')}
-          onNext={() => setStep('name')}
+          onBack={() => go('find')}
+          onNext={() => go('name')}
         />
       )}
 
@@ -165,7 +174,7 @@ export default function AddCamerasPage() {
           policies={policies.data ?? []}
           adding={adding}
           onChange={update}
-          onBack={() => setStep('connect')}
+          onBack={() => go('connect')}
           onAdd={addAll}
         />
       )}
@@ -276,8 +285,8 @@ function ConnectStep({ candidates, shared, testing, onShared, onChange, onTest, 
         <h2>Sign in to the cameras</h2>
         <p className="muted small">Most installations use one account on every camera. A camera that refuses it can have its own below.</p>
         <div className="row">
-          <TextField label="User name" autoComplete="off" value={shared.username} onChange={(username) => onShared({ ...shared, username })} />
-          <TextField label="Password" type="password" autoComplete="new-password" value={shared.password} onChange={(password) => onShared({ ...shared, password })} />
+          <TextField label="User name" autoComplete="off" disabled={testing} value={shared.username} onChange={(username) => onShared({ ...shared, username })} />
+          <TextField label="Password" type="password" autoComplete="new-password" disabled={testing} value={shared.password} onChange={(password) => onShared({ ...shared, password })} />
           <button type="submit" disabled={testing}>
             {testing ? 'Testing…' : tested ? 'Test again' : 'Test cameras'}
           </button>
@@ -299,8 +308,8 @@ function ConnectStep({ candidates, shared, testing, onShared, onChange, onTest, 
               )}
               {candidate.ownCredentials && candidate.state !== 'ok' && (
                 <div className="row">
-                  <TextField label={`User name for ${candidate.label}`} autoComplete="off" value={candidate.username} onChange={(username) => onChange(candidate.key, { username })} />
-                  <TextField label={`Password for ${candidate.label}`} type="password" autoComplete="new-password" value={candidate.password} onChange={(password) => onChange(candidate.key, { password })} />
+                  <TextField label={`User name for ${candidate.label}`} autoComplete="off" disabled={testing} value={candidate.username} onChange={(username) => onChange(candidate.key, { username })} />
+                  <TextField label={`Password for ${candidate.label}`} type="password" autoComplete="new-password" disabled={testing} value={candidate.password} onChange={(password) => onChange(candidate.key, { password })} />
                   <button type="button" disabled={testing} onClick={() => onTest([candidate])}>
                     Try again
                   </button>

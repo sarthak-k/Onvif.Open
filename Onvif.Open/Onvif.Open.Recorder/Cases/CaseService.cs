@@ -146,7 +146,7 @@ namespace Onvif.Open.Recorder.Cases
             record.Description = request.Description == null ? record.Description : Text(request.Description);
             record.ClosedAt = status == CaseStatuses.Closed ? (record.Status == CaseStatuses.Closed ? record.ClosedAt : now) : null;
             var changedStatus = record.Status != status;
-            record.Status = status;
+            record.Status = changedStatus ? CaseStatuses.Machine.Move(record.Status, status) : status;
             record.UpdatedAt = now;
             await _store.SaveAsync(record, cancellationToken).ConfigureAwait(false);
 

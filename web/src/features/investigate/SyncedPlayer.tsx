@@ -4,17 +4,15 @@ import type { Span } from '../playback/spans';
 import { Timeline } from '../playback/Timeline';
 import { formatClock, formatDuration, zoneName } from '../playback/time';
 import { CameraTile, type SeekCommand } from './CameraTile';
+import { clearMarks, clipOf, markIn, markOut, noMarks, phaseOf, type ClipMarks } from './clipMarks';
+
+export type { ClipMarks } from './clipMarks';
 
 export interface PlayerCamera {
   cameraId: string;
   name: string;
 }
 
-/** The marked stretch: in and out points (ms since the epoch). */
-export interface ClipMarks {
-  from: number | null;
-  to: number | null;
-}
 
 interface Props {
   siteId: string | null;
@@ -48,7 +46,7 @@ export function SyncedPlayer({ siteId, from, to, start, startLabel, cameras, ini
   const [rate, setRate] = useState(1);
   const [position, setPosition] = useState<number | null>(null);
   const [spans, setSpans] = useState<Record<string, Span[]>>({});
-  const [marks, setMarks] = useState<ClipMarks>(initialMarks ?? { from: null, to: null });
+  const [marks, setMarks] = useState<ClipMarks>(initialMarks ?? noMarks);
   const events = useEventsBetween(siteId, from, to);
 
   // Somewhere else: start over there.
@@ -56,7 +54,7 @@ export function SyncedPlayer({ siteId, from, to, start, startLabel, cameras, ini
     setSeek((s) => ({ time: start, n: s.n + 1 }));
     setPlaying(true);
     setPosition(null);
-    setMarks(initialMarks ?? { from: null, to: null });
+    setMarks(initialMarks ?? noMarks);
   }, [start]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const goTo = useCallback((time: number) => setSeek((s) => ({ time: Math.min(Math.max(time, from), to), n: s.n + 1 })), [from, to]);
@@ -64,7 +62,8 @@ export function SyncedPlayer({ siteId, from, to, start, startLabel, cameras, ini
   const shown = new Set(cameras.map((c) => c.cameraId));
   const timelineEvents = (events.data ?? []).filter((e) => e.cameraId && shown.has(e.cameraId));
   const now = position ?? seek.time;
-  const marked = marks.from !== null && marks.to !== null && marks.to > marks.from ? { from: marks.from, to: marks.to } : null;
+  const marked = clipOf(marks);
+  const phase = phaseOf(marks);
 
   return (
     <section className="stack" aria-label="Playback">
@@ -128,18 +127,25 @@ export function SyncedPlayer({ siteId, from, to, start, startLabel, cameras, ini
 
       {clipActions && (
         <div className="toolbar clip-marks" aria-label="Clip">
-          <button type="button" onClick={() => setMarks((m) => ({ from: now, to: m.to !== null && m.to > now ? m.to : null }))}>
+          <button type="button" onClick={() => setMarks((m) => markIn(m, now))}>
             Mark in
           </button>
-          <button type="button" onClick={() => setMarks((m) => ({ from: m.from !== null && m.from < now ? m.from : null, to: now }))}>
+          <button type="button" onClick={() => setMarks((m) => markOut(m, now))}>
             Mark out
           </button>
+          {phase !== 'none' && (
+            <button type="button" className="link" onClick={() => setMarks(clearMarks)}>
+              Clear
+            </button>
+          )}
           <span className="muted small">
             {marked
               ? `Clip ${formatClock(marked.from, true, timeZone)} – ${formatClock(marked.to, true, timeZone)} (${formatDuration(marked.to - marked.from)})`
-              : marks.from !== null
-                ? `In at ${formatClock(marks.from, true, timeZone)}: now mark the end`
-                : 'Mark where the clip starts and ends.'}
+              : phase === 'in'
+                ? `In at ${formatClock(marks.from!, true, timeZone)}: now mark the end`
+                : phase === 'out'
+                  ? `Out at ${formatClock(marks.to!, true, timeZone)}: now mark the start`
+                  : 'Mark where the clip starts and ends.'}
           </span>
           {marked && clipActions(marked)}
         </div>

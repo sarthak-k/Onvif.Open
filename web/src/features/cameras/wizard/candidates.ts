@@ -1,8 +1,23 @@
 import type { CameraConfig, DiscoveredDevice, ProbeProfile, ProbeResult } from '../../../api/types';
+import { defineMachine } from '../../../shared/stateMachine';
 import { emptyCameraForm, suggestName, toCamera } from '../editor/cameraForm';
 
 /** Where a camera stands in the wizard. */
 export type CandidateState = 'untested' | 'testing' | 'ok' | 'unauthorized' | 'unreachable';
+
+/** How a camera moves through the wizard's test (docs/STATE-MACHINES.md). */
+export const candidateMachine = defineMachine<CandidateState>('Camera in the add-camera wizard', 'untested', [
+  { from: 'untested', to: 'testing', when: 'Test cameras' },
+  { from: 'testing', to: 'ok', when: 'signed in, picture taken' },
+  { from: 'testing', to: 'unauthorized', when: 'password refused' },
+  { from: 'testing', to: 'unreachable', when: 'no answer' },
+  { from: 'ok', to: 'testing', when: 'Test again' },
+  { from: 'unauthorized', to: 'testing', when: 'Test again' },
+  { from: 'unreachable', to: 'testing', when: 'Test again' },
+  { from: 'ok', to: 'untested', when: 'its sign-in changed' },
+  { from: 'unauthorized', to: 'untested', when: 'its sign-in changed' },
+  { from: 'unreachable', to: 'untested', when: 'its sign-in changed' },
+]);
 
 /** A camera the wizard may add: found on the network or typed in, then tested, named and given a policy. */
 export interface Candidate {
@@ -85,6 +100,24 @@ function hostOf(url: string): string {
 
 export function credentialsOf(candidate: Candidate, shared: SharedCredentials): SharedCredentials {
   return candidate.ownCredentials ? { username: candidate.username, password: candidate.password } : shared;
+}
+
+const signInFields = ['ownCredentials', 'username', 'password'] as const;
+
+/** The candidate with a change; a changed sign-in makes its earlier test meaningless, so it is tested again. */
+export function changeCandidate(candidate: Candidate, change: Partial<Candidate>): Candidate {
+  const next = { ...candidate, ...change };
+  const signInChanged = signInFields.some((field) => field in change && change[field] !== candidate[field]);
+  return signInChanged && candidateMachine.can(candidate.state, 'untested') ? { ...next, state: 'untested', error: null } : next;
+}
+
+/** After the shared sign-in changed: the cameras that use it need a new test. */
+export function afterSharedChange(candidates: Candidate[]): Candidate[] {
+  return candidates.map((c) => (!c.ownCredentials && candidateMachine.can(c.state, 'untested') ? { ...c, state: 'untested', error: null } : c));
+}
+
+export function startTest(candidate: Candidate): Candidate {
+  return { ...candidate, state: candidateMachine.move(candidate.state, 'testing'), error: null };
 }
 
 /** The candidate after a test: its state, picture and streams (the recommended one selected). */

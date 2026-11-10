@@ -2,16 +2,23 @@ import type { ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import { can, requirementOf, type Permission } from './permissions';
+import { sessionOf } from './session';
 
 /** Signed-in users only; sends a user who must change the password to that page first. */
 export function RequireAuth({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const location = useLocation();
 
-  if (user === undefined) return <p className="loading">Loading…</p>;
-  if (user === null) return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
-  if (user.mustChangePassword && location.pathname !== '/change-password') return <Navigate to="/change-password" replace />;
-  return <>{children}</>;
+  switch (sessionOf(user)) {
+    case 'resuming':
+      return <p className="loading">Loading…</p>;
+    case 'signedOut':
+      return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
+    case 'mustChangePassword':
+      return location.pathname === '/change-password' ? <>{children}</> : <Navigate to="/change-password" replace />;
+    case 'signedIn':
+      return <>{children}</>;
+  }
 }
 
 /** Hides a page from users without the permission (the recorder refuses their calls anyway). */

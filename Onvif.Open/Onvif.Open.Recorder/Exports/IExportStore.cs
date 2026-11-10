@@ -18,6 +18,19 @@ namespace Onvif.Open.Recorder.Exports
         public const string Ready = "Ready";
         public const string Failed = "Failed";
         public const string Expired = "Expired";
+
+        /// <summary>An export's life; Ready and Failed exports never run again (a new export is made instead).</summary>
+        public static Onvif.Open.Core.StateMachines.StateMachine<string> Machine { get; } = new Onvif.Open.Core.StateMachines.StateMachine<string>(
+            "Export",
+            Queued,
+            (Queued, Running, "its turn in the queue"),
+            (Running, Running, "resumed after a restart"),
+            (Running, Ready, "MP4 written and hashed"),
+            (Running, Failed, "no video, or ffmpeg failed"),
+            (Ready, Expired, "7 days passed: file deleted"));
+
+        /// <summary>Exports that still have work to do (run again after a restart).</summary>
+        public static bool IsUnfinished(string status) => Machine.CanMove(status, Running);
     }
 
     /// <summary>

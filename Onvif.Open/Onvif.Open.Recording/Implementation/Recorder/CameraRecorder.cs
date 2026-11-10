@@ -565,6 +565,12 @@ namespace Onvif.Open.Recording.Implementation.Recorder
                 error = _status.LastError;
             }
 
+            if (previous != state && !RecordingStates.Machine.CanMove(previous, state))
+            {
+                // The table in RecordingStates is the contract (docs/STATE-MACHINES.md); a move outside it is a bug.
+                _logger.LogWarning("Camera {CameraId}: unexpected state change {Previous} -> {State}", CameraId, previous, state);
+            }
+
             if (previous != state && _onStateChanged != null)
             {
                 // Only report the error with the transition it caused.
