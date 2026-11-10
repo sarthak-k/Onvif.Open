@@ -72,7 +72,7 @@ export default function AlertsPage() {
               ))}
               <div className="actions">
                 <Link to={investigateLink(alert)}>Investigate</Link>
-                {alert.acknowledgedAt ? (
+                {alert.status === 'Acknowledged' && alert.acknowledgedAt ? (
                   <span className="muted small">
                     Acknowledged{alert.acknowledgedBy ? ` by ${alert.acknowledgedBy}` : ''} {formatWhen(Date.parse(alert.acknowledgedAt), zoneOf(alert.siteId))}
                   </span>

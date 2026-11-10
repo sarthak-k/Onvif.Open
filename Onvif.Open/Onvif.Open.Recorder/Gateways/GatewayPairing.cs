@@ -31,6 +31,13 @@ namespace Onvif.Open.Recorder.Gateways
         public const string Waiting = "Waiting";
         public const string Paired = "Paired";
         public const string Expired = "Expired";
+
+        /// <summary>A pairing code's life on the control plane (in memory; gone once paired or expired).</summary>
+        public static Onvif.Open.Core.StateMachines.StateMachine<string> Machine { get; } = new Onvif.Open.Core.StateMachines.StateMachine<string>(
+            "Gateway pairing",
+            Waiting,
+            (Waiting, Paired, "an administrator entered the code"),
+            (Waiting, Expired, "10 minutes passed"));
     }
 
     /// <summary>What a gateway gets when it asks to be paired: the code to show, and how to ask whether it was entered.</summary>

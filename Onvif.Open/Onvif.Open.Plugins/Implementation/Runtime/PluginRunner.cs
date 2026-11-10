@@ -113,11 +113,11 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
             catch (Exception ex)
             {
                 RecordError(ex, "start");
-                _state = PluginState.Faulted;
+                _state = PluginStates.Machine.Move(_state, PluginState.Faulted);
                 return;
             }
 
-            _state = PluginState.Running;
+            _state = PluginStates.Machine.Move(_state, PluginState.Running);
             _frameLoop = Task.Run(() => FrameLoopAsync(_abort.Token));
             _audioLoop = Task.Run(() => AudioLoopAsync(_abort.Token));
             _notificationLoop = Task.Run(() => NotificationLoopAsync(_abort.Token));
@@ -129,7 +129,7 @@ namespace Onvif.Open.Plugins.Implementation.Runtime
             var wasRunning = _state == PluginState.Running;
             if (wasRunning)
             {
-                _state = PluginState.Stopped;
+                _state = PluginStates.Machine.Move(_state, PluginState.Stopped);
             }
 
             _frames.Writer.TryComplete();

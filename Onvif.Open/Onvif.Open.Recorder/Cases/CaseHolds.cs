@@ -16,6 +16,13 @@ namespace Onvif.Open.Recorder.Cases
         public const string Open = "Open";
         public const string Closed = "Closed";
 
+        /// <summary>A case is reopened as often as needed; its video is kept while it is open.</summary>
+        public static Onvif.Open.Core.StateMachines.StateMachine<string> Machine { get; } = new Onvif.Open.Core.StateMachines.StateMachine<string>(
+            "Case",
+            Open,
+            (Open, Closed, "closed by an operator"),
+            (Closed, Open, "reopened by an operator"));
+
         public static string Normalize(string status) =>
             string.Equals(status, Open, StringComparison.OrdinalIgnoreCase) ? Open : string.Equals(status, Closed, StringComparison.OrdinalIgnoreCase) ? Closed : null;
     }

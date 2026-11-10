@@ -632,6 +632,11 @@ Where ffmpeg is installed, recordings, live HLS, playlists and clips made from r
 The cloud storage tests run against emulators when `ONVIF_OPEN_TEST_S3_URL`, `ONVIF_OPEN_TEST_AZURE_CONNECTION` and
 `ONVIF_OPEN_TEST_GCS_URL` are set (CI starts moto, Azurite and fake-gcs-server) and are skipped otherwise.
 
+Everything with a lifecycle (camera recording, plugins, exports, cases, alerts, gateway pairing, the web session, the
+add-camera wizard, clip marks) is an explicit state machine: one table of states and allowed moves, used by the code,
+checked by the tests and drawn in [docs/STATE-MACHINES.md](docs/STATE-MACHINES.md). After changing a table, run the
+tests with `UPDATE_STATE_DOCS=1` to redraw the diagrams.
+
 ## Performance
 
 Every camera runs the same path many times a second: RTSP read → RTP depacketizing → MPEG-TS muxing (→ plugins, live

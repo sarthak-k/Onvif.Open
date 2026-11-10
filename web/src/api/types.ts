@@ -459,6 +459,8 @@ export interface Alert {
   category: string;
   severity: Severity;
   title: string;
+  /** See docs/STATE-MACHINES.md (Alert). */
+  status: 'Open' | 'Acknowledged';
   triggeredAt: string;
   /** Null while it is open. */
   acknowledgedAt: string | null;

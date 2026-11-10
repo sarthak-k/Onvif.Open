@@ -8,7 +8,7 @@ import { alertToAnnounce, deliveryProblems, investigateLink } from './alerts';
 const now = Date.now();
 const alert = (id: string, extra: Partial<Alert> = {}): Alert => ({
   id, ruleId: 'r1', ruleName: 'Person at night', siteId: lyonSite.id, cameraId: 'dock', cameraName: 'Dock', eventId: 'e1', category: 'person', severity: 'Warning',
-  title: 'Person', triggeredAt: new Date(now - 5 * 60_000).toISOString(), acknowledgedAt: null, acknowledgedBy: null, delivery: {}, ...extra,
+  title: 'Person', status: 'Open', triggeredAt: new Date(now - 5 * 60_000).toISOString(), acknowledgedAt: null, acknowledgedBy: null, delivery: {}, ...extra,
 });
 const rule: AlertRule = {
   id: 'r1', name: 'Person at night', enabled: true, kind: 'Event', categories: ['person', 'vehicle'], minSeverity: 'Warning', offlineMinutes: 5, siteIds: [lyonSite.id], cameraIds: [],
@@ -59,11 +59,11 @@ describe('alerts', () => {
     const { user } = renderApp(
       '/alerts',
       signedIn('Operator', {
-        'GET /api/alerts': ({ query }) => ({ body: query.get('status') === 'open' ? open : [...open, alert('a0', { acknowledgedAt: new Date().toISOString() })] }),
+        'GET /api/alerts': ({ query }) => ({ body: query.get('status') === 'open' ? open : [...open, alert('a0', { acknowledgedAt: new Date().toISOString(), status: 'Acknowledged' })] }),
         'GET /api/alerts/summary': () => ({ body: { open: open.length, latest: open[0] ?? null } }),
         'POST /api/alerts/a1/acknowledge': () => {
           open = open.filter((a) => a.id !== 'a1');
-          return { body: { ...alert('a1'), acknowledgedAt: new Date().toISOString(), acknowledgedBy: 'oscar' } };
+          return { body: { ...alert('a1'), acknowledgedAt: new Date().toISOString(), acknowledgedBy: 'oscar', status: 'Acknowledged' } };
         },
       }),
     );

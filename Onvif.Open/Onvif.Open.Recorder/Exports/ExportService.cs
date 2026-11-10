@@ -223,12 +223,12 @@ namespace Onvif.Open.Recorder.Exports
         public async Task RunAsync(string id, CancellationToken cancellationToken = default)
         {
             var export = await _store.FindAsync(id, cancellationToken).ConfigureAwait(false);
-            if (export == null || export.Status is not (ExportStatuses.Queued or ExportStatuses.Running))
+            if (export == null || !ExportStatuses.IsUnfinished(export.Status))
             {
                 return;
             }
 
-            export.Status = ExportStatuses.Running;
+            export.Status = ExportStatuses.Machine.Move(export.Status, ExportStatuses.Running);
             await _store.SaveAsync(export, cancellationToken).ConfigureAwait(false);
 
             Directory.CreateDirectory(Folder);
@@ -250,12 +250,12 @@ namespace Onvif.Open.Recorder.Exports
                     export.Size = file.Length;
                 }
 
-                export.Status = ExportStatuses.Ready;
+                export.Status = ExportStatuses.Machine.Move(export.Status, ExportStatuses.Ready);
                 _logger?.LogInformation("Export {Id} of camera {CameraId} ready ({Size} bytes)", export.Id, export.CameraId, export.Size);
             }
             catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
-                export.Status = ExportStatuses.Failed;
+                export.Status = ExportStatuses.Machine.Move(export.Status, ExportStatuses.Failed);
                 export.Error = ex is InvalidOperationException || ex is IOException || ex is KeyNotFoundException ? ex.Message : "The export failed.";
                 _logger?.LogWarning(ex, "Export {Id} of camera {CameraId} failed", export.Id, export.CameraId);
                 TryDelete(output);
@@ -275,7 +275,7 @@ namespace Onvif.Open.Recorder.Exports
             foreach (var export in await _store.GetExpiredAsync(Now, cancellationToken).ConfigureAwait(false))
             {
                 TryDelete(PathOf(export.Id));
-                export.Status = ExportStatuses.Expired;
+                export.Status = ExportStatuses.Machine.Move(export.Status, ExportStatuses.Expired);
                 await _store.SaveAsync(export, cancellationToken).ConfigureAwait(false);
             }
         }

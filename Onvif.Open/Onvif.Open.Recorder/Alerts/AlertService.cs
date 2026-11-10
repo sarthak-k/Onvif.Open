@@ -168,7 +168,8 @@ namespace Onvif.Open.Recorder.Alerts
                 return ServiceResult<AlertRecord>.NotFound();
             }
 
-            if (alert.AcknowledgedAt == null)
+            // Acknowledging twice keeps the first acknowledgement.
+            if (AlertStates.Machine.CanMove(AlertStates.Of(alert), AlertStates.Acknowledged))
             {
                 alert.AcknowledgedAt = Now;
                 alert.AcknowledgedBy = user.Identity?.Name;

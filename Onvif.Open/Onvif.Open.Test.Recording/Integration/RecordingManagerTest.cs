@@ -319,6 +319,9 @@ namespace Onvif.Open.Test.Recording.Integration
                     await manager.StopAsync();
                 }
 
+                // Every reported change is a move of the table (docs/STATE-MACHINES.md).
+                Assert.All(states, s => Assert.True(RecordingStates.Machine.CanMove(s.PreviousState, s.State), $"{s.PreviousState} -> {s.State}"));
+
                 var sequence = states.Select(s => s.State).ToArray();
                 Assert.Equal(new[]
                 {
