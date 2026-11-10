@@ -18,6 +18,8 @@ export interface CameraForm {
   hasPassword: boolean;
   removePassword: boolean;
   profileToken: string;
+  subProfileToken: string;
+  subRtspUrl: string;
   transport: Transport;
   mediaVersion: MediaVersion;
   segmentMinutes: string;
@@ -45,6 +47,8 @@ export const emptyCameraForm: CameraForm = {
   hasPassword: false,
   removePassword: false,
   profileToken: '',
+  subProfileToken: '',
+  subRtspUrl: '',
   transport: 'Rtsp',
   mediaVersion: 'Auto',
   segmentMinutes: '',
@@ -81,6 +85,8 @@ export function toForm(camera: CameraConfig): CameraForm {
     hasPassword: camera.hasPassword ?? false,
     removePassword: false,
     profileToken: camera.profileToken ?? '',
+    subProfileToken: camera.subProfileToken ?? '',
+    subRtspUrl: camera.subRtspUrl ?? '',
     transport: camera.transport,
     mediaVersion: camera.mediaVersion,
     segmentMinutes: text(toSeconds(camera.rotation?.segmentDuration), 60),
@@ -113,6 +119,8 @@ export function toCamera(form: CameraForm): CameraConfig {
     // null keeps the stored password, "" removes it.
     password: form.removePassword ? '' : form.password || (form.hasPassword ? null : ''),
     profileToken: onvif ? form.profileToken.trim() || null : null,
+    subProfileToken: onvif ? form.subProfileToken.trim() || null : null,
+    subRtspUrl: onvif ? null : form.subRtspUrl.trim() || null,
     transport: form.transport,
     mediaVersion: form.mediaVersion,
     rotation: segmentDuration || maxSegmentSizeMB != null || alignToClock ? { segmentDuration, maxSegmentSizeMB, alignToClock } : null,

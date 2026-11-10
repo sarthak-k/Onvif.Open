@@ -99,7 +99,7 @@ namespace Onvif.Open.Recorder.Security
                     policy.WithOrigins(options.AllowedOrigins.Select(o => o.TrimEnd('/')).ToArray())
                         .AllowAnyHeader()
                         .AllowAnyMethod()
-                        .WithExposedHeaders("Content-Disposition", "Location", Api.PlaybackEndpoints.CodecHeader);
+                        .WithExposedHeaders("Content-Disposition", "Location", Api.PlaybackEndpoints.CodecHeader, Api.PlaybackEndpoints.StreamHeader);
                 }
             }));
 

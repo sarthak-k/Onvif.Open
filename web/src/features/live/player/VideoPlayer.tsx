@@ -4,8 +4,8 @@ import { usePlayerFactory } from './PlayerContext';
 import type { PlayerState } from './types';
 import { usePageVisible } from './usePageVisible';
 
-/** A camera's live video; plays only while the page is visible. */
-export const VideoPlayer = memo(function VideoPlayer({ cameraId, label }: { cameraId: string; label: string }) {
+/** A camera's live video; plays only while the page is visible. `small`: a grid tile, which plays the camera's smaller stream. */
+export const VideoPlayer = memo(function VideoPlayer({ cameraId, label, small = false }: { cameraId: string; label: string; small?: boolean }) {
   const { media } = useApi();
   const factory = usePlayerFactory();
   const visible = usePageVisible();
@@ -14,9 +14,9 @@ export const VideoPlayer = memo(function VideoPlayer({ cameraId, label }: { came
 
   useEffect(() => {
     if (!visible || !video.current) return;
-    const player = factory(video.current, { url: media.liveUrl(cameraId), lowLatencyUrl: media.liveMp4Url(cameraId), token: media.token }, setState);
+    const player = factory(video.current, { url: media.liveUrl(cameraId), lowLatencyUrl: media.liveMp4Url(cameraId, small), token: media.token }, setState);
     return () => player.destroy();
-  }, [cameraId, factory, media, visible]);
+  }, [cameraId, factory, media, visible, small]);
 
   return (
     <div className="player">

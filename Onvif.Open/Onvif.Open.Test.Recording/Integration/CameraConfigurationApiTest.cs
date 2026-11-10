@@ -144,6 +144,24 @@ namespace Onvif.Open.Test.Recording.Integration
         }
 
         [Fact]
+        public async Task CamerasShouldKeepASmallerStreamForGrids()
+        {
+            var id = await AddAsync(new { name = "Gate", siteId = TestSettings.SiteId, rtspUrl = "rtsp://127.0.0.1:1/main", subRtspUrl = "rtsp://127.0.0.1:1/sub" });
+            Assert.Equal("rtsp://127.0.0.1:1/sub", (await Json($"/api/config/cameras/{id}")).GetProperty("subRtspUrl").GetString());
+
+            // An RTSP sub-stream is an rtsp:// URL of an RTSP camera; a profile token is for ONVIF cameras.
+            foreach (var bad in new object[]
+            {
+                new { name = "Gate", siteId = TestSettings.SiteId, rtspUrl = "rtsp://127.0.0.1:1/main", subRtspUrl = "http://127.0.0.1/sub" },
+                new { name = "Gate", siteId = TestSettings.SiteId, rtspUrl = "rtsp://127.0.0.1:1/main", subProfileToken = "profile_2" },
+                new { name = "Gate", siteId = TestSettings.SiteId, onvifUrl = "http://127.0.0.1:1", subRtspUrl = "rtsp://127.0.0.1:1/sub" },
+            })
+            {
+                Assert.Equal(HttpStatusCode.BadRequest, (await _client.PutAsJsonAsync($"/api/config/cameras/{id}", bad)).StatusCode);
+            }
+        }
+
+        [Fact]
         public async Task InvalidChangesShouldBeRefused()
         {
             var invalid = await _client.PostAsJsonAsync("/api/config/cameras", new { name = " ", siteId = "elsewhere", policyId = "none", onvifUrl = "http://192.168.1.10", rtspUrl = "http://not-rtsp" });

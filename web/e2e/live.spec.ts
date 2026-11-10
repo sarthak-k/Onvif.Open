@@ -29,6 +29,7 @@ test('live view plays through the recorder and keeps saved layouts', async ({ pa
   await addCamera(page, 'yard');
 
   // Listening first: the stream is requested as soon as the tile appears.
+  // Two cameras side by side: each half plays the main stream.
   const stream = page.waitForRequest((r) => /\/api\/cameras\/[0-9a-f-]{36}\/live\.mp4$/.test(r.url()));
   await page.getByRole('link', { name: 'Live' }).click();
   const gate = page.getByRole('region', { name: 'Tile 1: gate' });
@@ -43,7 +44,10 @@ test('live view plays through the recorder and keeps saved layouts', async ({ pa
   await page.getByLabel('Grid').selectOption('1+5');
   await page.getByRole('button', { name: 'Edit cameras' }).click();
   await page.getByLabel('Camera in tile 1').selectOption('yard');
+  // A small tile of 1 + 5 asks for the camera's smaller stream.
+  const small = page.waitForRequest((r) => /\/api\/cameras\/[0-9a-f-]{36}\/live\.mp4\?stream=sub$/.test(r.url()));
   await page.getByLabel('Camera in tile 2').selectOption('gate');
+  expect((await small).headers()['authorization']).toMatch(/^Bearer /);
   await page.getByRole('button', { name: 'Save as…' }).click();
   await page.getByRole('dialog').getByLabel('Name', { exact: true }).fill('Yard first');
   await page.getByRole('dialog').getByRole('button', { name: 'Save' }).click();

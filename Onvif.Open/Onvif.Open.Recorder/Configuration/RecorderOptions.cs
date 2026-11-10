@@ -220,6 +220,12 @@ namespace Onvif.Open.Recorder.Configuration
         /// <summary>ONVIF media profile; the first profile when empty.</summary>
         public string ProfileToken { get; set; }
 
+        /// <summary>ONVIF media profile of a smaller stream for live grids (opened only while watched); none: the main stream.</summary>
+        public string SubProfileToken { get; set; }
+
+        /// <summary>RTSP cameras: a smaller stream for live grids; none: the main stream.</summary>
+        public string SubRtspUrl { get; set; }
+
         public StreamTransport Transport { get; set; } = StreamTransport.Rtsp;
 
         /// <summary>"Auto" (default: Media2 when available), "Media1" or "Media2".</summary>

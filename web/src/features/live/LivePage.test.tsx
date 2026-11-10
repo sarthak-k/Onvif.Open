@@ -5,9 +5,9 @@ import { admin, tokens } from '../../test/fakeRecorder';
 
 /** A player that records what it was asked to play; tests drive its state. */
 function fakePlayers() {
-  const players: { url: string; token: string | null; setState(state: PlayerState): void; destroyed: boolean }[] = [];
+  const players: { url: string; lowLatencyUrl?: string; token: string | null; setState(state: PlayerState): void; destroyed: boolean }[] = [];
   const factory: PlayerFactory = (_video, source, onState) => {
-    const player = { url: source.url, token: source.token(), setState: onState, destroyed: false };
+    const player = { url: source.url, lowLatencyUrl: source.lowLatencyUrl, token: source.token(), setState: onState, destroyed: false };
     players.push(player);
     return { destroy: () => (player.destroyed = true) };
   };
@@ -38,6 +38,8 @@ describe('live view', () => {
       expect(live().map((p) => p.url)).toEqual(['http://localhost:3000/api/cameras/back/live.m3u8', 'http://localhost:3000/api/cameras/front/live.m3u8', 'http://localhost:3000/api/cameras/yard/live.m3u8']),
     );
     expect(live().every((p) => p.token === 'access-1')).toBe(true);
+    // A 2 × 2 grid: each tile plays the camera's smaller stream.
+    expect(live().map((p) => p.lowLatencyUrl)).toEqual(['back', 'front', 'yard'].map((id) => `http://localhost:3000/api/cameras/${id}/live.mp4?stream=sub`));
 
     // The player reports its state; errors are shown on the tile.
     const tile = screen.getByRole('region', { name: 'Tile 2: front' });
@@ -63,6 +65,8 @@ describe('live view', () => {
     await user.click(screen.getByRole('button', { name: 'Enlarge front' }));
     expect(screen.getAllByRole('region')).toHaveLength(1);
     expect(live().map((p) => p.url)).toEqual(['http://localhost:3000/api/cameras/front/live.m3u8']);
+    // Enlarged, and the halves of a two-camera layout: the main stream.
+    expect(live().map((p) => p.lowLatencyUrl)).toEqual(['http://localhost:3000/api/cameras/front/live.mp4']);
 
     await user.keyboard('{Escape}');
     expect(screen.getAllByRole('region')).toHaveLength(2);

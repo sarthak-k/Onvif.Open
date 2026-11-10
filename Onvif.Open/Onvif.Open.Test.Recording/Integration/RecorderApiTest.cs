@@ -215,10 +215,12 @@ namespace Onvif.Open.Test.Recording.Integration
                     }
                 }, stop.Token);
 
-                using (var response = await _client.GetAsync("/api/cameras/cam1/live.mp4", HttpCompletionOption.ResponseHeadersRead))
+                // A grid asks for the smaller stream; this camera has none, so it gets the main one, and is told so.
+                using (var response = await _client.GetAsync("/api/cameras/cam1/live.mp4?stream=sub", HttpCompletionOption.ResponseHeadersRead))
                 {
                     Assert.Equal(HttpStatusCode.OK, response.StatusCode);
                     Assert.Equal("video/mp4", response.Content.Headers.ContentType?.MediaType);
+                    Assert.Equal("main", response.Headers.GetValues("X-Video-Stream").Single());
                     Assert.StartsWith("avc1.", response.Headers.GetValues("X-Video-Codec").Single());
 
                     // The init segment (ftyp, moov), then a fragment (moof) per frame, as they arrive.
