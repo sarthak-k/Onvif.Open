@@ -28,14 +28,15 @@ test('live view plays through the recorder and keeps saved layouts', async ({ pa
   await addCamera(page, 'gate');
   await addCamera(page, 'yard');
 
+  // Listening first: the stream is requested as soon as the tile appears.
+  const stream = page.waitForRequest((r) => /\/api\/cameras\/[0-9a-f-]{36}\/live\.mp4$/.test(r.url()));
   await page.getByRole('link', { name: 'Live' }).click();
   const gate = page.getByRole('region', { name: 'Tile 1: gate' });
   await expect(gate).toBeVisible();
 
-  // hls.js fetches the playlist from the recorder (another origin, bearer token in a header); the recorder has no
-  // video for the camera and says so, and the tile shows it.
-  const playlist = page.waitForRequest((r) => /\/api\/cameras\/[0-9a-f-]{36}\/live\.m3u8$/.test(r.url()));
-  expect((await playlist).headers()['authorization']).toMatch(/^Bearer /);
+  // The low-latency stream is fetched from the recorder (another origin, bearer token in a header); the recorder
+  // has no video for the camera and says so, and the tile shows it.
+  expect((await stream).headers()['authorization']).toMatch(/^Bearer /);
   await expect(gate.getByRole('alert')).toContainText('No video from the camera yet.', { timeout: 30_000 });
 
   // A layout of its own: yard large, gate beside it.

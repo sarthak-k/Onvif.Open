@@ -8,7 +8,7 @@ import { ApiProvider } from "../data/ApiContext";
 import { AuthProvider } from "../features/auth/AuthContext";
 import { RequireAuth, RequirePermission } from "../features/auth/RequireAuth";
 import { PlayerProvider } from "../features/live/player/PlayerContext";
-import { createHlsPlayer } from "../features/live/player/hlsPlayer";
+import { createLivePlayer } from "../features/live/player/livePlayer";
 import type { PlayerFactory } from "../features/live/player/types";
 import { PlaybackProvider } from "../features/playback/engine/PlaybackContext";
 import { createHlsPlayback } from "../features/playback/engine/hlsPlayback";
@@ -56,7 +56,7 @@ export function App({
   client,
   queryClient,
   api,
-  player = createHlsPlayer,
+  player = createLivePlayer,
   playback = createHlsPlayback,
 }: Props) {
   return (
