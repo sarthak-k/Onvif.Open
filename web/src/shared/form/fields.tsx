@@ -52,11 +52,11 @@ export interface Option<T extends string> {
   label: string;
 }
 
-export function SelectField<T extends string>({ label, value, options, onChange }: { label: string; value: T; options: readonly Option<T>[]; onChange(value: T): void }) {
+export function SelectField<T extends string>({ label, value, options, onChange, disabled }: { label: string; value: T; options: readonly Option<T>[]; onChange(value: T): void; disabled?: boolean }) {
   return (
     <label>
       {label}
-      <select value={value} onChange={(e) => onChange(e.target.value as T)}>
+      <select value={value} disabled={disabled} onChange={(e) => onChange(e.target.value as T)}>
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}

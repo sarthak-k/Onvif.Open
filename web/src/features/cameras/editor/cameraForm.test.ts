@@ -14,6 +14,7 @@ const stored: CameraConfig = {
   profileToken: 'main',
   subProfileToken: 'sub',
   subRtspUrl: null,
+  gatewayId: null,
   transport: 'Udp',
   mediaVersion: 'Media2',
   rotation: { segmentDuration: '00:05:00', maxSegmentSizeMB: 256, alignToClock: null },

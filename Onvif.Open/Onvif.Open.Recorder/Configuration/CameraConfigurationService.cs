@@ -21,8 +21,10 @@ namespace Onvif.Open.Recorder.Configuration
     {
         #region Constructor
 
-        public CameraConfigurationService(ISettingsStore store, ITenancyStore tenancy, CameraDirectory directory, ConfiguredRecording recording, Gateways.GatewayService gateways, ILogger<CameraConfigurationService> logger)
+        /// <param name="remote">Sends cameras of other gateways to them (null: this recorder records every camera).</param>
+        public CameraConfigurationService(ISettingsStore store, ITenancyStore tenancy, CameraDirectory directory, ConfiguredRecording recording, Gateways.GatewayService gateways, ILogger<CameraConfigurationService> logger, Tunnel.RemoteCameras remote = null)
         {
+            _remote = remote;
             _gateways = gateways ?? throw new ArgumentNullException(nameof(gateways));
             _store = store ?? throw new ArgumentNullException(nameof(store));
             _tenancy = tenancy ?? throw new ArgumentNullException(nameof(tenancy));
@@ -42,6 +44,7 @@ namespace Onvif.Open.Recorder.Configuration
         private readonly CameraDirectory _directory;
         private readonly ConfiguredRecording _recording;
         private readonly Gateways.GatewayService _gateways;
+        private readonly Tunnel.RemoteCameras _remote;
         private readonly ILogger _logger;
         private readonly SemaphoreSlim _changes = new SemaphoreSlim(1, 1);
 
@@ -71,8 +74,19 @@ namespace Onvif.Open.Recorder.Configuration
                 camera.Id = Guid.NewGuid().ToString("D");
                 camera.OrganizationId = organizationId;
 
-                // This recorder records the camera: it is on the recorder's own gateway.
-                camera.GatewayId = (await _gateways.EnsureLocalAsync(cancellationToken).ConfigureAwait(false))?.Id;
+                // On the gateway asked for (one of the organization's), else on this recorder's own.
+                var local = (await _gateways.EnsureLocalAsync(cancellationToken).ConfigureAwait(false))?.Id;
+                var requested = camera.GatewayId;
+                camera.GatewayId = local;
+                if (!string.IsNullOrEmpty(requested) && !string.Equals(requested, local, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (_remote == null || await _gateways.FindAsync(organizationId, requested, cancellationToken).ConfigureAwait(false) == null)
+                    {
+                        return ConfigurationResult.Invalid(new[] { "Choose one of your gateways for the camera." });
+                    }
+
+                    camera.GatewayId = requested;
+                }
 
                 var (policy, errors) = await PrepareAsync(organizationId, camera, cancellationToken).ConfigureAwait(false);
                 if (errors.Count > 0)
@@ -80,18 +94,22 @@ namespace Onvif.Open.Recorder.Configuration
                     return ConfigurationResult.Invalid(errors);
                 }
 
-                // Start it first: a camera the recorder rejects is not saved.
-                try
+                // Start it first: a camera the recorder rejects is not saved. Another gateway gets it once saved.
+                if (IsLocal(camera))
                 {
-                    _recording.AddCamera(camera);
-                }
-                catch (Exception ex) when (ex is ArgumentException || ex is UriFormatException || ex is InvalidOperationException || ex is NotSupportedException)
-                {
-                    return ConfigurationResult.Invalid(new[] { $"Camera '{camera.Name}': {ex.Message}" });
+                    try
+                    {
+                        _recording.AddCamera(camera);
+                    }
+                    catch (Exception ex) when (ex is ArgumentException || ex is UriFormatException || ex is InvalidOperationException || ex is NotSupportedException)
+                    {
+                        return ConfigurationResult.Invalid(new[] { $"Camera '{camera.Name}': {ex.Message}" });
+                    }
                 }
 
                 await _store.SaveCameraAsync(camera, cancellationToken).ConfigureAwait(false);
                 _directory.Set(camera, organizationId, policy);
+                await SyncAsync(camera, cancellationToken).ConfigureAwait(false);
                 _logger.LogInformation("Camera {CameraId} ({Name}) added", camera.Id, camera.Name);
                 return ConfigurationResult.Ok(camera);
             }
@@ -127,7 +145,7 @@ namespace Onvif.Open.Recorder.Configuration
                     return ConfigurationResult.Invalid(errors);
                 }
 
-                var result = await RestartAsync(existing, camera, cancellationToken).ConfigureAwait(false);
+                var result = IsLocal(camera) ? await RestartAsync(existing, camera, cancellationToken).ConfigureAwait(false) : null;
                 if (result != null)
                 {
                     return result;
@@ -135,6 +153,7 @@ namespace Onvif.Open.Recorder.Configuration
 
                 await _store.SaveCameraAsync(camera, cancellationToken).ConfigureAwait(false);
                 _directory.Set(camera, organizationId, policy);
+                await SyncAsync(camera, cancellationToken).ConfigureAwait(false);
                 _logger.LogInformation("Camera {CameraId} ({Name}) changed", camera.Id, camera.Name);
                 return ConfigurationResult.Ok(camera);
             }
@@ -164,9 +183,14 @@ namespace Onvif.Open.Recorder.Configuration
                     return ConfigurationResult.Conflict($"Camera '{existing.Name}' is assigned to plugin(s) {string.Join(", ", plugins)}: remove it from them first.");
                 }
 
-                await _recording.RemoveCameraAsync(existing.Id, cancellationToken).ConfigureAwait(false);
+                if (IsLocal(existing))
+                {
+                    await _recording.RemoveCameraAsync(existing.Id, cancellationToken).ConfigureAwait(false);
+                }
+
                 await _store.DeleteCameraAsync(existing.Id, cancellationToken).ConfigureAwait(false);
                 _directory.Remove(existing.Id);
+                await SyncAsync(existing, cancellationToken).ConfigureAwait(false);
                 _logger.LogInformation("Camera {CameraId} ({Name}) removed", existing.Id, existing.Name);
                 return ConfigurationResult.Ok(existing);
             }
@@ -183,15 +207,25 @@ namespace Onvif.Open.Recorder.Configuration
 
             try
             {
+                var remoteGateways = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var existing in (await _store.GetCamerasAsync(cancellationToken).ConfigureAwait(false)).Where(c => c.PolicyId == policy.Id))
                 {
                     var camera = RecordingPolicyRules.Apply(Copy(existing), policy);
-                    if (camera.Mode != existing.Mode || camera.PreRoll != existing.PreRoll || camera.PostRoll != existing.PostRoll)
+                    if (!IsLocal(camera))
+                    {
+                        remoteGateways.Add(camera.GatewayId);
+                    }
+                    else if (camera.Mode != existing.Mode || camera.PreRoll != existing.PreRoll || camera.PostRoll != existing.PostRoll)
                     {
                         await RestartAsync(existing, camera, cancellationToken).ConfigureAwait(false);
                     }
 
                     _directory.Set(camera, camera.OrganizationId, policy);
+                }
+
+                foreach (var gateway in remoteGateways)
+                {
+                    await _remote.SyncAsync(gateway, cancellationToken).ConfigureAwait(false);
                 }
             }
             finally
@@ -260,6 +294,14 @@ namespace Onvif.Open.Recorder.Configuration
             errors.AddRange(RecordingConfiguration.ValidateCamera(camera));
             return (policy, errors);
         }
+
+        /// <summary>Whether this recorder records the camera itself (else another gateway does).</summary>
+        private bool IsLocal(CameraOptions camera) =>
+            _remote == null || camera.GatewayId == null || string.Equals(camera.GatewayId, _gateways.Local?.Id, StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>Another gateway's camera changed: it gets its new set (now, or when its tunnel opens).</summary>
+        private Task SyncAsync(CameraOptions camera, CancellationToken cancellationToken) =>
+            IsLocal(camera) ? Task.CompletedTask : _remote.SyncAsync(camera.GatewayId, cancellationToken);
 
         /// <summary>Restarts the camera's recorder with new settings; on failure, the old ones are restored and the reason returned.</summary>
         private async Task<ConfigurationResult> RestartAsync(CameraOptions existing, CameraOptions camera, CancellationToken cancellationToken)

@@ -114,7 +114,9 @@ namespace Onvif.Open.Recorder.Api
                 }
 
                 return Results.Empty;
-            });
+            })
+                // Audited by the handler when watching starts; the metadata lets the relay audit cameras of other gateways too.
+                .WithMetadata(new AuditMetadata(AuditActions.VideoLive, AuditTargets.Camera, true));
 
             camera.MapGet("/live/{sequence:long}.ts", (string id, long sequence, LiveViewService live) =>
             {

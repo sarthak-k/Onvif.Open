@@ -22,6 +22,7 @@ using Onvif.Open.Recorder.Audit;
 using Onvif.Open.Recorder.Configuration;
 using Onvif.Open.Recorder.Events;
 using Onvif.Open.Recorder.Gateways;
+using Onvif.Open.Recorder.Tunnel;
 using Onvif.Open.Recorder.Hosting;
 using Onvif.Open.Recorder.Layouts;
 using Onvif.Open.Recorder.Security;
@@ -102,12 +103,24 @@ builder.Services.AddSingleton<Onvif.Open.Recorder.Alerts.AlertService>();
 builder.Services.AddSingleton<Onvif.Open.Recorder.Alerts.AlertEngine>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Onvif.Open.Recorder.Alerts.AlertEngine>());
 
-// With "ControlPlane:Url" this recorder is also a gateway of another one: it pairs with a code, then reports there.
+// The tunnel: gateways on other machines connect out to this recorder, which relays their cameras' video and controls.
+builder.Services.AddSingleton<Onvif.Open.Recorder.Tunnel.TunnelRegistry>();
+builder.Services.AddSingleton<Onvif.Open.Recorder.Tunnel.RemoteCameras>();
+builder.Services.AddSingleton<Onvif.Open.Recorder.Tunnel.TunnelExecutor>();
+
+// With "ControlPlane:Url" this recorder is also a gateway of another one: it pairs with a code, then keeps a tunnel open
+// there, records the cameras it is given and reports how they do.
 var controlPlane = builder.Configuration["ControlPlane:Url"];
 if (!string.IsNullOrWhiteSpace(controlPlane))
 {
+    builder.Services.AddSingleton(sp => new AssignedCameras(
+        sp.GetRequiredService<ConfiguredRecording>(),
+        sp.GetRequiredService<CameraDirectory>(),
+        sp.GetRequiredService<IDataProtectionProvider>(),
+        Path.GetFullPath(Path.Combine(sp.GetRequiredService<IHostEnvironment>().ContentRootPath, sp.GetRequiredService<IConfiguration>()["ControlPlane:CamerasFile"] ?? Path.Combine("data", "assigned-cameras.json"))),
+        sp.GetRequiredService<ILogger<AssignedCameras>>()));
     builder.Services.AddSingleton(sp => new ControlPlaneClient(
-        new System.Net.Http.HttpClient(new System.Net.Http.SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) })
+        new System.Net.Http.HttpClient((sp.GetService<ControlPlaneTransport>() ?? ControlPlaneTransport.Network).Handler())
         {
             BaseAddress = new Uri(controlPlane.TrimEnd('/') + "/"),
             Timeout = TimeSpan.FromSeconds(30)
@@ -118,7 +131,12 @@ if (!string.IsNullOrWhiteSpace(controlPlane))
         () => GatewayHeartbeat.Measure(sp.GetRequiredService<IRecordingManager>()),
         sp.GetRequiredService<IConfiguration>()["Gateway:Name"] is string name && name.Length > 0 ? name : Environment.MachineName,
         sp.GetRequiredService<IConfiguration>()["Gateway:Location"],
-        sp.GetRequiredService<ILogger<ControlPlaneClient>>()));
+        sp.GetRequiredService<ILogger<ControlPlaneClient>>(),
+        sp.GetService<TimeProvider>(),
+        sp.GetService<ControlPlaneTransport>(),
+        () => RemoteCameraReport.Of(sp.GetRequiredService<IRecordingManager>(), sp.GetRequiredService<AssignedCameras>().CameraIds),
+        sp.GetRequiredService<AssignedCameras>(),
+        sp.GetRequiredService<Onvif.Open.Recorder.Tunnel.TunnelExecutor>()));
     builder.Services.AddHostedService(sp => sp.GetRequiredService<ControlPlaneClient>());
 }
 
@@ -135,7 +153,7 @@ builder.Services.AddSingleton(sp =>
 builder.Services.AddSingleton(sp =>
     RecordingConfiguration.Create(
         sp.GetRequiredService<RecorderOptions>(),
-        sp.GetRequiredService<StartupSettings>().Cameras,
+        sp.GetRequiredService<StartupSettings>().LocalCameras,
         sp.GetRequiredService<ILoggerFactory>(),
         StorageConfiguration.CreateArchive(
             sp.GetRequiredService<StartupSettings>().Gateway?.Backup,
@@ -146,7 +164,14 @@ builder.Services.AddSingleton(sp =>
         new GatewayRetention(() => sp.GetRequiredService<GatewayService>().Limits),
         sp.GetRequiredService<GatewayService>().Limits.MinFreeSpaceGB));
 builder.Services.AddSingleton<IRecordingManager>(sp => sp.GetRequiredService<ConfiguredRecording>().Manager);
-builder.Services.AddSingleton<CameraConfigurationService>();
+builder.Services.AddSingleton(sp => new CameraConfigurationService(
+    sp.GetRequiredService<ISettingsStore>(),
+    sp.GetRequiredService<ITenancyStore>(),
+    sp.GetRequiredService<CameraDirectory>(),
+    sp.GetRequiredService<ConfiguredRecording>(),
+    sp.GetRequiredService<GatewayService>(),
+    sp.GetRequiredService<ILogger<CameraConfigurationService>>(),
+    sp.GetRequiredService<RemoteCameras>()));
 builder.Services.AddSingleton<ILayoutStore, EfLayoutStore>();
 builder.Services.AddSingleton<LayoutService>();
 builder.Services.AddSingleton(sp => new LiveViewService(
@@ -163,7 +188,7 @@ builder.Services.AddSingleton<IPluginHost>(sp => PluginConfiguration.CreateHost(
     sp.GetRequiredService<IConfiguration>(),
     sp.GetRequiredService<IHostEnvironment>().ContentRootPath,
     sp.GetRequiredService<StartupSettings>().Plugins,
-    sp.GetRequiredService<StartupSettings>().Cameras.Select(c => c.Id),
+    sp.GetRequiredService<StartupSettings>().LocalCameras.Select(c => c.Id),
     sp.GetRequiredService<ConfiguredRecording>(),
     sp.GetRequiredService<ILoggerFactory>()));
 
@@ -183,8 +208,18 @@ builder.Services.AddSingleton<ScheduledRecording>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ScheduledRecording>());
 
 var app = builder.Build();
+
+// Requests from the control plane's tunnel run through this same pipeline (in process): it is captured first.
+app.Use(next =>
+{
+    app.Services.GetRequiredService<Onvif.Open.Recorder.Tunnel.TunnelExecutor>().Pipeline = next;
+    return next;
+});
+app.UseRouting();
+app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(20) });
 app.UseRecorderSecurity();
 app.UseCameraAccess();
+app.UseGatewayRelay();
 app.MapSetupApi();
 app.MapTenancyApi();
 app.MapAuthApi();
@@ -205,6 +240,7 @@ app.MapGatewayApi();
 app.MapCaseApi();
 app.MapExportApi();
 app.MapAlertApi();
+app.MapTunnelApi();
 app.Run();
 
 public partial class Program

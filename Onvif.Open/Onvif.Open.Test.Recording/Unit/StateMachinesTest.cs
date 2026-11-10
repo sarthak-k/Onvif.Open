@@ -34,6 +34,7 @@ namespace Onvif.Open.Test.Recording.Unit
             Of(PairingStatus.Machine),
             Of(Onvif.Open.Recording.Implementation.Mp4.Mp4LiveStates.Machine),
             Of(Onvif.Open.Recorder.Hosting.SubStreamStates.Machine),
+            Of(TunnelStates.Machine),
         };
 
         private static (string, string) Of<T>(StateMachine<T> machine) where T : notnull => (machine.Name, machine.ToMermaid());

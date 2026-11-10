@@ -2,6 +2,7 @@
 // 2026-11-09
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -73,11 +74,64 @@ namespace Onvif.Open.Recorder.Gateways
     /// gateway); then it reports its health every <see cref="HeartbeatInterval"/>. A removed gateway pairs again.
     /// Only outbound HTTPS requests to the control plane are made.
     /// </summary>
+    /// <summary>
+    /// How a gateway reaches the control plane: HTTPS for pairing and heartbeats, and the tunnel (a WebSocket the
+    /// gateway opens with its token). Tests connect two in-memory recorders through it.
+    /// </summary>
+    public sealed class ControlPlaneTransport
+    {
+        public ControlPlaneTransport(Func<HttpMessageHandler> handler, Func<Uri, string, CancellationToken, Task<System.Net.WebSockets.WebSocket>> connect)
+        {
+            Handler = handler ?? throw new ArgumentNullException(nameof(handler));
+            Connect = connect ?? throw new ArgumentNullException(nameof(connect));
+        }
+
+        public Func<HttpMessageHandler> Handler { get; }
+
+        /// <summary>Opens the tunnel: the WebSocket URL and the gateway's token.</summary>
+        public Func<Uri, string, CancellationToken, Task<System.Net.WebSockets.WebSocket>> Connect { get; }
+
+        /// <summary>Over the network (connections recycled every 5 minutes, so DNS changes are followed).</summary>
+        public static ControlPlaneTransport Network { get; } = new ControlPlaneTransport(
+            () => new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) },
+            async (uri, token, ct) =>
+            {
+                var socket = new System.Net.WebSockets.ClientWebSocket();
+                socket.Options.SetRequestHeader(Api.GatewayEndpoints.GatewayTokenHeader, token);
+                socket.Options.KeepAliveInterval = TimeSpan.FromSeconds(20);
+                await socket.ConnectAsync(uri, ct).ConfigureAwait(false);
+                return socket;
+            });
+    }
+
+    public static class TunnelStates
+    {
+        public const string Unpaired = "Unpaired";
+        public const string Connecting = "Connecting";
+        public const string Open = "Open";
+        public const string Retrying = "Retrying";
+
+        /// <summary>The gateway's tunnel to the control plane (docs/STATE-MACHINES.md).</summary>
+        public static Onvif.Open.Core.StateMachines.StateMachine<string> Machine { get; } = new Onvif.Open.Core.StateMachines.StateMachine<string>(
+            "Gateway tunnel",
+            Unpaired,
+            (Unpaired, Connecting, "paired: the gateway has its token"),
+            (Connecting, Open, "the control plane accepted the WebSocket"),
+            (Connecting, Retrying, "could not connect"),
+            (Open, Retrying, "the tunnel closed"),
+            (Retrying, Connecting, "after 1 s, doubling up to 30 s"),
+            (Retrying, Unpaired, "removed at the control plane: pairing again"));
+    }
+
     public sealed class ControlPlaneClient : BackgroundService
     {
         #region Constructor
 
-        public ControlPlaneClient(HttpClient http, IControlPlaneCredentials credentials, Func<GatewayHealth> measure, string name, string location, ILogger<ControlPlaneClient> logger, TimeProvider timeProvider = null)
+        /// <param name="cameras">How the cameras the control plane assigned are doing (sent with each heartbeat).</param>
+        /// <param name="assigned">The cameras the control plane has this gateway record (kept on disk, applied at startup).</param>
+        /// <param name="tunnel">Answers the requests that come through the tunnel; null: no tunnel.</param>
+        public ControlPlaneClient(HttpClient http, IControlPlaneCredentials credentials, Func<GatewayHealth> measure, string name, string location, ILogger<ControlPlaneClient> logger, TimeProvider timeProvider = null,
+            ControlPlaneTransport transport = null, Func<IReadOnlyList<Tunnel.RemoteCameraStatus>> cameras = null, AssignedCameras assigned = null, Tunnel.TunnelExecutor tunnel = null)
         {
             _http = http ?? throw new ArgumentNullException(nameof(http));
             _credentials = credentials ?? throw new ArgumentNullException(nameof(credentials));
@@ -86,6 +140,10 @@ namespace Onvif.Open.Recorder.Gateways
             _location = location;
             _logger = logger;
             _startedAt = (timeProvider ?? TimeProvider.System).GetUtcNow();
+            _transport = transport ?? ControlPlaneTransport.Network;
+            _cameras = cameras ?? (() => Array.Empty<Tunnel.RemoteCameraStatus>());
+            _assigned = assigned;
+            _tunnel = tunnel;
         }
 
         #endregion
@@ -103,6 +161,23 @@ namespace Onvif.Open.Recorder.Gateways
 
         public string GatewayId => _identity?.GatewayId;
 
+        /// <summary>Whether the tunnel to the control plane is open.</summary>
+        public bool IsConnected => _connection?.IsOpen == true;
+
+        /// <summary>See <see cref="TunnelStates"/>.</summary>
+        public string TunnelState { get; private set; } = TunnelStates.Unpaired;
+
+        private void MoveTunnel(string to)
+        {
+            if (TunnelState != to)
+            {
+                TunnelState = TunnelStates.Machine.Move(TunnelState, to);
+            }
+        }
+
+        public static readonly TimeSpan TunnelRetry = TimeSpan.FromSeconds(1);
+        public static readonly TimeSpan TunnelMaxRetry = TimeSpan.FromSeconds(30);
+
         #endregion
 
         #region Private Variables
@@ -118,6 +193,11 @@ namespace Onvif.Open.Recorder.Gateways
         private readonly string _location;
         private readonly ILogger _logger;
         private readonly DateTimeOffset _startedAt;
+        private readonly ControlPlaneTransport _transport;
+        private readonly Func<IReadOnlyList<Tunnel.RemoteCameraStatus>> _cameras;
+        private readonly AssignedCameras _assigned;
+        private readonly Tunnel.TunnelExecutor _tunnel;
+        private volatile Tunnel.TunnelConnection _connection;
         private ControlPlaneIdentity _identity;
         private Ticket _ticket;
         private bool _loaded;
@@ -150,6 +230,74 @@ namespace Onvif.Open.Recorder.Gateways
         #region Protected Methods
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+        {
+            // Record what the control plane assigned last time, before it can be reached again.
+            if (_assigned != null)
+            {
+                await _assigned.LoadAsync(stoppingToken).ConfigureAwait(false);
+            }
+
+            await Task.WhenAll(ReportLoopAsync(stoppingToken), _tunnel == null ? Task.CompletedTask : TunnelLoopAsync(stoppingToken)).ConfigureAwait(false);
+        }
+
+        /// <summary>Keeps the tunnel open while paired: reconnects (1 s, doubling up to 30 s) whenever it closes.</summary>
+        private async Task TunnelLoopAsync(CancellationToken stoppingToken)
+        {
+            var delay = TunnelRetry;
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                var identity = _identity;
+                if (identity == null && TunnelState == TunnelStates.Retrying)
+                {
+                    MoveTunnel(TunnelStates.Unpaired);
+                }
+
+                if (identity != null)
+                {
+                    MoveTunnel(TunnelStates.Connecting);
+                    try
+                    {
+                        var uri = new UriBuilder(new Uri(_http.BaseAddress, "api/gateways/tunnel")) { Scheme = _http.BaseAddress.Scheme == Uri.UriSchemeHttps ? "wss" : "ws" }.Uri;
+                        var socket = await _transport.Connect(uri, identity.Token, stoppingToken).ConfigureAwait(false);
+                        await using (var connection = new Tunnel.TunnelConnection(socket, _tunnel.ExecuteAsync, _logger))
+                        {
+                            _connection = connection;
+                            MoveTunnel(TunnelStates.Open);
+                            _logger?.LogInformation("Tunnel to the control plane open");
+                            delay = TunnelRetry;
+                            await connection.RunAsync(stoppingToken).ConfigureAwait(false);
+                        }
+
+                        _connection = null;
+                        MoveTunnel(TunnelStates.Retrying);
+                        _logger?.LogWarning("Tunnel to the control plane closed: reconnecting");
+                    }
+                    catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                    {
+                        return;
+                    }
+                    catch (Exception ex) when (ex is System.Net.WebSockets.WebSocketException || ex is HttpRequestException || ex is IOException || ex is InvalidOperationException)
+                    {
+                        _connection = null;
+                        MoveTunnel(TunnelStates.Retrying);
+                        _logger?.LogWarning("Cannot open the tunnel to the control plane: {Message}", ex.Message);
+                    }
+                }
+
+                try
+                {
+                    await Task.Delay(identity == null ? PollInterval : delay, stoppingToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+
+                delay = TimeSpan.FromTicks(Math.Min(delay.Ticks * 2, TunnelMaxRetry.Ticks));
+            }
+        }
+
+        private async Task ReportLoopAsync(CancellationToken stoppingToken)
         {
             while (!stoppingToken.IsCancellationRequested)
             {
@@ -233,7 +381,7 @@ namespace Onvif.Open.Recorder.Gateways
             using (var request = new HttpRequestMessage(HttpMethod.Post, "api/gateways/heartbeat"))
             {
                 request.Headers.Add(Api.GatewayEndpoints.GatewayTokenHeader, _identity.Token);
-                request.Content = JsonContent.Create(new { version = GatewayService.Version, startedAt = _startedAt, health = _measure() });
+                request.Content = JsonContent.Create(new { version = GatewayService.Version, startedAt = _startedAt, health = _measure(), cameras = _cameras() });
                 var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
 
                 if (response.StatusCode == HttpStatusCode.Unauthorized)

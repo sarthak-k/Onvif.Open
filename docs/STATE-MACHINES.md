@@ -29,6 +29,7 @@ state through the table, tests check the code against it, and the diagrams below
 | [Gateway pairing](#gateway-pairing) | Backend | `Onvif.Open.Recorder/Gateways/GatewayPairing.cs` (`PairingStatus.Machine`) | `GatewayPairing` (in memory) | `GET /api/gateways/pairing/{id}` `state` |
 | [Low-latency live stream](#low-latency-live-stream) | Backend | `Onvif.Open.Recording/Implementation/Mp4/Mp4LiveStream.cs` (`Mp4LiveStates.Machine`) | `Mp4LiveStream.Add`, `Close` | `GET /api/cameras/{id}/live.mp4` (503 while waiting, 415 when unsupported) |
 | [Grid sub-stream](#grid-sub-stream) | Backend | `Onvif.Open.Recorder/Hosting/LiveViewService.cs` (`SubStreamStates.Machine`) | `LiveViewService` (its reader, and the idle sweep) | `live.mp4?stream=sub` |
+| [Gateway tunnel](#gateway-tunnel) | Backend | `Onvif.Open.Recorder/Gateways/ControlPlaneClient.cs` (`TunnelStates.Machine`) | `ControlPlaneClient` (its tunnel loop) | gateways' status (online) at the control plane |
 | [Session](#session) | Web | `web/src/features/auth/session.ts` (`sessionMachine`, `sessionOf`) | `AuthContext` holds it; `RequireAuth` routes on it | sign-in, password change, sign-out |
 | [Add-camera wizard](#add-camera-wizard) | Web | `web/src/features/cameras/wizard/steps.ts` (`wizardSteps`) | `AddCamerasPage` (moves through the table) | Cameras › Add cameras |
 | [Camera in the add-camera wizard](#camera-in-the-add-camera-wizard) | Web | `web/src/features/cameras/wizard/candidates.ts` (`candidateMachine`) | `changeCandidate`, `afterSharedChange`, `startTest` | each camera's state in the wizard |
@@ -161,6 +162,23 @@ stateDiagram-v2
     Connecting --> Closed : nobody watches, the camera changed or is gone
     Streaming --> Closed : nobody watches, the camera changed or is gone
     Retrying --> Closed : nobody watches, the camera changed or is gone
+```
+<!-- /machine -->
+
+### Gateway tunnel
+
+The only connection a gateway makes: outbound, so nothing at the site listens on the internet. While it is down the gateway keeps recording.
+
+<!-- machine: Gateway tunnel -->
+```mermaid
+stateDiagram-v2
+    [*] --> Unpaired
+    Unpaired --> Connecting : paired: the gateway has its token
+    Connecting --> Open : the control plane accepted the WebSocket
+    Connecting --> Retrying : could not connect
+    Open --> Retrying : the tunnel closed
+    Retrying --> Connecting : after 1 s, doubling up to 30 s
+    Retrying --> Unpaired : removed at the control plane: pairing again
 ```
 <!-- /machine -->
 

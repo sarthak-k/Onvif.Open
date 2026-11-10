@@ -2,6 +2,7 @@
 // 2026-11-09
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading;
@@ -49,6 +50,9 @@ namespace Onvif.Open.Recorder.Api
             public string Version { get; set; }
             public DateTimeOffset? StartedAt { get; set; }
             public GatewayHealth Health { get; set; }
+
+            /// <summary>How the cameras the control plane assigned it are doing.</summary>
+            public List<Tunnel.RemoteCameraStatus> Cameras { get; set; }
         }
 
         #endregion
@@ -100,7 +104,7 @@ namespace Onvif.Open.Recorder.Api
                 .Audit(AuditActions.GatewayPair, AuditTargets.Gateway);
 
             // A paired gateway reports its health with its token.
-            gateways.MapPost("/heartbeat", async (HeartbeatRequest request, HttpRequest http, GatewayService service, CancellationToken ct) =>
+            gateways.MapPost("/heartbeat", async (HeartbeatRequest request, HttpRequest http, GatewayService service, Tunnel.RemoteCameras remote, CancellationToken ct) =>
             {
                 var gateway = await service.AuthenticateAsync(http.Headers[GatewayTokenHeader].ToString(), ct);
                 if (gateway == null)
@@ -109,6 +113,7 @@ namespace Onvif.Open.Recorder.Api
                 }
 
                 await service.ReportAsync(gateway, request?.Version, request?.StartedAt?.UtcDateTime ?? DateTime.UtcNow, request?.Health, ct);
+                remote.Report(gateway.Id, request?.Cameras);
                 return Results.Ok(new { id = gateway.Id, name = gateway.Name });
             }).AllowAnonymous();
 

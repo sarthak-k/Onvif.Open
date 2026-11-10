@@ -16,7 +16,8 @@ namespace Onvif.Open.Recorder.Tenancy
     /// <param name="EventRetention">How long video around events (and the events themselves) is kept.</param>
     /// <param name="Schedule">When it records all the time ("Schedule" policies); null otherwise.</param>
     /// <param name="IsOnvif">An ONVIF camera (it may pan, tilt and zoom); false for plain RTSP streams.</param>
-    public sealed record CameraEntry(string Id, string OrganizationId, string SiteId, string PolicyId, string Name, bool EventsOnly, TimeSpan ContinuousRetention, TimeSpan EventRetention, RecordingSchedule Schedule = null, bool IsOnvif = false);
+    /// <param name="GatewayId">The gateway that records it (this recorder's, or another one reached through its tunnel).</param>
+    public sealed record CameraEntry(string Id, string OrganizationId, string SiteId, string PolicyId, string Name, bool EventsOnly, TimeSpan ContinuousRetention, TimeSpan EventRetention, RecordingSchedule Schedule = null, bool IsOnvif = false, string GatewayId = null);
 
     /// <summary>
     /// The configured cameras in memory: who owns each (organization, site), its name and its retention. Answers the
@@ -34,7 +35,8 @@ namespace Onvif.Open.Recorder.Tenancy
                 TimeSpan.FromDays(Math.Max(1, policy.ContinuousRetentionDays)),
                 TimeSpan.FromDays(Math.Max(1, policy.EventRetentionDays)),
                 policy.Mode == RecordingModes.Schedule ? RecordingSchedule.From(RecordingSchedule.Deserialize(policy.Schedule)) : null,
-                !string.IsNullOrWhiteSpace(camera.OnvifUrl));
+                !string.IsNullOrWhiteSpace(camera.OnvifUrl),
+                camera.GatewayId);
         }
 
         public void Remove(string cameraId)

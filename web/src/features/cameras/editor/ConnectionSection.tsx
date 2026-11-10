@@ -1,4 +1,4 @@
-import type { Site } from '../../../api/types';
+import type { Gateway, Site } from '../../../api/types';
 import { CheckboxField, RadioGroup, Section, SelectField, TextField } from '../../../shared/form/fields';
 import { ErrorMessage } from '../../../shared/ui/ErrorMessage';
 import { useCameraTest } from '../../../data/cameras';
@@ -6,7 +6,7 @@ import { toCamera, type SectionProps } from './cameraForm';
 import { sourceOptions } from './options';
 import { ProbeReport } from './ProbeReport';
 
-export function ConnectionSection({ form, set, cameraId, sites }: SectionProps & { cameraId?: string; sites: readonly Site[] }) {
+export function ConnectionSection({ form, set, cameraId, sites, gateways = [] }: SectionProps & { cameraId?: string; sites: readonly Site[]; gateways?: readonly Gateway[] }) {
   const probe = useCameraTest();
   const url = form.source === 'onvif' ? form.onvifUrl : form.rtspUrl;
 
@@ -17,6 +17,18 @@ export function ConnectionSection({ form, set, cameraId, sites }: SectionProps &
         <SelectField label="Site" value={form.siteId} options={sites.map((s) => ({ value: s.id, label: s.name }))} onChange={(v) => set('siteId', v)} />
         <CheckboxField label="Record this camera" checked={form.enabled} onChange={(v) => set('enabled', v)} />
       </div>
+      {gateways.length > 1 && (
+        <div className="row">
+          <SelectField
+            label="Recorded by"
+            value={form.gatewayId || gateways.find((g) => g.embedded)?.id || ''}
+            options={gateways.map((g) => ({ value: g.id, label: `${g.name}${g.embedded ? ' (this server)' : ''}${g.status === 'Online' ? '' : ` · ${g.status.toLowerCase()}`}` }))}
+            onChange={(v) => set('gatewayId', gateways.find((g) => g.id === v)?.embedded ? '' : v)}
+            disabled={!!cameraId}
+          />
+          <p className="muted small">{cameraId ? 'A camera stays on the gateway that records it.' : 'The gateway at the camera’s site: it connects to the camera, records it and is tested from there.'}</p>
+        </div>
+      )}
       <RadioGroup legend="Connect with" value={form.source} options={sourceOptions} onChange={(v) => set('source', v)} />
       {form.source === 'onvif' ? (
         <TextField
