@@ -520,7 +520,7 @@ dotnet run --project Onvif.Open/Onvif.Open.Recorder
 | `GET /api/cameras/{id}/device-recordings/{token}/export?from=...&to=...` | Download a clip from the camera's own storage as MPEG-TS (up to 6 hours) |
 | `GET /api/cameras/{id}/io` | Relay outputs and digital inputs |
 | `POST /api/cameras/{id}/io/relays/{token}` `{active}` or `{durationMs}`, `PUT .../relays/{token}/settings` `{mode, delayMs, idleState}` | Switch / pulse / configure a relay |
-| `GET /api/cameras/{id}/ptz` | PTZ status (position, moving) |
+| `GET /api/cameras/{id}/ptz` | PTZ status (position, moving); 501 for cameras that cannot pan, tilt or zoom. Moves, presets and home are audited (moves once per user and camera every 10 minutes) |
 | `POST /api/cameras/{id}/ptz/move` `{pan, tilt, zoom, durationMs}`, `POST .../ptz/stop` | Continuous move / stop |
 | `POST /api/cameras/{id}/ptz/position` `{pan, tilt, zoom}` | Absolute move |
 | `GET .../ptz/presets`, `PUT/DELETE .../ptz/presets/{name}`, `POST .../ptz/presets/{name}/goto` | Presets |
@@ -553,7 +553,9 @@ a network: bearer tokens and passwords must not travel in clear text.
 a cloud backup failing or falling behind, each with since when and where to look; then each site with its cameras
 recording, problems and today's events in its own time zone; then today's events; and for administrators, until done or
 hidden, what is left to set up: cameras, users, backup, an alert), live view (well under 2 s behind the camera:
-fragmented MP4 through Media Source Extensions, held at the live edge; HLS where the browser or camera cannot; tiles of a
+fragmented MP4 through Media Source Extensions, held at the live edge; HLS where the browser or camera cannot; an operator
+pans, tilts and zooms an enlarged ONVIF camera from its tile: hold a direction, an arrow key or +/- (each move stops by
+itself unless renewed, so a lost connection cannot leave a camera turning), presets and home; tiles of a
 quarter of the grid or less play the camera's smaller stream, which the add-camera wizard picks; several cameras in a grid: single, 2 × 2 up to
 5 × 5, or one large tile with smaller ones; arrange cameras by picking or dragging, enlarge one with a double click,
 full screen; layouts saved per user or shared by administrators), **Investigate** (search the stored events by site,

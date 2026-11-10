@@ -1,5 +1,5 @@
 import type { ApiClient } from './client';
-import type { Alert, AlertRule, AlertRuleRequest, AlertSummary, DeliveryResult, CameraConfig, CameraStatus, DiscoveredDevice, AuditEntry, AuditQuery, ShareLink, VideoExport, Case, CaseClip, CaseRequest, CaseStatus, ClipRequest, EventQuery, RecordingSegment, StoredEvent, Gateway, GatewayRequest, Layout, LayoutRequest, Me, Organization, ProbeResult, RecordingPolicy, RecordingPolicyRequest, SetupStatus, Site, SiteRequest, User, UserRequest } from './types';
+import type { PtzPreset, PtzStatus, PtzVector, Alert, AlertRule, AlertRuleRequest, AlertSummary, DeliveryResult, CameraConfig, CameraStatus, DiscoveredDevice, AuditEntry, AuditQuery, ShareLink, VideoExport, Case, CaseClip, CaseRequest, CaseStatus, ClipRequest, EventQuery, RecordingSegment, StoredEvent, Gateway, GatewayRequest, Layout, LayoutRequest, Me, Organization, ProbeResult, RecordingPolicy, RecordingPolicyRequest, SetupStatus, Site, SiteRequest, User, UserRequest } from './types';
 
 // The recorder's API by area. Pages depend on these interfaces, not on HTTP, so tests and later back ends can
 // provide their own implementation (dependency inversion, interface segregation).
@@ -118,6 +118,21 @@ export interface AlertsApi {
   acknowledge(alertId: string): Promise<Alert>;
 }
 
+export interface PtzApi {
+  /** Rejects with status 501 for cameras that cannot pan, tilt or zoom. */
+  status(cameraId: string): Promise<PtzStatus>;
+  /** Moves at these speeds; stops by itself after `durationMs` (a dropped connection cannot leave it moving). */
+  move(cameraId: string, speed: PtzVector, durationMs: number): Promise<void>;
+  stop(cameraId: string): Promise<void>;
+  presets(cameraId: string): Promise<PtzPreset[]>;
+  goToPreset(cameraId: string, token: string): Promise<void>;
+  /** Saves where the camera points now under this name. */
+  savePreset(cameraId: string, name: string): Promise<{ token: string; name: string }>;
+  removePreset(cameraId: string, token: string): Promise<void>;
+  home(cameraId: string): Promise<void>;
+  setHome(cameraId: string): Promise<void>;
+}
+
 export interface EventsApi {
   /** Newest first. */
   list(query?: EventQuery): Promise<StoredEvent[]>;
@@ -158,6 +173,7 @@ export interface RecorderApi {
   exports: ExportsApi;
   alertRules: AlertRulesApi;
   alerts: AlertsApi;
+  ptz: PtzApi;
 }
 
 const segment = encodeURIComponent;
@@ -263,6 +279,17 @@ export function createRecorderApi(client: ApiClient): RecorderApi {
       update: (id, rule) => client.put(`/api/alert-rules/${segment(id)}`, rule),
       remove: (id) => client.delete(`/api/alert-rules/${segment(id)}`),
       test: (id) => client.post(`/api/alert-rules/${segment(id)}/test`, {}),
+    },
+    ptz: {
+      status: (id) => client.get(`/api/cameras/${segment(id)}/ptz`),
+      move: (id, speed, durationMs) => client.post(`/api/cameras/${segment(id)}/ptz/move`, { ...speed, durationMs }),
+      stop: (id) => client.post(`/api/cameras/${segment(id)}/ptz/stop`, {}),
+      presets: (id) => client.get(`/api/cameras/${segment(id)}/ptz/presets`),
+      goToPreset: (id, token) => client.post(`/api/cameras/${segment(id)}/ptz/presets/${segment(token)}/goto`, {}),
+      savePreset: (id, name) => client.put(`/api/cameras/${segment(id)}/ptz/presets/${segment(name)}`, {}),
+      removePreset: (id, token) => client.delete(`/api/cameras/${segment(id)}/ptz/presets/${segment(token)}`),
+      home: (id) => client.post(`/api/cameras/${segment(id)}/ptz/home`, {}),
+      setHome: (id) => client.put(`/api/cameras/${segment(id)}/ptz/home`, {}),
     },
     alerts: {
       list: (status) => client.get(`/api/alerts${queryString({ status })}`),

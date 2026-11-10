@@ -182,6 +182,16 @@ caption { text-align: left; font-weight: 600; padding: 4px 8px; }
 }
 .tile-bar select { background: rgb(0 0 0 / 0.6); color: #fff; border-color: #555; padding: 2px 6px; font-size: 0.85rem; }
 .tile-name { text-shadow: 0 1px 2px #000; }
+.ptz-panel { position: absolute; right: 8px; bottom: 40px; z-index: 2; display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 8px; background: rgb(0 0 0 / 0.7); color: #fff; max-width: min(320px, calc(100% - 16px)); }
+.ptz-panel button, .ptz-panel select, .ptz-panel input { background: rgb(255 255 255 / 0.1); color: #fff; border-color: #666; }
+.ptz-panel:focus-visible { outline: 2px solid #8ab4ff; }
+.ptz-pad { display: grid; grid-template-columns: repeat(3, 40px); gap: 4px; justify-content: center; }
+.ptz-pad button, .ptz-zoom button { height: 40px; font-size: 1.1rem; touch-action: none; user-select: none; }
+.ptz-zoom { display: flex; gap: 4px; justify-content: center; }
+.ptz-zoom button { width: 62px; }
+.ptz-presets { display: flex; flex-wrap: wrap; gap: 6px; align-items: end; }
+.ptz-save { display: flex; gap: 6px; }
+.ptz-save input { width: 140px; }
 .tile-button { background: rgb(0 0 0 / 0.5); color: #fff; border-color: #555; padding: 0 8px; line-height: 1.6; }
 
 @media (max-width: 640px) {

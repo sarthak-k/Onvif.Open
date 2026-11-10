@@ -68,5 +68,11 @@ namespace Onvif.Open.Recorder.Audit
         public const string RecordingStop = "recording.stop";
         public const string RecordingTrigger = "recording.trigger";
         public const string RelaySwitch = "io.relay";
+
+        /// <summary>Moved a camera (pan, tilt, zoom, a preset, home): recorded once per user and camera every 10 minutes.</summary>
+        public const string PtzControl = "ptz.control";
+        public const string PtzPresetSave = "ptz.preset_save";
+        public const string PtzPresetDelete = "ptz.preset_delete";
+        public const string PtzHomeSet = "ptz.home_set";
     }
 }

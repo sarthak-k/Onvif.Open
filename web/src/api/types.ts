@@ -135,6 +135,8 @@ export interface CameraStatus {
   cameraId: string;
   name: string;
   siteId?: string | null;
+  /** An ONVIF camera: it may pan, tilt and zoom. */
+  onvif?: boolean;
   state: string;
   mode: string;
   isTriggered: boolean;
@@ -476,4 +478,23 @@ export interface Alert {
 export interface AlertSummary {
   open: number;
   latest: Alert | null;
+}
+
+/** Pan and tilt from -1 to 1, zoom from 0 (wide) to 1; as speeds for a move, -1 to 1 each. */
+export interface PtzVector {
+  pan?: number | null;
+  tilt?: number | null;
+  zoom?: number | null;
+}
+
+export interface PtzStatus {
+  position: PtzVector | null;
+  isMoving: boolean;
+  error: string | null;
+}
+
+export interface PtzPreset {
+  token: string;
+  name: string;
+  position: PtzVector | null;
 }

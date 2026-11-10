@@ -32,6 +32,7 @@ state through the table, tests check the code against it, and the diagrams below
 | [Session](#session) | Web | `web/src/features/auth/session.ts` (`sessionMachine`, `sessionOf`) | `AuthContext` holds it; `RequireAuth` routes on it | sign-in, password change, sign-out |
 | [Add-camera wizard](#add-camera-wizard) | Web | `web/src/features/cameras/wizard/steps.ts` (`wizardSteps`) | `AddCamerasPage` (moves through the table) | Cameras › Add cameras |
 | [Camera in the add-camera wizard](#camera-in-the-add-camera-wizard) | Web | `web/src/features/cameras/wizard/candidates.ts` (`candidateMachine`) | `changeCandidate`, `afterSharedChange`, `startTest` | each camera's state in the wizard |
+| [PTZ hold to move](#ptz-hold-to-move) | Web | `web/src/features/live/ptz/ptzHold.ts` (`ptzHoldMachine`) | `createPtzHold` (`press`, `release`) | the PTZ panel of an enlarged live tile |
 | [Clip marks](#clip-marks) | Web | `web/src/features/investigate/clipMarks.ts` (`markMachine`) | `markIn`, `markOut`, `clearMarks` (move through the table) | Investigate and cases: Mark in / Mark out / Clear |
 
 ### Camera recording
@@ -242,5 +243,19 @@ stateDiagram-v2
     in --> none : Clear
     out --> none : Clear
     clip --> none : Clear
+```
+<!-- /machine -->
+
+### PTZ hold to move
+
+Every move stops by itself after 1.5 s and is renewed each second while held, so a browser that goes away mid-move cannot leave the camera turning.
+
+<!-- machine: PTZ hold to move -->
+```mermaid
+stateDiagram-v2
+    [*] --> idle
+    idle --> moving : a direction is pressed
+    moving --> moving : still held: renewed every second, or another direction
+    moving --> idle : released, or the panel closes: stop sent
 ```
 <!-- /machine -->

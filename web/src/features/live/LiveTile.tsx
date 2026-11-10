@@ -1,4 +1,7 @@
-import { memo, type CSSProperties, type DragEvent } from 'react';
+import { memo, useState, type CSSProperties, type DragEvent } from 'react';
+import { useUser } from '../auth/AuthContext';
+import { can } from '../auth/permissions';
+import { PtzPanel } from './ptz/PtzPanel';
 import type { TilePlacement } from './gridTemplates';
 import { VideoPlayer } from './player/VideoPlayer';
 
@@ -7,7 +10,7 @@ interface Props {
   cameraId: string | null;
   placement: TilePlacement;
   /** The cameras the user may see, by id, with their names. */
-  cameras: readonly { id: string; name: string }[];
+  cameras: readonly { id: string; name: string; onvif?: boolean }[];
   editing: boolean;
   focused: boolean;
   /** One of several tiles of one cell: it plays the camera's smaller stream. */
@@ -27,6 +30,10 @@ export const LiveTile = memo(function LiveTile({ index, cameraId, placement, cam
   const camera = cameraId === null ? undefined : cameras.find((c) => c.id === cameraId);
   const missing = cameraId !== null && !camera;
   const name = camera?.name ?? cameraId;
+  const canSteer = can(useUser(), 'cameras.control');
+  const [steering, setSteering] = useState(false);
+  // Pan, tilt and zoom: an enlarged ONVIF camera, for operators.
+  const ptz = focused && !editing && canSteer && !!camera?.onvif;
 
   const onDragStart = (event: DragEvent) => event.dataTransfer.setData(dragType, String(index));
   const onDrop = (event: DragEvent) => {
@@ -50,6 +57,7 @@ export const LiveTile = memo(function LiveTile({ index, cameraId, placement, cam
       ) : (
         <div className="tile-empty">{missing ? 'This camera was removed, or you may not see it.' : editing ? 'Choose a camera' : 'Empty'}</div>
       )}
+      {ptz && steering && cameraId && <PtzPanel cameraId={cameraId} name={name ?? cameraId} />}
       <div className="tile-bar">
         {editing ? (
           <select aria-label={`Camera in tile ${index + 1}`} value={cameraId ?? ''} onChange={(e) => onAssign(index, e.target.value || null)}>
@@ -62,6 +70,11 @@ export const LiveTile = memo(function LiveTile({ index, cameraId, placement, cam
           </select>
         ) : (
           <span className="tile-name">{missing ? '' : (name ?? '')}</span>
+        )}
+        {ptz && (
+          <button type="button" className="tile-button" aria-pressed={steering} onClick={() => setSteering((s) => !s)} aria-label={steering ? 'Hide pan, tilt and zoom' : `Pan, tilt and zoom ${name}`}>
+            PTZ
+          </button>
         )}
         {cameraId && !missing && (
           <button type="button" className="tile-button" onClick={() => onToggleFocus(index)} aria-label={focused ? 'Back to the grid' : `Enlarge ${name}`}>
