@@ -58,8 +58,9 @@ namespace Onvif.Open.Recorder.Tenancy
     {
         #region Constructor
 
-        public TenancyService(ITenancyStore store, UserService users, CameraConfigurationService cameras, SecurityOptions security, ILogger<TenancyService> logger, TimeProvider timeProvider = null)
+        public TenancyService(ITenancyStore store, UserService users, CameraConfigurationService cameras, SecurityOptions security, ILogger<TenancyService> logger, TimeProvider timeProvider = null, CloudOptions cloud = null)
         {
+            _cloud = cloud ?? new CloudOptions();
             _store = store ?? throw new ArgumentNullException(nameof(store));
             _users = users ?? throw new ArgumentNullException(nameof(users));
             _cameras = cameras ?? throw new ArgumentNullException(nameof(cameras));
@@ -79,6 +80,7 @@ namespace Onvif.Open.Recorder.Tenancy
         public const int DefaultContinuousRetentionDays = 7;
         public const int DefaultEventRetentionDays = 30;
 
+        private readonly CloudOptions _cloud;
         private readonly ITenancyStore _store;
         private readonly UserService _users;
         private readonly CameraConfigurationService _cameras;
@@ -92,7 +94,8 @@ namespace Onvif.Open.Recorder.Tenancy
         #region Public Methods - Setup
 
         /// <summary>True until the first owner exists.</summary>
-        public async Task<bool> IsSetupRequiredAsync(CancellationToken cancellationToken = default) => !await _users.AnyAsync(cancellationToken).ConfigureAwait(false);
+        /// <summary>Whether the recorder still needs its first owner; never in the cloud (customers sign up there).</summary>
+        public async Task<bool> IsSetupRequiredAsync(CancellationToken cancellationToken = default) => !_cloud.Enabled && !await _users.AnyAsync(cancellationToken).ConfigureAwait(false);
 
         /// <summary>Creates the organization, its first site, the default recording policies and the owner; once only.</summary>
         public async Task<ServiceResult<Member>> CompleteSetupAsync(SetupRequest request, CancellationToken cancellationToken = default)
@@ -111,45 +114,59 @@ namespace Onvif.Open.Recorder.Tenancy
                     return ServiceResult<Member>.Forbidden("The setup token is wrong.");
                 }
 
-                var errors = new List<string>();
-                var region = Regions.Normalize(request?.Region);
-                CheckName(request?.OrganizationName, "Organization name", errors);
-                if (region == null)
+                var created = await CreateOrganizationAsync(request, cancellationToken).ConfigureAwait(false);
+                if (created.Status == ServiceStatus.Ok)
                 {
-                    errors.Add($"Region must be one of {string.Join(", ", Regions.All.Select(r => r.Id))}.");
+                    _logger.LogInformation("Setup done: organization {Organization} with owner {UserName}", request.OrganizationName, created.Value.User.UserName);
                 }
 
-                CheckSite(new SiteRequest { Name = request?.SiteName, TimeZone = request?.TimeZone }, errors);
-                errors.AddRange(UserService.CheckPasswordRules(request?.Password));
-
-                if (errors.Count > 0)
-                {
-                    return ServiceResult<Member>.Invalid(errors);
-                }
-
-                var now = _timeProvider.GetUtcNow().UtcDateTime;
-                var organization = new OrganizationRecord { Id = NewId(), Name = request.OrganizationName.Trim(), Region = region, CreatedAt = now };
-                await _store.SaveOrganizationAsync(organization, cancellationToken).ConfigureAwait(false);
-                await _store.SaveSiteAsync(new SiteRecord { Id = NewId(), OrganizationId = organization.Id, Name = request.SiteName.Trim(), TimeZone = request.TimeZone.Trim(), CreatedAt = now, UpdatedAt = now }, cancellationToken).ConfigureAwait(false);
-
-                foreach (var policy in DefaultPolicies(organization.Id, now))
-                {
-                    await _store.SavePolicyAsync(policy, cancellationToken).ConfigureAwait(false);
-                }
-
-                var owner = await _users.CreateMemberAsync(organization.Id, Roles.Owner, request.UserName, request.Password, Roles.Owner, null, mustChangePassword: false, cancellationToken).ConfigureAwait(false);
-                if (owner.Status != UserStatus.Ok)
-                {
-                    return ServiceResult<Member>.Invalid(owner.Errors);
-                }
-
-                _logger.LogInformation("Setup done: organization {Organization} ({Region}) with owner {UserName}", organization.Name, organization.Region, owner.Member.User.UserName);
-                return ServiceResult<Member>.Ok(owner.Member);
+                return created;
             }
             finally
             {
                 _setup.Release();
             }
+        }
+
+        /// <summary>
+        /// A new organization with its first site, the default recording policies and its owner (setup, and sign-up in
+        /// the cloud). The owner's password is checked like any other.
+        /// </summary>
+        public async Task<ServiceResult<Member>> CreateOrganizationAsync(SetupRequest request, CancellationToken cancellationToken = default)
+        {
+            var errors = new List<string>();
+            var region = Regions.Normalize(request?.Region);
+            CheckName(request?.OrganizationName, "Organization name", errors);
+            if (region == null)
+            {
+                errors.Add($"Region must be one of {string.Join(", ", Regions.All.Select(r => r.Id))}.");
+            }
+
+            CheckSite(new SiteRequest { Name = request?.SiteName, TimeZone = request?.TimeZone }, errors);
+            errors.AddRange(UserService.CheckPasswordRules(request?.Password));
+
+            if (errors.Count > 0)
+            {
+                return ServiceResult<Member>.Invalid(errors);
+            }
+
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
+            var organization = new OrganizationRecord { Id = NewId(), Name = request.OrganizationName.Trim(), Region = region, CreatedAt = now };
+            await _store.SaveOrganizationAsync(organization, cancellationToken).ConfigureAwait(false);
+            await _store.SaveSiteAsync(new SiteRecord { Id = NewId(), OrganizationId = organization.Id, Name = request.SiteName.Trim(), TimeZone = request.TimeZone.Trim(), CreatedAt = now, UpdatedAt = now }, cancellationToken).ConfigureAwait(false);
+
+            foreach (var policy in DefaultPolicies(organization.Id, now))
+            {
+                await _store.SavePolicyAsync(policy, cancellationToken).ConfigureAwait(false);
+            }
+
+            var owner = await _users.CreateMemberAsync(organization.Id, Roles.Owner, request.UserName, request.Password, Roles.Owner, null, mustChangePassword: false, cancellationToken).ConfigureAwait(false);
+            if (owner.Status != UserStatus.Ok)
+            {
+                return ServiceResult<Member>.Invalid(owner.Errors);
+            }
+
+            return ServiceResult<Member>.Ok(owner.Member);
         }
 
         /// <summary>

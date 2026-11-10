@@ -140,7 +140,7 @@ namespace Onvif.Open.Recorder.Tunnel
         {
             var camera = _directory.Find(cameraId);
             var local = _gateways.Local?.Id;
-            return camera?.GatewayId == null || local == null || string.Equals(camera.GatewayId, local, StringComparison.OrdinalIgnoreCase)
+            return camera?.GatewayId == null || string.Equals(camera.GatewayId, local, StringComparison.OrdinalIgnoreCase)
                 || _recording.GetStatus().Any(s => string.Equals(s.CameraId, cameraId, StringComparison.OrdinalIgnoreCase));
         }
 

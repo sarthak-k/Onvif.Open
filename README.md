@@ -366,6 +366,28 @@ dropped (its player reconnects) rather than holding up the others.
 * **Exports** of a gateway's camera: the gateway sends the clip through its tunnel, and it is watermarked here like
   any other; when the gateway is offline, the export fails and says so.
 
+**The cloud (multi-tenant).** A recorder started with `Cloud:Enabled` is one region's control plane for many
+customers: each region is its own deployment with its own database, so an organization's data stays where it was
+created. Customers sign up themselves; their cameras are recorded by gateways (at their sites, paired as above), never
+by the cloud itself: it does not look for cameras on its own network, test camera addresses or record a camera
+without a gateway, and there is no first-run setup.
+
+```json
+"Cloud": {
+  "Enabled": true,
+  "Region": "us",
+  "Regions": { "us": { "WebUrl": "https://us.cameras.example.com" }, "asia": { "WebUrl": "https://asia.cameras.example.com" } }
+}
+```
+
+* **Sign-up** (`/signup` in the web app; needs the mail server of `Alerts:Smtp`): organization, first site and the
+  owner's email and password. Nothing is created until the emailed link (`{WebUrl}/signup/verify?token=…`, valid for
+  `Cloud:SignupLifetime`, 24 h, once) is opened; only a hash of the link is stored, and the password waits encrypted.
+  Signing up with an email that has an account answers the same and emails a reminder instead, so the page does not
+  tell who has one. The owner signs in with the email.
+* **Regions**: the sign-up page lists `Cloud:Regions` and sends people choosing another region to its deployment.
+  `GET /api/cloud` (no sign-in) says whether this is the cloud, its region, the others, and whether sign-up is open.
+
 Camera ids are UUIDs assigned by the recorder, so recordings
 never depend on a name someone typed; names can change at any time. Bring the database you use (EF Core; the `oo_*`
 tables are created on first start, also inside an existing database, and tables added by later versions are created

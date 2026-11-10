@@ -63,6 +63,18 @@ builder.Services.AddSingleton(sp => new AuditLog(
 builder.Services.AddHostedService(sp => sp.GetRequiredService<AuditLog>());
 builder.Services.AddSingleton<TenancyService>();
 
+// The cloud: a multi-tenant control plane for one region, with self-service sign-up (checked at startup).
+var cloud = builder.Configuration.GetSection(CloudOptions.SectionName).Get<CloudOptions>() ?? new CloudOptions();
+if (cloud.Check() is { Count: > 0 } cloudErrors)
+{
+    throw new InvalidOperationException("The cloud settings are not valid: " + string.Join(" ", cloudErrors));
+}
+
+builder.Services.AddSingleton(cloud);
+builder.Services.AddSingleton<Onvif.Open.Recorder.Mail.IMailSender>(sp => new Onvif.Open.Recorder.Mail.SmtpMailSender(
+    sp.GetRequiredService<IConfiguration>().GetSection(Onvif.Open.Recorder.Alerts.SmtpOptions.SectionName).Get<Onvif.Open.Recorder.Alerts.SmtpOptions>()));
+builder.Services.AddSingleton<SignupService>();
+
 // The gateway: this recorder, with its settings (storage limits, cloud backup, discovery) and heartbeat.
 builder.Services.AddSingleton<IGatewayStore, EfGatewayStore>();
 builder.Services.AddSingleton<GatewayService>();
@@ -252,6 +264,7 @@ app.MapCaseApi();
 app.MapExportApi();
 app.MapAlertApi();
 app.MapTunnelApi();
+app.MapSignupApi();
 app.Run();
 
 public partial class Program

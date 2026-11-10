@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { Me, SetupRequest } from '../../api/types';
+import type { Me, SetupRequest, SignupRequest } from '../../api/types';
 import { useApi, useApiClient } from '../../data/ApiContext';
 import { can, type Permission } from './permissions';
 
@@ -9,6 +9,10 @@ interface AuthState {
   user: Me | null | undefined;
   /** First-run setup: creates the organization and owner, and signs the owner in. */
   completeSetup(request: SetupRequest): Promise<void>;
+  /** Cloud sign-up, step 1: emails a link to the address. */
+  startSignup(request: SignupRequest): Promise<void>;
+  /** Cloud sign-up, step 2: the emailed link creates the organization and signs its owner in. */
+  completeSignup(token: string): Promise<void>;
   signIn(userName: string, password: string, keepSignedIn: boolean): Promise<void>;
   signOut(): void;
   changePassword(currentPassword: string, newPassword: string): Promise<void>;
@@ -69,9 +73,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [api, client],
   );
 
+  const startSignup = useCallback((request: SignupRequest) => client.startSignup(request), [client]);
+
+  const completeSignup = useCallback(
+    async (token: string) => {
+      await client.completeSignup(token);
+      setUser(await api.auth.me());
+    },
+    [api, client],
+  );
+
   const signOut = useCallback(() => client.signOut(), [client]);
 
-  const value = useMemo(() => ({ user, signIn, signOut, changePassword, completeSetup }), [user, signIn, signOut, changePassword, completeSetup]);
+  const value = useMemo(
+    () => ({ user, signIn, signOut, changePassword, completeSetup, startSignup, completeSignup }),
+    [user, signIn, signOut, changePassword, completeSetup, startSignup, completeSignup],
+  );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

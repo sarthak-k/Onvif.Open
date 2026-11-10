@@ -1,5 +1,5 @@
 import type { ApiClient } from './client';
-import type { PtzPreset, PtzStatus, PtzVector, Alert, AlertRule, AlertRuleRequest, AlertSummary, DeliveryResult, CameraConfig, CameraStatus, DiscoveredDevice, AuditEntry, AuditQuery, ShareLink, VideoExport, Case, CaseClip, CaseRequest, CaseStatus, ClipRequest, EventQuery, RecordingSegment, StoredEvent, Gateway, GatewayRequest, Layout, LayoutRequest, Me, Organization, ProbeResult, RecordingPolicy, RecordingPolicyRequest, SetupStatus, Site, SiteRequest, User, UserRequest } from './types';
+import type { PtzPreset, PtzStatus, PtzVector, Alert, AlertRule, AlertRuleRequest, AlertSummary, DeliveryResult, CameraConfig, CameraStatus, DiscoveredDevice, AuditEntry, AuditQuery, ShareLink, VideoExport, Case, CaseClip, CaseRequest, CaseStatus, ClipRequest, EventQuery, RecordingSegment, StoredEvent, Gateway, GatewayRequest, Layout, LayoutRequest, Me, Organization, ProbeResult, RecordingPolicy, RecordingPolicyRequest, SetupStatus, CloudInfo, Site, SiteRequest, User, UserRequest } from './types';
 
 // The recorder's API by area. Pages depend on these interfaces, not on HTTP, so tests and later back ends can
 // provide their own implementation (dependency inversion, interface segregation).
@@ -11,6 +11,8 @@ export interface AuthApi {
 export interface SetupApi {
   /** Whether the recorder still needs its first owner (no sign-in needed). */
   status(): Promise<SetupStatus>;
+  /** Whether this is the cloud, its region and whether people can sign up (no sign-in needed). */
+  cloud(): Promise<CloudInfo>;
 }
 
 export interface OrganizationApi {
@@ -198,6 +200,7 @@ export function createRecorderApi(client: ApiClient): RecorderApi {
     },
     setup: {
       status: () => client.anonymous('GET', '/api/setup'),
+      cloud: () => client.anonymous('GET', '/api/cloud'),
     },
     organization: {
       get: () => client.get('/api/organization'),

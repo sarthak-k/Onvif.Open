@@ -24,13 +24,19 @@ namespace Onvif.Open.Recorder.Api
 
         public static IEndpointRouteBuilder MapDiscoveryApi(this IEndpointRouteBuilder app)
         {
-            app.MapGet("/api/discovery", async (ICameraDiscovery discovery, Store.ISettingsStore settings, System.Security.Claims.ClaimsPrincipal user, CancellationToken ct) =>
+            app.MapGet("/api/discovery", async (ICameraDiscovery discovery, Store.ISettingsStore settings, System.Security.Claims.ClaimsPrincipal user, Tenancy.CloudOptions cloud, CancellationToken ct) =>
             {
+                // The cloud's own network is not the customer's: cameras are found by the gateway at their site.
+                if (cloud.Enabled)
+                {
+                    return Results.Problem("Cameras are found by the gateway at their site.", statusCode: StatusCodes.Status501NotImplemented);
+                }
+
                 var devices = await discovery.FindAsync(ct);
                 var organizationId = Tenancy.CameraAccess.OrganizationId(user);
                 var cameras = (await settings.GetCamerasAsync(ct)).Where(c => c.OrganizationId == organizationId).ToList();
 
-                return devices
+                return Results.Ok(devices
                     .OrderBy(d => d.DeviceServiceUri?.Host, StringComparer.Ordinal)
                     .Select(d => new
                     {
@@ -44,7 +50,7 @@ namespace Onvif.Open.Recorder.Api
                         respondedFrom = d.RespondedFrom?.ToString(),
                         configuredCameraId = FindConfiguredCamera(cameras, d),
                         configuredCameraName = cameras.FirstOrDefault(c => c.Id == FindConfiguredCamera(cameras, d))?.Name
-                    });
+                    }));
             }).RequireAuthorization(Policies.Admin);
 
             return app;

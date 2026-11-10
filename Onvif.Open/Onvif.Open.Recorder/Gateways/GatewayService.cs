@@ -55,6 +55,7 @@ namespace Onvif.Open.Recorder.Gateways
             _logger = logger;
             _name = configuration?["Gateway:Name"];
             _location = GatewayLocations.Normalize(configuration?["Gateway:Location"]);
+            _cloud = string.Equals(configuration?["Cloud:Enabled"], "true", StringComparison.OrdinalIgnoreCase);
             StartedAt = _timeProvider.GetUtcNow().UtcDateTime;
         }
 
@@ -90,6 +91,7 @@ namespace Onvif.Open.Recorder.Gateways
 
         private static readonly StorageLimits DefaultLimits = new StorageLimits();
         private static readonly DiscoverySettings DefaultDiscovery = new DiscoverySettings();
+        private readonly bool _cloud;
         private readonly IGatewayStore _store;
         private readonly TimeProvider _timeProvider;
         private readonly ILogger _logger;
@@ -107,6 +109,12 @@ namespace Onvif.Open.Recorder.Gateways
         /// </summary>
         public async Task<Gateway> EnsureLocalAsync(CancellationToken cancellationToken = default)
         {
+            // The cloud records nothing itself: every camera is on a gateway (at the site, or one hosted for the customer).
+            if (_cloud)
+            {
+                return null;
+            }
+
             if (Local != null)
             {
                 return Local;

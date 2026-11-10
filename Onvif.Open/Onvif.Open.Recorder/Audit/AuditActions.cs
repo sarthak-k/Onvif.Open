@@ -36,6 +36,9 @@ namespace Onvif.Open.Recorder.Audit
         public const string VideoShare = "video.share";
         public const string VideoShareRevoke = "video.share_revoke";
         public const string VideoSharedDownload = "video.shared_download";
+        /// <summary>An organization signed up (cloud), with its owner.</summary>
+        public const string Signup = "organization.signup";
+
         public const string CaseCreate = "case.create";
         public const string CaseUpdate = "case.update";
         public const string CaseDelete = "case.delete";

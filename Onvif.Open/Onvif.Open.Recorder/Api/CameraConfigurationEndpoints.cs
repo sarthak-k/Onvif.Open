@@ -68,8 +68,14 @@ namespace Onvif.Open.Recorder.Api
                 .Audit(AuditActions.CameraUpdate, AuditTargets.Camera);
 
             // Tests settings before they are saved; with "id" of a saved camera, its stored password is used when none is given.
-            cameras.MapPost("/test", async (CameraOptions camera, bool? snapshot, ClaimsPrincipal user, CameraDirectory directory, CameraConfigurationService service, CancellationToken ct) =>
+            cameras.MapPost("/test", async (CameraOptions camera, bool? snapshot, ClaimsPrincipal user, CameraDirectory directory, CameraConfigurationService service, CloudOptions cloud, CancellationToken ct) =>
             {
+                // The cloud never connects to an address a customer gives it: the camera's gateway tests it (?gatewayId=).
+                if (cloud.Enabled)
+                {
+                    return Results.BadRequest(new { errors = new[] { "Test the camera from the gateway that will record it." } });
+                }
+
                 camera = camera ?? new CameraOptions();
 
                 if (string.IsNullOrWhiteSpace(camera.OnvifUrl) == string.IsNullOrWhiteSpace(camera.RtspUrl))

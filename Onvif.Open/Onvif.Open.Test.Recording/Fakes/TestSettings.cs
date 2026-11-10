@@ -24,6 +24,7 @@ namespace Onvif.Open.Test.Recording.Fakes
             Root = Path.Combine(Path.GetTempPath(), "onvif-open-settings", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(Root);
             Store = CreateStore("Sqlite", $"Data Source={Database}", Keys, out var contexts);
+            Contexts = contexts;
             Tenancy = new Onvif.Open.Recorder.Tenancy.EfTenancyStore(contexts);
             Users = new EfUserStore(contexts);
             Gateways = new Onvif.Open.Recorder.Gateways.EfGatewayStore(contexts, Protection(Keys));
@@ -40,6 +41,9 @@ namespace Onvif.Open.Test.Recording.Fakes
         public const string AlwaysPolicyId = "00000000-0000-0000-0000-00000000c001";
         public const string EventsPolicyId = "00000000-0000-0000-0000-00000000c002";
         public const string GatewayId = "00000000-0000-0000-0000-00000000e001";
+
+        /// <summary>The database itself, to check what is stored.</summary>
+        public IDbContextFactory<RecorderDbContext> Contexts { get; }
 
         public Onvif.Open.Recorder.Tenancy.ITenancyStore Tenancy { get; }
         public IUserStore Users { get; }

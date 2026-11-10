@@ -229,10 +229,6 @@ namespace Onvif.Open.Recorder.Api
         private static IEnumerable<CameraEntry> RemoteEntries(CameraDirectory directory, GatewayService gateways, IRecordingManager manager)
         {
             var local = gateways.Local?.Id;
-            if (local == null)
-            {
-                return Enumerable.Empty<CameraEntry>();
-            }
 
             // A camera recorded here is listed with its own status (a gateway records the control plane's cameras itself).
             var here = manager.GetStatus().Select(s => s.CameraId).ToHashSet(StringComparer.OrdinalIgnoreCase);
