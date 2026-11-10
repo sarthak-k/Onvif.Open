@@ -5,11 +5,12 @@ import { afterSharedChange, candidateMachine, changeCandidate, fromAddress, star
 import { wizardSteps } from '../features/cameras/wizard/steps';
 import { sessionMachine, sessionOf } from '../features/auth/session';
 import { clearMarks, clipOf, markIn, markMachine, markOut, noMarks, phaseOf } from '../features/investigate/clipMarks';
+import { ptzHoldMachine } from '../features/live/ptz/ptzHold';
 import { admin } from '../test/fakeRecorder';
 import { defineMachine, type StateMachine } from './stateMachine';
 
 /** Every web state machine; a new one is one line here (and a section in docs/STATE-MACHINES.md). */
-const machines: StateMachine<string>[] = [sessionMachine, wizardSteps, candidateMachine, markMachine];
+const machines: StateMachine<string>[] = [sessionMachine, wizardSteps, candidateMachine, markMachine, ptzHoldMachine];
 
 describe('state machines', () => {
   it('refuses moves outside the table and names the allowed ones', () => {

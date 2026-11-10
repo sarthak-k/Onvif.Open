@@ -25,6 +25,7 @@ describe('App', () => {
       cases: { list: async () => [], get: fail, create: fail, update: fail, remove: fail, addClip: fail, updateClip: fail, removeClip: fail },
       alertRules: { list: async () => [], create: fail, update: fail, remove: fail, test: fail },
       alerts: { list: async () => [], summary: async () => ({ open: 0, latest: null }), acknowledge: fail },
+      ptz: { status: fail, move: fail, stop: fail, presets: async () => [], goToPreset: fail, savePreset: fail, removePreset: fail, home: fail, setHome: fail },
       gateways: { list: async () => [], update: fail, pair: fail, remove: fail, controlPlaneUrl: () => 'http://recorder' },
     };
     const client = new ApiClient('', memoryStorage('refresh-0'), (async () => new Response(JSON.stringify(tokens(1)))) as typeof fetch);

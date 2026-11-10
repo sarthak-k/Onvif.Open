@@ -38,7 +38,7 @@ export default function LivePage() {
   const save = useSaveLayout();
   const remove = useDeleteLayout();
 
-  const cameras = useMemo(() => (statuses.data ?? []).map((s) => ({ id: s.cameraId, name: s.name })).sort((a, b) => a.name.localeCompare(b.name)), [statuses.data]);
+  const cameras = useMemo(() => (statuses.data ?? []).map((s) => ({ id: s.cameraId, name: s.name, onvif: s.onvif ?? false })).sort((a, b) => a.name.localeCompare(b.name)), [statuses.data]);
   const cameraIds = useMemo(() => cameras.map((c) => c.id), [cameras]);
   const [state, dispatch] = useReducer(liveLayoutReducer, [], newLayout);
   const [editing, setEditing] = useState(false);

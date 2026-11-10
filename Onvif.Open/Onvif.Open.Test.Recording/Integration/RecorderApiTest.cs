@@ -154,6 +154,9 @@ namespace Onvif.Open.Test.Recording.Integration
         [Fact]
         public async Task PtzShouldRequireAnOnvifCamera()
         {
+            // An RTSP camera: it says so (no PTZ controls are offered), and PTZ answers 501.
+            var cam1 = JsonDocument.Parse(await _client.GetStringAsync("/api/cameras/cam1")).RootElement;
+            Assert.False(cam1.GetProperty("onvif").GetBoolean());
             Assert.Equal(HttpStatusCode.NotImplemented, (await _client.GetAsync("/api/cameras/cam1/ptz")).StatusCode);
             Assert.Equal(HttpStatusCode.NotImplemented, (await _client.PostAsJsonAsync("/api/cameras/cam1/ptz/move", new { pan = 0.5 })).StatusCode);
             Assert.Equal(HttpStatusCode.NotFound, (await _client.PostAsync("/api/cameras/nope/ptz/stop", null)).StatusCode);

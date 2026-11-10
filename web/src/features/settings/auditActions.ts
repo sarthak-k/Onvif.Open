@@ -48,6 +48,10 @@ const actionLabels: Record<string, string> = {
   'recording.stop': 'Stopped recording',
   'recording.trigger': 'Triggered recording',
   'io.relay': 'Switched a relay output',
+  'ptz.control': 'Moved a camera (pan, tilt, zoom)',
+  'ptz.preset_save': 'Saved a camera preset',
+  'ptz.preset_delete': 'Removed a camera preset',
+  'ptz.home_set': 'Set a camera home position',
 };
 
 /** The areas the log can be narrowed to (the part of the action before the dot). */
@@ -66,6 +70,7 @@ export const auditAreas = [
   { value: 'gateway', label: 'Gateways' },
   { value: 'plugin', label: 'Plugins' },
   { value: 'io', label: 'Device outputs' },
+  { value: 'ptz', label: 'Pan, tilt and zoom' },
   { value: 'organization', label: 'Organization' },
 ] as const;
 

@@ -194,6 +194,7 @@ namespace Onvif.Open.Recorder.Api
                 cameraId = status.CameraId,
                 name = camera?.Name ?? status.CameraId,
                 siteId = camera?.SiteId,
+                onvif = camera?.IsOnvif ?? false,
                 state = status.State.ToString(),
                 mode = status.Mode.ToString(),
                 status.IsTriggered,

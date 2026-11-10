@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Routing;
 using Onvif.Open.Core.Abstract.Interface.Ptz;
 using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Core.Ptz;
+using Onvif.Open.Recorder.Audit;
 using Onvif.Open.Recorder.Configuration;
 
 using Onvif.Open.Recorder.Security;
@@ -54,7 +55,8 @@ namespace Onvif.Open.Recorder.Api
                     var duration = request?.DurationMs is int ms ? TimeSpan.FromMilliseconds(Math.Clamp(ms, 1, 60000)) : (TimeSpan?)null;
                     await p.MoveAsync(request?.Pan ?? 0, request?.Tilt ?? 0, request?.Zoom ?? 0, duration, ct);
                     return Results.NoContent();
-                })).RequireAuthorization(Policies.Operator);
+                })).RequireAuthorization(Policies.Operator)
+                .Audit(AuditActions.PtzControl, AuditTargets.Camera, views: true);
 
             ptz.MapPost("/stop", (string id, IRecordingManager manager, ConfiguredRecording recording, CancellationToken ct) =>
                 Run(id, manager, recording, async p =>
@@ -68,7 +70,8 @@ namespace Onvif.Open.Recorder.Api
                 {
                     await p.MoveToAsync(new PtzVector(request?.Pan, request?.Tilt, request?.Zoom), ct);
                     return Results.NoContent();
-                })).RequireAuthorization(Policies.Operator);
+                })).RequireAuthorization(Policies.Operator)
+                .Audit(AuditActions.PtzControl, AuditTargets.Camera, views: true);
 
             ptz.MapGet("/presets", (string id, IRecordingManager manager, ConfiguredRecording recording, CancellationToken ct) =>
                 Run(id, manager, recording, async p => Results.Ok((await p.GetPresetsAsync(ct)).Select(preset => new
@@ -83,27 +86,32 @@ namespace Onvif.Open.Recorder.Api
                 {
                     await p.GoToPresetAsync(preset, ct);
                     return Results.NoContent();
-                })).RequireAuthorization(Policies.Operator);
+                })).RequireAuthorization(Policies.Operator)
+                .Audit(AuditActions.PtzControl, AuditTargets.Camera, views: true);
 
             ptz.MapPut("/presets/{preset}", (string id, string preset, IRecordingManager manager, ConfiguredRecording recording, CancellationToken ct) =>
-                Run(id, manager, recording, async p => Results.Ok(new { token = await p.SavePresetAsync(preset, ct), name = preset }))).RequireAuthorization(Policies.Operator);
+                Run(id, manager, recording, async p => Results.Ok(new { token = await p.SavePresetAsync(preset, ct), name = preset }))).RequireAuthorization(Policies.Operator)
+                .Audit(AuditActions.PtzPresetSave, AuditTargets.Camera, details: context => new { preset = context.HttpContext.GetRouteValue("preset") });
 
             ptz.MapDelete("/presets/{preset}", (string id, string preset, IRecordingManager manager, ConfiguredRecording recording, CancellationToken ct) =>
-                Run(id, manager, recording, async p => await p.RemovePresetAsync(preset, ct) ? Results.NoContent() : Results.NotFound())).RequireAuthorization(Policies.Operator);
+                Run(id, manager, recording, async p => await p.RemovePresetAsync(preset, ct) ? Results.NoContent() : Results.NotFound())).RequireAuthorization(Policies.Operator)
+                .Audit(AuditActions.PtzPresetDelete, AuditTargets.Camera, details: context => new { preset = context.HttpContext.GetRouteValue("preset") });
 
             ptz.MapPost("/home", (string id, IRecordingManager manager, ConfiguredRecording recording, CancellationToken ct) =>
                 Run(id, manager, recording, async p =>
                 {
                     await p.GoHomeAsync(ct);
                     return Results.NoContent();
-                })).RequireAuthorization(Policies.Operator);
+                })).RequireAuthorization(Policies.Operator)
+                .Audit(AuditActions.PtzControl, AuditTargets.Camera, views: true);
 
             ptz.MapPut("/home", (string id, IRecordingManager manager, ConfiguredRecording recording, CancellationToken ct) =>
                 Run(id, manager, recording, async p =>
                 {
                     await p.SetHomeAsync(ct);
                     return Results.NoContent();
-                })).RequireAuthorization(Policies.Operator);
+                })).RequireAuthorization(Policies.Operator)
+                .Audit(AuditActions.PtzHomeSet, AuditTargets.Camera);
 
             return app;
         }

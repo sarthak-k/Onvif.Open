@@ -21,6 +21,10 @@ export const queryKeys = {
   gateways: ['gateways'] as const,
   exports: ['exports'] as const,
   alertRules: ['alert-rules'] as const,
+  ptz: {
+    status: (cameraId: string) => ['ptz', cameraId, 'status'] as const,
+    presets: (cameraId: string) => ['ptz', cameraId, 'presets'] as const,
+  },
   alerts: {
     all: ['alerts'] as const,
     list: (status: string) => ['alerts', 'list', status] as const,
