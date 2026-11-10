@@ -334,8 +334,27 @@ an administrator enters it in the web app (Settings › Gateways › Add gateway
 receives its own token (stored encrypted in `data/control-plane.json`, only a hash of it here) and reports its health
 every 30 s, so it shows as online with its cameras, disk and backup state. It only makes outbound HTTPS requests:
 nothing to open on the site's firewall. Removing it in the web app revokes its token; it then asks for a new code.
-Paired gateways report their health; recording their cameras from here, and their live video, come with the tunnel
-in a later version.
+
+**The tunnel and media relay.** Once paired, the gateway keeps one outbound WebSocket open to this recorder
+(`/api/gateways/tunnel`, with its token; reconnecting after 1 s, doubling up to 30 s), so nothing at the site listens
+on the internet. Many requests share it at once: each frame carries its stream, and a viewer that falls far behind is
+dropped (its player reconnects) rather than holding up the others.
+
+* **Cameras of a gateway** are added here like any other ("Recorded by" in the camera editor, when there is more
+  than one gateway). This recorder keeps their settings and sends each gateway the cameras it records whenever they
+  change, and when its tunnel opens; the gateway records them, applies their policy and keeps the set on disk
+  (encrypted: it holds camera passwords, in `data/assigned-cameras.json` or `ControlPlane:CamerasFile`), so it records
+  through an outage and after a restart before the tunnel is back. A camera stays on the gateway that records it.
+* **The relay**: a request about a camera of a gateway (`/api/cameras/{id}/…`: live video, low-latency and HLS,
+  recordings, PTZ, imaging, outputs, recordings on the device) is checked here (who may see the camera, their role),
+  audited here, then sent through that gateway's tunnel; the response streams back. Viewers never reach the site's
+  network. Testing a camera for a gateway (`POST /api/config/cameras/test?gatewayId=…`) runs from that gateway, at the
+  camera's site. The gateway runs relayed requests through its own API, in process, as the control plane in the
+  camera's organization.
+* **Status**: `GET /api/cameras` lists them with what their gateway last reported (with each heartbeat); `Offline`
+  when it has not reported for 90 s, or its tunnel is closed (requests then answer 503).
+
+Events, thumbnails and exports of a gateway's cameras reach this recorder in a later version.
 
 Camera ids are UUIDs assigned by the recorder, so recordings
 never depend on a name someone typed; names can change at any time. Bring the database you use (EF Core; the `oo_*`

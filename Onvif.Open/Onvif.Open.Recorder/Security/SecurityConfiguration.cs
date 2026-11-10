@@ -82,6 +82,10 @@ namespace Onvif.Open.Recorder.Security
                         .AddRequirements(new PasswordChangedRequirement()));
                 }
 
+                authorization.AddPolicy(Policies.ControlPlane, policy => policy
+                    .RequireAuthenticatedUser()
+                    .RequireClaim(RecorderClaims.Tunnel));
+
                 authorization.AddPolicy(Policies.OrganizationAdmin, policy => policy
                     .RequireAuthenticatedUser()
                     .RequireRole(Roles.AtLeast(Roles.Admin))
@@ -121,7 +125,8 @@ namespace Onvif.Open.Recorder.Security
             app.UseAuthentication();
             app.Use(async (context, next) =>
             {
-                if (context.User.Identity?.IsAuthenticated == true && !await context.RequestServices.GetRequiredService<UserValidator>().IsValidAsync(context.User, context.RequestAborted))
+                // Requests through the tunnel act as the control plane, which checked its own user already.
+                if (context.User.Identity?.IsAuthenticated == true && !Tunnel.TunnelExecutor.IsControlPlane(context.User) && !await context.RequestServices.GetRequiredService<UserValidator>().IsValidAsync(context.User, context.RequestAborted))
                 {
                     // Signed out everywhere, password or role changed, or disabled: the client must refresh or sign in.
                     context.Response.StatusCode = StatusCodes.Status401Unauthorized;

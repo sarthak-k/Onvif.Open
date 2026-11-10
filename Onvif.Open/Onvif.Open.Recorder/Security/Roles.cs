@@ -60,6 +60,9 @@ namespace Onvif.Open.Recorder.Security
         /// <summary>An administrator (or owner) who sees every site: organization-wide settings (users, sites, policies).</summary>
         public const string OrganizationAdmin = "OrganizationAdmin";
 
+        /// <summary>Requests the control plane sends through a gateway's tunnel.</summary>
+        public const string ControlPlane = "ControlPlane";
+
         /// <summary>Signed in, even with a password that must be changed first (only for the account endpoints).</summary>
         public const string SignedIn = "SignedIn";
     }
@@ -77,5 +80,8 @@ namespace Onvif.Open.Recorder.Security
 
         /// <summary>The site ids the user is limited to, separated by spaces; absent: all sites.</summary>
         public const string Sites = "onvif:sites";
+
+        /// <summary>A request the control plane sent through a gateway's tunnel (never in a token).</summary>
+        public const string Tunnel = "onvif:tunnel";
     }
 }

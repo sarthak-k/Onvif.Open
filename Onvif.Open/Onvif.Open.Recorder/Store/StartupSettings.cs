@@ -2,6 +2,7 @@
 // 2026-11-08
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
@@ -28,7 +29,12 @@ namespace Onvif.Open.Recorder.Store
 
         #region Public Variables
 
+        /// <summary>Every camera (the directory knows them all).</summary>
         public IReadOnlyList<CameraOptions> Cameras { get; }
+
+        /// <summary>The cameras this recorder records itself: those of its own gateway (others record the rest).</summary>
+        public IReadOnlyList<CameraOptions> LocalCameras =>
+            Gateway == null ? Cameras : Cameras.Where(c => c.GatewayId == null || string.Equals(c.GatewayId, Gateway.Id, System.StringComparison.OrdinalIgnoreCase)).ToList();
         public IReadOnlyList<StoredPlugin> Plugins { get; }
 
         /// <summary>The recorder's own gateway (its backup applies from the start); null before the first-run setup.</summary>

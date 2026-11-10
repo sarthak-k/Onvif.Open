@@ -20,6 +20,8 @@ export interface CameraForm {
   profileToken: string;
   subProfileToken: string;
   subRtspUrl: string;
+  /** Empty: this server's own gateway. */
+  gatewayId: string;
   transport: Transport;
   mediaVersion: MediaVersion;
   segmentMinutes: string;
@@ -49,6 +51,7 @@ export const emptyCameraForm: CameraForm = {
   profileToken: '',
   subProfileToken: '',
   subRtspUrl: '',
+  gatewayId: '',
   transport: 'Rtsp',
   mediaVersion: 'Auto',
   segmentMinutes: '',
@@ -87,6 +90,7 @@ export function toForm(camera: CameraConfig): CameraForm {
     profileToken: camera.profileToken ?? '',
     subProfileToken: camera.subProfileToken ?? '',
     subRtspUrl: camera.subRtspUrl ?? '',
+    gatewayId: camera.gatewayId ?? '',
     transport: camera.transport,
     mediaVersion: camera.mediaVersion,
     segmentMinutes: text(toSeconds(camera.rotation?.segmentDuration), 60),
@@ -121,6 +125,7 @@ export function toCamera(form: CameraForm): CameraConfig {
     profileToken: onvif ? form.profileToken.trim() || null : null,
     subProfileToken: onvif ? form.subProfileToken.trim() || null : null,
     subRtspUrl: onvif ? null : form.subRtspUrl.trim() || null,
+    gatewayId: form.gatewayId || null,
     transport: form.transport,
     mediaVersion: form.mediaVersion,
     rotation: segmentDuration || maxSegmentSizeMB != null || alignToClock ? { segmentDuration, maxSegmentSizeMB, alignToClock } : null,

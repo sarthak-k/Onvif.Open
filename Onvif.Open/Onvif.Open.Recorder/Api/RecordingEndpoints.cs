@@ -2,6 +2,8 @@
 // 2026-11-07
 
 using System;
+using Onvif.Open.Recorder.Tunnel;
+using Onvif.Open.Recorder.Gateways;
 using System.Security.Claims;
 using System.Collections.Generic;
 using System.Linq;
@@ -30,13 +32,21 @@ namespace Onvif.Open.Recorder.Api
             var api = app.MapGroup("/api").RequireAuthorization(Policies.Viewer);
 
             // Only the cameras of the sites the user may see; each with its name and site.
-            api.MapGet("/cameras", (IRecordingManager manager, ClaimsPrincipal user, CameraDirectory directory) =>
-                manager.GetStatus().Where(s => user.CanSeeCamera(directory, s.CameraId)).Select(s => ToDto(s, directory)));
+            // With the cameras other gateways record, as their gateways last reported them.
+            api.MapGet("/cameras", (IRecordingManager manager, ClaimsPrincipal user, CameraDirectory directory, GatewayService gateways, RemoteCameras remote) =>
+                manager.GetStatus().Where(s => user.CanSeeCamera(directory, s.CameraId)).Select(s => ToDto(s, directory))
+                    .Concat(RemoteEntries(directory, gateways, manager).Where(user.CanSee).Select(c => ToDto(c, remote.Find(c.Id, c.GatewayId)))));
 
-            api.MapGet("/cameras/{id}", (string id, IRecordingManager manager, CameraDirectory directory) =>
+            api.MapGet("/cameras/{id}", (string id, IRecordingManager manager, CameraDirectory directory, GatewayService gateways, RemoteCameras remote) =>
             {
                 var status = Find(manager, id);
-                return status == null ? Results.NotFound() : Results.Ok(ToDto(status, directory));
+                if (status != null)
+                {
+                    return Results.Ok(ToDto(status, directory));
+                }
+
+                var camera = RemoteEntries(directory, gateways, manager).FirstOrDefault(c => string.Equals(c.Id, id, StringComparison.OrdinalIgnoreCase));
+                return camera == null ? Results.NotFound() : Results.Ok(ToDto(camera, remote.Find(camera.Id, camera.GatewayId)));
             });
 
             api.MapPost("/cameras/{id}/start", async (string id, IRecordingManager manager, CancellationToken ct) =>
@@ -195,6 +205,7 @@ namespace Onvif.Open.Recorder.Api
                 name = camera?.Name ?? status.CameraId,
                 siteId = camera?.SiteId,
                 onvif = camera?.IsOnvif ?? false,
+                gatewayId = camera?.GatewayId,
                 state = status.State.ToString(),
                 mode = status.Mode.ToString(),
                 status.IsTriggered,
@@ -213,6 +224,41 @@ namespace Onvif.Open.Recorder.Api
                 status.LastErrorAt
             };
         }
+
+        /// <summary>Cameras another gateway records.</summary>
+        private static IEnumerable<CameraEntry> RemoteEntries(CameraDirectory directory, GatewayService gateways, IRecordingManager manager)
+        {
+            var local = gateways.Local?.Id;
+            if (local == null)
+            {
+                return Enumerable.Empty<CameraEntry>();
+            }
+
+            // A camera recorded here is listed with its own status (a gateway records the control plane's cameras itself).
+            var here = manager.GetStatus().Select(s => s.CameraId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            return directory.All.Where(c => c.GatewayId != null && !here.Contains(c.Id) && !string.Equals(c.GatewayId, local, StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>A camera of another gateway: as its gateway last reported it; "Offline" when it has not lately.</summary>
+        private static object ToDto(CameraEntry camera, RemoteCameraStatus status) => new
+        {
+            cameraId = camera.Id,
+            name = camera.Name,
+            siteId = camera.SiteId,
+            onvif = camera.IsOnvif,
+            gatewayId = camera.GatewayId,
+            state = status?.State ?? "Offline",
+            mode = status?.Mode ?? (camera.EventsOnly ? "Triggered" : "Continuous"),
+            isTriggered = status?.IsTriggered ?? false,
+            codec = status?.Codec ?? "Unknown",
+            recordsAudio = status?.RecordsAudio ?? false,
+            framesRecorded = status?.FramesRecorded ?? 0,
+            bytesRecorded = status?.BytesRecorded ?? 0,
+            segmentsCompleted = status?.SegmentsCompleted ?? 0,
+            lastFrameAt = status?.LastFrameAt,
+            lastError = status == null ? "The gateway that records this camera has not reported lately." : status.LastError,
+            lastErrorAt = status?.LastErrorAt
+        };
 
         private static object ToDto(RecordingSegment segment, string cameraId)
         {

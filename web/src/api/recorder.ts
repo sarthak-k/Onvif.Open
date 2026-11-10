@@ -39,6 +39,7 @@ export interface CamerasApi {
   update(cameraId: string, camera: CameraConfig): Promise<CameraConfig>;
   remove(cameraId: string): Promise<void>;
   /** Connects to the camera without saving it. A null password with an id uses the stored one. */
+  /** Tests from the camera's gateway (its `gatewayId`; this server's when absent): it must reach the camera. */
   test(camera: Partial<CameraConfig>, options?: { snapshot?: boolean }): Promise<ProbeResult>;
   discover(): Promise<DiscoveredDevice[]>;
 }
@@ -220,7 +221,7 @@ export function createRecorderApi(client: ApiClient): RecorderApi {
       create: (camera) => client.post('/api/config/cameras', camera),
       update: (id, camera) => client.put(`/api/config/cameras/${segment(id)}`, camera),
       remove: (id) => client.delete(`/api/config/cameras/${segment(id)}`),
-      test: (camera, options) => client.post(`/api/config/cameras/test${options?.snapshot ? '?snapshot=true' : ''}`, camera),
+      test: (camera, options) => client.post(`/api/config/cameras/test${queryString({ snapshot: options?.snapshot ? 'true' : undefined, gatewayId: camera.gatewayId ?? undefined })}`, camera),
       discover: () => client.get('/api/discovery'),
     },
     recording: {

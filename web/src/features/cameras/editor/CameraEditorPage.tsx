@@ -2,6 +2,7 @@ import { useCallback, useEffect, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { DiscoveredDevice } from '../../../api/types';
 import { useCameraConfig, useSaveCamera } from '../../../data/cameras';
+import { useGateways } from '../../../data/gateways';
 import { usePolicies, useSites } from '../../../data/tenancy';
 import { useForm } from '../../../shared/form/useForm';
 import { ErrorMessage } from '../../../shared/ui/ErrorMessage';
@@ -20,6 +21,7 @@ export default function CameraEditorPage() {
   const existing = useCameraConfig(id);
   const save = useSaveCamera(id);
   const sites = useSites();
+  const gateways = useGateways();
   const policies = usePolicies();
   const { values: form, set, setValues } = useForm(emptyCameraForm);
 
@@ -63,7 +65,7 @@ export default function CameraEditorPage() {
       {isNew && <DiscoveryPanel onUse={useDevice} />}
 
       <form onSubmit={submit} className="stack" aria-label="Camera">
-        <ConnectionSection form={form} set={set} cameraId={id} sites={sites.data ?? []} />
+        <ConnectionSection form={form} set={set} cameraId={id} sites={sites.data ?? []} gateways={gateways.data ?? []} />
         <StreamSection form={form} set={set} />
         <RecordingSection form={form} set={set} policies={policies.data ?? []} />
         {form.source === 'onvif' && <EventsSection form={form} set={set} triggered={policy?.mode === 'EventsOnly'} />}

@@ -44,6 +44,8 @@ namespace Onvif.Open.Recorder.Audit
         public static TBuilder Audit<TBuilder>(this TBuilder builder, string action, string targetType, string routeId = "id", bool views = false, Func<EndpointFilterInvocationContext, object> details = null)
             where TBuilder : IEndpointConventionBuilder
         {
+            // Also as metadata: the media relay audits requests it sends to another gateway the same way.
+            builder.WithMetadata(new AuditMetadata(action, targetType, views));
             return builder.AddEndpointFilter(async (context, next) =>
             {
                 var http = context.HttpContext;
@@ -144,4 +146,7 @@ namespace Onvif.Open.Recorder.Audit
             }
         }
     }
+
+    /// <summary>What an endpoint records in the audit log (see <see cref="Audited.Audit"/>).</summary>
+    public sealed record AuditMetadata(string Action, string TargetType, bool Views);
 }

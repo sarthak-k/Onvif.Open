@@ -11,6 +11,34 @@ const signedIn = {
 };
 
 describe('camera editor', () => {
+  it('records a new camera on the gateway at its site, and tests it from there', async () => {
+    let saved: unknown;
+    const gateway = (id: string, name: string, embedded: boolean, status: string) => ({ id, name, embedded, status, location: 'Local', version: null, startedAt: null, lastSeenAt: null, health: null, restartRequired: false });
+    const { user, calls, client } = renderApp('/cameras/new', {
+      ...signedIn,
+      'GET /api/gateways': () => ({ body: [gateway('g-here', 'Head office', true, 'Online'), gateway('g-dock', 'Warehouse box', false, 'Online')] }),
+      'POST /api/config/cameras/test': () => ({ body: { ok: true, profiles: [] } }),
+      'POST /api/config/cameras': ({ body }) => {
+        saved = body;
+        return { status: 201, body: { ...(body as object), id: 'c-new' } };
+      },
+    });
+
+    const recordedBy = await screen.findByLabelText('Recorded by');
+    expect(recordedBy).toHaveValue('g-here');
+    await user.selectOptions(recordedBy, 'g-dock');
+    await user.type(screen.getByLabelText('Name', { exact: true }), 'Dock');
+    await user.click(screen.getByLabelText('RTSP stream only'));
+    await user.type(screen.getByLabelText('RTSP URL'), 'rtsp://10.1.0.9/stream');
+    await user.click(screen.getByRole('button', { name: 'Test connection' }));
+    await vi.waitFor(() => expect(calls.some((c) => c.path === '/api/config/cameras/test')).toBe(true));
+    expect(calls.find((c) => c.path === '/api/config/cameras/test')?.query.get('gatewayId')).toBe('g-dock');
+
+    await user.click(screen.getByRole('button', { name: 'Add camera' }));
+    await vi.waitFor(() => expect(saved).toMatchObject({ name: 'Dock', gatewayId: 'g-dock', rtspUrl: 'rtsp://10.1.0.9/stream' }));
+    client.signOut();
+  });
+
   it('adds a discovered camera after testing the connection', async () => {
     let saved: unknown;
     const { user, calls, client } = renderApp('/cameras/new', {

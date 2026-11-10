@@ -121,6 +121,8 @@ export interface CameraConfig {
   subProfileToken?: string | null;
   /** RTSP cameras: a smaller stream for live grids. */
   subRtspUrl?: string | null;
+  /** The gateway that records it (this server's when absent); fixed once added. */
+  gatewayId?: string | null;
   transport: Transport;
   mediaVersion: MediaVersion;
   rotation?: { segmentDuration?: string | null; maxSegmentSizeMB?: number | null; alignToClock?: string | null } | null;
