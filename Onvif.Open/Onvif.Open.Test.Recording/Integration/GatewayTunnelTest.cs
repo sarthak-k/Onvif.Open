@@ -39,6 +39,8 @@ namespace Onvif.Open.Test.Recording.Integration
             {
                 _cpSettings.Apply(builder);
                 builder.UseSetting("Recording:StorageDirectory", _cpStorage.Path);
+                // The control plane's clock: a gateway that goes silent is noticed when it moves on.
+                builder.ConfigureTestServices(services => services.AddSingleton<TimeProvider>(_clock));
             });
             _owner = TestSettings.Authenticate(_controlPlane.CreateClient());
 
@@ -51,6 +53,7 @@ namespace Onvif.Open.Test.Recording.Integration
                 builder.UseSetting("ControlPlane:Url", _controlPlane.Server.BaseAddress.ToString());
                 builder.UseSetting("ControlPlane:CredentialsFile", Path.Combine(_gwStorage.Path, "control-plane.json"));
                 builder.UseSetting("ControlPlane:CamerasFile", Path.Combine(_gwStorage.Path, "assigned-cameras.json"));
+                builder.UseSetting("ControlPlane:EventOutboxFile", Path.Combine(_gwStorage.Path, "event-outbox.jsonl"));
                 builder.UseSetting("Gateway:Name", "Warehouse box");
                 builder.UseSetting("LiveView:StartTimeout", "00:00:05");
                 // The gateway reaches the control plane only through these: HTTP and its tunnel.
@@ -76,6 +79,7 @@ namespace Onvif.Open.Test.Recording.Integration
             _cpStorage.Dispose();
         }
 
+        private readonly ManualTimeProvider _clock = new ManualTimeProvider();
         private readonly TestSettings _cpSettings;
         private readonly TempDirectory _cpStorage;
         private readonly WebApplicationFactory<Program> _controlPlane;
@@ -218,6 +222,148 @@ namespace Onvif.Open.Test.Recording.Integration
             var test = await _owner.PostAsJsonAsync($"/api/config/cameras/test?gatewayId={gatewayId}", new { rtspUrl = "rtsp://127.0.0.1:1/gate" });
             Assert.Equal(HttpStatusCode.ServiceUnavailable, test.StatusCode);
             Assert.Contains("cannot test the camera", await test.Content.ReadAsStringAsync());
+        }
+
+        private async Task<string> RemoteCameraAsync(string gatewayId, string name = "Dock")
+        {
+            var cameraId = (await ReadAsync(await _owner.PostAsJsonAsync("/api/config/cameras", new { name, siteId = TestSettings.SiteId, rtspUrl = $"rtsp://127.0.0.1:1/{name}", gatewayId }))).GetProperty("id").GetString();
+            var assigned = _gateway.Services.GetRequiredService<AssignedCameras>();
+            await Eventually.True(() => assigned.CameraIds.Contains(cameraId), "the gateway got its camera");
+            return cameraId;
+        }
+
+        private async Task<List<JsonElement>> EventsAsync(string cameraId) =>
+            (await ReadAsync(await _owner.GetAsync($"/api/events?cameraId={cameraId}"))).EnumerateArray().ToList();
+
+        [Fact]
+        public async Task EventsShouldReachTheControlPlaneAndRaiseItsAlerts()
+        {
+            var gatewayId = await PairAsync();
+            var cameraId = await RemoteCameraAsync(gatewayId);
+            Assert.Equal(HttpStatusCode.Created, (await _owner.PostAsJsonAsync("/api/alert-rules", new { name = "Offline", categories = new[] { "offline" } })).StatusCode);
+
+            // At the gateway: the camera drops. The event waits in the outbox (on disk) until the control plane has it.
+            var recorder = _gateway.Services.GetServices<Microsoft.Extensions.Hosting.IHostedService>().OfType<Onvif.Open.Recorder.Events.EventRecorder>().Single();
+            var outbox = _gateway.Services.GetRequiredService<EventOutbox>();
+            var client = _gateway.Services.GetRequiredService<ControlPlaneClient>();
+            var lost = DateTimeOffset.UtcNow;
+            recorder.OnStateChanged(this, new CameraStateChange(cameraId, Onvif.Open.Core.Recording.RecordingState.Recording, Onvif.Open.Core.Recording.RecordingState.Reconnecting, "Connection refused", lost));
+            await Eventually.True(() => outbox.Count == 1, "the event waits for the control plane");
+            Assert.Single(File.ReadAllLines(Path.Combine(_gwStorage.Path, "event-outbox.jsonl")));
+
+            // Handed over: stored at the control plane (its site, not the gateway's), and its alert rule fires.
+            await Eventually.True(() => client.UploadEventsAsync().GetAwaiter().GetResult() >= 0 && outbox.Count == 0, "the event was handed over");
+            var events = await EventsAsync(cameraId);
+            var offline = Assert.Single(events);
+            Assert.Equal(("offline", TestSettings.SiteId, JsonValueKind.Null), (offline.GetProperty("category").GetString(), offline.GetProperty("siteId").GetString(), offline.GetProperty("endTime").ValueKind));
+            JsonElement alerts = default;
+            await Eventually.True(() => (alerts = ReadAsync(_owner.GetAsync("/api/alerts").Result).Result).GetArrayLength() == 1, "the control plane alerted");
+            Assert.Equal(("Camera offline", "Dock"), (alerts[0].GetProperty("title").GetString(), alerts[0].GetProperty("cameraName").GetString()));
+
+            // It records again: the end follows the same way.
+            recorder.OnStateChanged(this, new CameraStateChange(cameraId, Onvif.Open.Core.Recording.RecordingState.Reconnecting, Onvif.Open.Core.Recording.RecordingState.Recording, null, lost.AddSeconds(40)));
+            await Eventually.True(() => outbox.Count == 1, "the end waits for the control plane");
+            Assert.Equal(1, await client.UploadEventsAsync());
+            Assert.Equal(40, (Assert.Single(await EventsAsync(cameraId)).GetProperty("endTime").GetDateTimeOffset() - lost).TotalSeconds, 1);
+
+            Assert.Equal(0, outbox.Count);
+            Assert.Empty(File.ReadAllLines(Path.Combine(_gwStorage.Path, "event-outbox.jsonl")));
+
+            // Handed over again (the answer to a stored batch was lost): stored once, and no second alert.
+            var again = new Onvif.Open.Recorder.Store.EventRecord
+            {
+                Id = offline.GetProperty("id").GetString(), OrganizationId = TestSettings.OrganizationId, SiteId = TestSettings.SiteId, CameraId = cameraId,
+                Category = "offline", Severity = "Warning", Title = "Camera offline", Source = "recorder", StartTime = lost.UtcDateTime
+            };
+            var controlPlaneEvents = _controlPlane.Services.GetServices<Microsoft.Extensions.Hosting.IHostedService>().OfType<Onvif.Open.Recorder.Events.EventRecorder>().Single();
+            await controlPlaneEvents.ImportAsync(new[] { again }, Array.Empty<(string, string, DateTime, DateTime)>());
+            Assert.Single(await EventsAsync(cameraId));
+            await Task.Delay(300);
+            Assert.Equal(1, (await ReadAsync(await _owner.GetAsync("/api/alerts"))).GetArrayLength());
+        }
+
+        [Fact]
+        public void AGatewayShouldOnlyReportItsOwnCameras()
+        {
+            var directory = new Onvif.Open.Recorder.Tenancy.CameraDirectory();
+            var policy = new Onvif.Open.Recorder.Store.RecordingPolicyRecord { Id = "p", Mode = "Always", ContinuousRetentionDays = 7, EventRetentionDays = 30 };
+            directory.Set(new Onvif.Open.Recorder.Configuration.CameraOptions { Id = "mine", Name = "Mine", SiteId = "site-a", GatewayId = "gw-1" }, "org-1", policy);
+            directory.Set(new Onvif.Open.Recorder.Configuration.CameraOptions { Id = "theirs", Name = "Theirs", SiteId = "site-b", GatewayId = "gw-2" }, "org-1", policy);
+            var gateway = new Gateway { Id = "gw-1", OrganizationId = "org-1" };
+            var start = DateTime.UtcNow;
+            Onvif.Open.Recorder.Store.EventRecord Started(string camera) => new Onvif.Open.Recorder.Store.EventRecord { Id = Guid.NewGuid().ToString(), OrganizationId = "elsewhere", SiteId = "nowhere", CameraId = camera, Category = "aliens", Severity = "Apocalyptic", Title = new string('x', 500), StartTime = start };
+
+            var changes = new[]
+            {
+                new UpstreamEvent(UpstreamEvent.Started, Started("mine"), null, "mine", start, null) with { Id = "e1" },
+                new UpstreamEvent(UpstreamEvent.Started, Started("theirs"), "e2", "theirs", start, null),
+                new UpstreamEvent(UpstreamEvent.Started, Started("nope"), "e3", "nope", start, null),
+                new UpstreamEvent(UpstreamEvent.Ended, null, "e1", "mine", start, start.AddSeconds(5)),
+                new UpstreamEvent(UpstreamEvent.Ended, null, "e4", "mine", null, null),
+            };
+            var (adds, closes, rejected) = Upstream.Accept(gateway, changes, directory);
+
+            // Only its own camera, with this organization's site; the rest is cleaned up or refused.
+            var add = Assert.Single(adds);
+            Assert.Equal(("e1", "org-1", "site-a", "other", "Info", 200), (add.Id, add.OrganizationId, add.SiteId, add.Category, add.Severity, add.Title.Length));
+            Assert.Equal("e1", Assert.Single(closes).Id);
+            Assert.Equal(3, rejected);
+        }
+
+        [Fact]
+        public async Task ASiteGoingDarkShouldMarkItsCamerasOffline()
+        {
+            var gatewayId = await PairAsync();
+            var cameraId = await RemoteCameraAsync(gatewayId);
+            var watch = _controlPlane.Services.GetRequiredService<GatewayWatch>();
+            Assert.Empty(await watch.CheckAsync());
+
+            // The site loses power: nothing more from its gateway.
+            await _gateway.DisposeAsync();
+            await Eventually.True(() => !_controlPlane.Services.GetRequiredService<TunnelRegistry>().IsConnected(gatewayId), "the tunnel closed");
+            _clock.Advance(TimeSpan.FromMinutes(3));
+            Assert.Equal(new[] { cameraId }, await watch.CheckAsync());
+            Assert.Equal(new[] { cameraId }, await watch.CheckAsync());
+
+            List<JsonElement> events = null;
+            await Eventually.True(() => (events = EventsAsync(cameraId).Result).Count == 1, "the camera was marked offline");
+            Assert.Equal(("offline", "Gateway offline", JsonValueKind.Null), (events[0].GetProperty("category").GetString(), events[0].GetProperty("title").GetString(), events[0].GetProperty("endTime").ValueKind));
+
+            // Back: the outage ends.
+            var gateways = _controlPlane.Services.GetRequiredService<IGatewayStore>();
+            await _controlPlane.Services.GetRequiredService<GatewayService>().ReportAsync(await gateways.FindAsync(gatewayId), GatewayService.Version, DateTime.UtcNow, new GatewayHealth(), default);
+            Assert.Empty(await watch.CheckAsync());
+            await Eventually.True(() => EventsAsync(cameraId).Result.Single().GetProperty("endTime").ValueKind != JsonValueKind.Null, "the outage ended");
+        }
+
+        [SkippableFact]
+        public async Task ExportsOfAGatewaysCameraShouldBeMadeFromItsRecordings()
+        {
+            Skip.IfNot(RealMedia.IsAvailable, "ffmpeg is not installed.");
+
+            var gatewayId = await PairAsync();
+            var cameraId = await RemoteCameraAsync(gatewayId);
+            var start = DateTimeOffset.UtcNow.AddHours(-1);
+            RealMedia.WriteRecordings(_gwStorage.Path, cameraId, start);
+
+            // Asked for at the control plane, which has no video of it: the gateway sends the clip, it is watermarked here.
+            var queued = await _owner.PostAsJsonAsync("/api/exports", new { cameraId, from = start.AddSeconds(1), to = start.AddSeconds(8) });
+            Assert.Equal(HttpStatusCode.Accepted, queued.StatusCode);
+            var id = (await ReadAsync(queued)).GetProperty("id").GetString();
+            JsonElement export = default;
+            await Eventually.True(() => (export = ReadAsync(_owner.GetAsync($"/api/exports/{id}").Result).Result).GetProperty("status").GetString() is "Ready" or "Failed", "the export finished", 60000);
+            Assert.True(export.GetProperty("status").GetString() == "Ready", export.ToString());
+
+            var file = Path.Combine(_cpStorage.Path, "remote.mp4");
+            await File.WriteAllBytesAsync(file, await _owner.GetByteArrayAsync($"/api/exports/{id}/video.mp4"));
+            var (streams, duration) = await RealMedia.ProbeAsync(file);
+            Assert.Contains("h264", streams);
+            Assert.InRange(duration, 5.5, 8.5);
+
+            // Nothing recorded then: the gateway says so, and the export says why.
+            var empty = (await ReadAsync(await _owner.PostAsJsonAsync("/api/exports", new { cameraId, from = start.AddDays(-1), to = start.AddDays(-1).AddSeconds(5) }))).GetProperty("id").GetString();
+            await Eventually.True(() => (export = ReadAsync(_owner.GetAsync($"/api/exports/{empty}").Result).Result).GetProperty("status").GetString() == "Failed", "the export failed", 30000);
+            Assert.Contains("Nothing was recorded", export.GetProperty("error").GetString());
         }
     }
 }

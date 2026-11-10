@@ -84,7 +84,9 @@ builder.Services.AddSingleton(sp => new Onvif.Open.Recorder.Exports.ExportServic
     sp.GetRequiredService<ITenancyStore>(),
     sp.GetRequiredService<Onvif.Open.Recorder.Exports.IMp4Encoder>(),
     Path.Combine(sp.GetRequiredService<IHostEnvironment>().ContentRootPath, sp.GetRequiredService<IConfiguration>()["Export:Directory"] ?? Path.Combine("data", "exports")),
-    sp.GetRequiredService<ILogger<Onvif.Open.Recorder.Exports.ExportService>>()));
+    sp.GetRequiredService<ILogger<Onvif.Open.Recorder.Exports.ExportService>>(),
+    sp.GetService<TimeProvider>(),
+    sp.GetRequiredService<ClipSource>()));
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Onvif.Open.Recorder.Exports.ExportService>());
 
 // Alerts: rules raise alerts into the inbox and notify by email ("Alerts:Smtp") and signed webhooks.
@@ -107,6 +109,9 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<Onvif.Open.Recorde
 builder.Services.AddSingleton<Onvif.Open.Recorder.Tunnel.TunnelRegistry>();
 builder.Services.AddSingleton<Onvif.Open.Recorder.Tunnel.RemoteCameras>();
 builder.Services.AddSingleton<Onvif.Open.Recorder.Tunnel.TunnelExecutor>();
+builder.Services.AddSingleton<ClipSource>();
+builder.Services.AddSingleton<GatewayWatch>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<GatewayWatch>());
 
 // With "ControlPlane:Url" this recorder is also a gateway of another one: it pairs with a code, then keeps a tunnel open
 // there, records the cameras it is given and reports how they do.
@@ -119,6 +124,11 @@ if (!string.IsNullOrWhiteSpace(controlPlane))
         sp.GetRequiredService<IDataProtectionProvider>(),
         Path.GetFullPath(Path.Combine(sp.GetRequiredService<IHostEnvironment>().ContentRootPath, sp.GetRequiredService<IConfiguration>()["ControlPlane:CamerasFile"] ?? Path.Combine("data", "assigned-cameras.json"))),
         sp.GetRequiredService<ILogger<AssignedCameras>>()));
+    builder.Services.AddSingleton(sp => new EventOutbox(
+        sp.GetRequiredService<EventRecorder>(),
+        sp.GetRequiredService<AssignedCameras>(),
+        Path.GetFullPath(Path.Combine(sp.GetRequiredService<IHostEnvironment>().ContentRootPath, sp.GetRequiredService<IConfiguration>()["ControlPlane:EventOutboxFile"] ?? Path.Combine("data", "event-outbox.jsonl"))),
+        sp.GetRequiredService<ILogger<EventOutbox>>()));
     builder.Services.AddSingleton(sp => new ControlPlaneClient(
         new System.Net.Http.HttpClient((sp.GetService<ControlPlaneTransport>() ?? ControlPlaneTransport.Network).Handler())
         {
@@ -136,7 +146,8 @@ if (!string.IsNullOrWhiteSpace(controlPlane))
         sp.GetService<ControlPlaneTransport>(),
         () => RemoteCameraReport.Of(sp.GetRequiredService<IRecordingManager>(), sp.GetRequiredService<AssignedCameras>().CameraIds),
         sp.GetRequiredService<AssignedCameras>(),
-        sp.GetRequiredService<Onvif.Open.Recorder.Tunnel.TunnelExecutor>()));
+        sp.GetRequiredService<Onvif.Open.Recorder.Tunnel.TunnelExecutor>(),
+        sp.GetRequiredService<EventOutbox>()));
     builder.Services.AddHostedService(sp => sp.GetRequiredService<ControlPlaneClient>());
 }
 
