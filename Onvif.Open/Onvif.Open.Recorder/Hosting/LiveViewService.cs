@@ -8,12 +8,15 @@ using System.Threading;
 using Onvif.Open.Core.Abstract.Interface.Recording;
 using Onvif.Open.Core.Plugin;
 using Onvif.Open.Recording.Implementation.Hls;
+using Onvif.Open.Recording.Implementation.Mp4;
 
 namespace Onvif.Open.Recorder.Hosting
 {
     /// <summary>
-    /// Live HLS for browsers: a camera is packaged only while someone watches it (its playlist or segments
-    /// were requested within <see cref="LiveViewOptions.IdleTimeout"/>), so idle cameras cost nothing.
+    /// Live video for browsers, packaged only while someone watches: low-latency fragmented MP4 (H.264, one fragment
+    /// per frame, for Media Source Extensions) and HLS (any codec, with audio, a few seconds behind). Each format of a
+    /// camera is made from the first request for it until nobody has asked for it for
+    /// <see cref="LiveViewOptions.IdleTimeout"/> and no MP4 viewer is connected, so idle cameras cost nothing.
     /// </summary>
     public sealed class LiveViewService : IDisposable
     {
@@ -59,9 +62,26 @@ namespace Onvif.Open.Recorder.Hosting
                 return null;
             }
 
-            var viewer = _viewers.GetOrAdd(cameraId, _ => new Viewer(new HlsLiveStream(Options.SegmentDuration, Options.WindowSize)));
-            Volatile.Write(ref viewer.LastAccessTicks, _timeProvider.GetUtcNow().UtcTicks);
-            return viewer.Stream;
+            var viewer = Touch(cameraId);
+            lock (viewer)
+            {
+                return viewer.Hls ??= new HlsLiveStream(Options.SegmentDuration, Options.WindowSize);
+            }
+        }
+
+        /// <summary>The low-latency stream of a camera, created on first use; null for unknown cameras.</summary>
+        public Mp4LiveStream WatchMp4(string cameraId)
+        {
+            if (cameraId == null || !_manager.GetStatus().Any(s => string.Equals(s.CameraId, cameraId, StringComparison.OrdinalIgnoreCase)))
+            {
+                return null;
+            }
+
+            var viewer = Touch(cameraId);
+            lock (viewer)
+            {
+                return viewer.Mp4 ??= new Mp4LiveStream();
+            }
         }
 
         public void Dispose()
@@ -76,11 +96,19 @@ namespace Onvif.Open.Recorder.Hosting
 
         #region Private Methods
 
-        private void OnFrame(object sender, CameraFrame frame)
+        private Viewer Touch(string cameraId)
+        {
+            var viewer = _viewers.GetOrAdd(cameraId, _ => new Viewer());
+            Volatile.Write(ref viewer.LastAccessTicks, _timeProvider.GetUtcNow().UtcTicks);
+            return viewer;
+        }
+
+        internal void OnFrame(object sender, CameraFrame frame)
         {
             if (_viewers.TryGetValue(frame.CameraId, out var viewer))
             {
-                viewer.Stream.Add(frame.Frame);
+                viewer.Hls?.Add(frame.Frame);
+                viewer.Mp4?.Add(frame.Frame);
             }
         }
 
@@ -88,7 +116,7 @@ namespace Onvif.Open.Recorder.Hosting
         {
             if (_viewers.TryGetValue(audio.CameraId, out var viewer))
             {
-                viewer.Stream.Add(audio.Frame);
+                viewer.Hls?.Add(audio.Frame);
             }
         }
 
@@ -98,7 +126,7 @@ namespace Onvif.Open.Recorder.Hosting
 
             foreach (var entry in _viewers)
             {
-                if (now - Volatile.Read(ref entry.Value.LastAccessTicks) >= Options.IdleTimeout.Ticks)
+                if (now - Volatile.Read(ref entry.Value.LastAccessTicks) >= Options.IdleTimeout.Ticks && (entry.Value.Mp4?.ViewerCount ?? 0) == 0)
                 {
                     _viewers.TryRemove(entry.Key, out _);
                 }
@@ -109,12 +137,8 @@ namespace Onvif.Open.Recorder.Hosting
 
         private sealed class Viewer
         {
-            public Viewer(HlsLiveStream stream)
-            {
-                Stream = stream;
-            }
-
-            public HlsLiveStream Stream { get; }
+            public HlsLiveStream Hls;
+            public Mp4LiveStream Mp4;
             public long LastAccessTicks;
         }
     }

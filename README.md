@@ -500,7 +500,8 @@ dotnet run --project Onvif.Open/Onvif.Open.Recorder
 | `GET /api/cameras/{id}/imaging`, `PATCH .../imaging` `{irCutFilter, brightness, ...}` | Image settings (PATCH changes only what is given) |
 | `GET /api/cameras/{id}/imaging/options` | Supported ranges and modes |
 | `GET/POST /api/cameras/{id}/imaging/focus` `{speed, durationMs}` or `{position}`, `POST .../focus/stop` | Focus |
-| `GET /api/cameras/{id}/live.m3u8` | Live HLS (2 s segments, packaged only while watched) |
+| `GET /api/cameras/{id}/live.mp4` | Low-latency live video: one long response of fragmented MP4, the init segment then one fragment per frame (H.264; the codec in `X-Video-Codec`); a new viewer starts at the last key frame. 415 for other codecs (use HLS), 503 until there is video |
+| `GET /api/cameras/{id}/live.m3u8` | Live HLS (2 s segments, any codec, with audio; packaged only while watched) |
 | `GET /api/cameras/{id}/recordings.m3u8?from=...&to=...` | HLS playback of the recordings (default: the last hour), split at key frames for a fast start |
 | `GET /api/cameras/{id}/clip?from=...&to=...` | Download a clip cut from the recordings (MPEG-TS, across files, local or archived, up to 6 hours) |
 | `GET /api/config/cameras`, `GET .../{id}` | Camera configuration (also disabled cameras); passwords are never returned (`hasPassword`) |
@@ -550,7 +551,8 @@ a network: bearer tokens and passwords must not travel in clear text.
 **Home** (where everyone lands: problems first, such as cameras not recording, gateways offline, a disk almost full or
 a cloud backup failing or falling behind, each with since when and where to look; then each site with its cameras
 recording, problems and today's events in its own time zone; then today's events; and for administrators, until done or
-hidden, what is left to set up: cameras, users, backup, an alert), live view (several cameras in a grid: single, 2 × 2 up to
+hidden, what is left to set up: cameras, users, backup, an alert), live view (well under 2 s behind the camera:
+fragmented MP4 through Media Source Extensions, held at the live edge; HLS where the browser or camera cannot; several cameras in a grid: single, 2 × 2 up to
 5 × 5, or one large tile with smaller ones; arrange cameras by picking or dragging, enlarge one with a double click,
 full screen; layouts saved per user or shared by administrators), **Investigate** (search the stored events by site,
 camera, kind and time, newest first; open one to play its camera from 5 s before it, and up to three more cameras of the

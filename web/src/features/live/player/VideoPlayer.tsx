@@ -14,7 +14,7 @@ export const VideoPlayer = memo(function VideoPlayer({ cameraId, label }: { came
 
   useEffect(() => {
     if (!visible || !video.current) return;
-    const player = factory(video.current, { url: media.liveUrl(cameraId), token: media.token }, setState);
+    const player = factory(video.current, { url: media.liveUrl(cameraId), lowLatencyUrl: media.liveMp4Url(cameraId), token: media.token }, setState);
     return () => player.destroy();
   }, [cameraId, factory, media, visible]);
 

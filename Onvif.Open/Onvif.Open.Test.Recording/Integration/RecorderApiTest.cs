@@ -12,6 +12,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
 using Onvif.Open.Test.Recording.Fakes;
 using Xunit;
 
@@ -188,6 +189,59 @@ namespace Onvif.Open.Test.Recording.Integration
             Assert.Equal(HttpStatusCode.ServiceUnavailable, (await _client.GetAsync("/api/cameras/cam1/live.m3u8")).StatusCode);
             Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/cameras/cam1/live/0.ts")).StatusCode);
             Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/cameras/nope/live.m3u8")).StatusCode);
+            Assert.Equal(HttpStatusCode.ServiceUnavailable, (await _client.GetAsync("/api/cameras/cam1/live.mp4")).StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync("/api/cameras/nope/live.mp4")).StatusCode);
+        }
+
+        [SkippableFact]
+        public async Task LowLatencyLiveShouldStreamFragmentsAsFramesArrive()
+        {
+            Skip.IfNot(RealMedia.IsAvailable, "ffmpeg is not installed.");
+
+            var live = _factory.Services.GetRequiredService<Onvif.Open.Recorder.Hosting.LiveViewService>();
+            var frames = RealMedia.Frames.OfType<Onvif.Open.Core.Streaming.VideoFrame>().ToList();
+
+            // Watched already (this test's start timeout is shorter than the camera's key frame interval).
+            Assert.NotNull(live.WatchMp4("cam1"));
+            using (var stop = new System.Threading.CancellationTokenSource())
+            {
+                // The camera keeps sending frames (at 25 fps) while the browser watches.
+                var feed = Task.Run(async () =>
+                {
+                    foreach (var frame in frames)
+                    {
+                        live.OnFrame(this, new Onvif.Open.Core.Plugin.CameraFrame("cam1", frame, DateTimeOffset.UtcNow));
+                        await Task.Delay(40, stop.Token);
+                    }
+                }, stop.Token);
+
+                using (var response = await _client.GetAsync("/api/cameras/cam1/live.mp4", HttpCompletionOption.ResponseHeadersRead))
+                {
+                    Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+                    Assert.Equal("video/mp4", response.Content.Headers.ContentType?.MediaType);
+                    Assert.StartsWith("avc1.", response.Headers.GetValues("X-Video-Codec").Single());
+
+                    // The init segment (ftyp, moov), then a fragment (moof) per frame, as they arrive.
+                    var body = await response.Content.ReadAsStreamAsync();
+                    var boxes = new List<string>();
+                    var header = new byte[8];
+                    while (boxes.Count(b => b == "moof") < 5)
+                    {
+                        await body.ReadExactlyAsync(header);
+                        boxes.Add(System.Text.Encoding.ASCII.GetString(header, 4, 4));
+                        var rest = new byte[System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(header) - 8];
+                        await body.ReadExactlyAsync(rest);
+                    }
+
+                    Assert.Equal(new[] { "ftyp", "moov", "moof", "mdat" }, boxes.Take(4));
+                }
+
+                stop.Cancel();
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => feed);
+            }
+
+            // The viewer left: nobody holds the stream open.
+            await Eventually.True(() => live.WatchMp4("cam1").ViewerCount == 0, "the viewer was let go");
         }
 
         [Fact]

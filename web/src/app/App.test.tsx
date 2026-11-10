@@ -18,7 +18,7 @@ describe('App', () => {
       recording: { status: async () => [{ cameraId: 'in-memory', name: 'In memory', state: 'Recording', mode: 'Continuous', isTriggered: false, codec: 'H265', recordsAudio: false, framesRecorded: 0, bytesRecorded: 0, segmentsCompleted: 0 }], segments: fail, start: fail, stop: fail },
       users: { list: fail, create: fail, update: fail, remove: fail },
       layouts: { list: async () => [], create: fail, update: fail, remove: fail },
-      media: { liveUrl: (id) => `memory://${id}`, recordingsUrl: (id) => `memory://${id}/recordings`, token: () => null },
+      media: { liveUrl: (id) => `memory://${id}`, liveMp4Url: (id) => `memory://${id}.mp4`, recordingsUrl: (id) => `memory://${id}/recordings`, token: () => null },
       audit: { list: fail },
       events: { list: fail },
       exports: { list: async () => [], create: fail, links: fail, share: fail, revoke: fail, downloadUrl: (id) => id, sharedUrl: (p) => p },

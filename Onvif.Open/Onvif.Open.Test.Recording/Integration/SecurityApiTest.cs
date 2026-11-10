@@ -107,7 +107,7 @@ namespace Onvif.Open.Test.Recording.Integration
             {
                 Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/health")).StatusCode);
 
-                foreach (var path in new[] { "/api/cameras", "/api/config/cameras", "/api/users", "/api/storage", "/api/auth/me", "/api/cameras/cam1/live.m3u8", "/api/cameras/cam1/clip" })
+                foreach (var path in new[] { "/api/cameras", "/api/config/cameras", "/api/users", "/api/storage", "/api/auth/me", "/api/cameras/cam1/live.m3u8", "/api/cameras/cam1/live.mp4", "/api/cameras/cam1/clip" })
                 {
                     Assert.Equal(HttpStatusCode.Unauthorized, (await client.GetAsync(path)).StatusCode);
                 }

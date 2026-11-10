@@ -15,6 +15,7 @@ using Onvif.Open.Recording.Implementation.Hls;
 
 using Onvif.Open.Recorder.Audit;
 using Onvif.Open.Recorder.Security;
+using Onvif.Open.Recorder.Tenancy;
 
 namespace Onvif.Open.Recorder.Api
 {
@@ -27,6 +28,10 @@ namespace Onvif.Open.Recorder.Api
 
         private const string PlaylistType = "application/vnd.apple.mpegurl";
         private const string SegmentType = "video/mp2t";
+        private const string Mp4Type = "video/mp4";
+
+        /// <summary>The RFC 6381 codec of a low-latency stream ("avc1.64001f").</summary>
+        public const string CodecHeader = "X-Video-Codec";
 
         /// <summary>Longest clip one download may cover.</summary>
         private static readonly TimeSpan MaxClipDuration = TimeSpan.FromHours(6);
@@ -57,6 +62,54 @@ namespace Onvif.Open.Recorder.Api
                 return Results.Text(stream.GetPlaylist(sequence => SecurityConfiguration.WithMediaToken(http, $"live/{sequence.ToString(CultureInfo.InvariantCulture)}.ts")), PlaylistType);
             })
                 .Audit(AuditActions.VideoLive, AuditTargets.Camera, views: true);
+
+            // Low latency: one long response, the init segment then a fragment per frame (H.264; 415 for other codecs:
+            // play the HLS stream instead). The codec goes in a header so the player can set up before the first bytes.
+            camera.MapGet("/live.mp4", async (string id, LiveViewService live, AuditLog audit, CameraDirectory directory, HttpContext http, CancellationToken ct) =>
+            {
+                var stream = live.WatchMp4(id);
+                if (stream == null)
+                {
+                    return Results.NotFound();
+                }
+
+                if (!await stream.WaitUntilReadyAsync(live.Options.StartTimeout, ct))
+                {
+                    return stream.IsSupported
+                        ? Results.Problem("No video from the camera yet.", statusCode: StatusCodes.Status503ServiceUnavailable)
+                        : Results.Problem("This camera's video needs the HLS player.", statusCode: StatusCodes.Status415UnsupportedMediaType);
+                }
+
+                using (var viewer = stream.Watch())
+                {
+                    NoCache(http);
+                    http.Response.ContentType = Mp4Type;
+                    http.Response.Headers[CodecHeader] = stream.CodecString;
+                    http.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpResponseBodyFeature>()?.DisableBuffering();
+                    await http.Response.StartAsync(ct);
+
+                    // Recorded when watching starts (the response lasts as long as the viewer stays).
+                    if (audit.IsNewView(http.User, AuditActions.VideoLive, id))
+                    {
+                        audit.Record(http, AuditActions.VideoLive, AuditTargets.Camera, id, directory.Find(id)?.Name, null);
+                    }
+
+                    try
+                    {
+                        await foreach (var fragment in viewer.Fragments.ReadAllAsync(ct))
+                        {
+                            await http.Response.Body.WriteAsync(fragment, ct);
+                            await http.Response.Body.FlushAsync(ct);
+                        }
+                    }
+                    catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                    {
+                        // The viewer left.
+                    }
+                }
+
+                return Results.Empty;
+            });
 
             camera.MapGet("/live/{sequence:long}.ts", (string id, long sequence, LiveViewService live) =>
             {
