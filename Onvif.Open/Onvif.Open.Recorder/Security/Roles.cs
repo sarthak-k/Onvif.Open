@@ -75,6 +75,9 @@ namespace Onvif.Open.Recorder.Security
         public const string SecurityStamp = "onvif:stamp";
         public const string MustChangePassword = "onvif:must_change_password";
 
+        /// <summary>The organization requires a second factor the user has not set up: only that is allowed until then.</summary>
+        public const string MustSetUpTwoFactor = "onvif:must_set_up_two_factor";
+
         /// <summary>The organization the token acts in.</summary>
         public const string Organization = "onvif:org";
 

@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import type { User, UserRequest } from '../../api/types';
 import { useSites } from '../../data/tenancy';
-import { useDeleteUser, useUpdateUser, useUsers } from '../../data/users';
+import { useDeleteUser, useResetTwoFactor, useUpdateUser, useUsers } from '../../data/users';
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog';
 import { ErrorMessage } from '../../shared/ui/ErrorMessage';
 import { useUser } from '../auth/AuthContext';
@@ -16,6 +16,8 @@ export default function UsersPage() {
   const users = useUsers();
   const update = useUpdateUser();
   const remove = useDeleteUser();
+  const resetTwoFactor = useResetTwoFactor();
+  const [resettingTwoFactor, setResettingTwoFactor] = useState<User | null>(null);
   const [deleting, setDeleting] = useState<User | null>(null);
   const [resetting, setResetting] = useState<User | null>(null);
   const [editingSites, setEditingSites] = useState<User | null>(null);
@@ -32,7 +34,7 @@ export default function UsersPage() {
         Viewers watch cameras and recordings, operators also control cameras (PTZ, recording), administrators also manage cameras, sites, users and
         plugins, and owners also manage owners and the organization. Anyone can be limited to some sites.
       </p>
-      <ErrorMessage error={users.error ?? update.error ?? remove.error} />
+      <ErrorMessage error={users.error ?? update.error ?? remove.error ?? resetTwoFactor.error} />
 
       <div className="table-scroll">
         <table>
@@ -59,6 +61,7 @@ export default function UsersPage() {
                 onEditSites={setEditingSites}
                 onChange={onChange}
                 onResetPassword={setResetting}
+                onResetTwoFactor={setResettingTwoFactor}
                 onDelete={setDeleting}
               />
             ))}
@@ -80,6 +83,20 @@ export default function UsersPage() {
           }}
         >
           The user is signed out everywhere and cannot sign in again.
+        </ConfirmDialog>
+      )}
+      {resettingTwoFactor && (
+        <ConfirmDialog
+          title={`Reset two-factor sign-in of ${resettingTwoFactor.userName}?`}
+          confirmLabel="Reset"
+          danger
+          onCancel={() => setResettingTwoFactor(null)}
+          onConfirm={() => {
+            resetTwoFactor.mutate(resettingTwoFactor.id);
+            setResettingTwoFactor(null);
+          }}
+        >
+          For a lost phone: they are signed out everywhere and sign in with their password alone, then set up their app again (where it is required).
         </ConfirmDialog>
       )}
       {resetting && <ResetPasswordDialog user={resetting} onClose={() => setResetting(null)} />}

@@ -25,6 +25,12 @@ export function useUpdateUser() {
   return useMutation({ mutationFn: ({ id, user }: { id: string; user: UserRequest }) => api.users.update(id, user), onSettled: invalidate });
 }
 
+export function useResetTwoFactor() {
+  const api = useApi();
+  const invalidate = useInvalidateUsers();
+  return useMutation({ mutationFn: (id: string) => api.users.resetTwoFactor(id), onSettled: invalidate });
+}
+
 export function useDeleteUser() {
   const api = useApi();
   const invalidate = useInvalidateUsers();

@@ -18,6 +18,8 @@ export interface User {
   sites: string[];
   enabled: boolean;
   mustChangePassword: boolean;
+  /** Their authenticator app: Pending while being set up. */
+  twoFactor?: TwoFactorState;
   lockedUntil?: string | null;
   lastLoginAt?: string | null;
   createdAt: string;
@@ -26,6 +28,24 @@ export interface User {
 /** The signed-in user, with their organization. */
 export interface Me extends User {
   organization: Organization;
+  /** The organization requires a second factor and this user has none yet: they set it up before anything else. */
+  mustSetUpTwoFactor?: boolean;
+  recoveryCodesLeft?: number;
+}
+
+export type TwoFactorState = 'Off' | 'Pending' | 'On';
+
+/** What an authenticator app is set up with: a QR code of the URI, or the secret typed in. */
+export interface TwoFactorSetup {
+  secret: string;
+  uri: string;
+}
+
+/** The answer to a password: tokens, or a challenge to send back with the app's code. */
+export interface SignInStep {
+  twoFactorRequired: true;
+  challenge: string;
+  expiresIn: number;
 }
 
 export interface UserRequest {
@@ -43,6 +63,8 @@ export interface Organization {
   id: string;
   name: string;
   region: Region;
+  /** Every member signs in with a second factor. */
+  requireTwoFactor?: boolean;
 }
 
 export interface SetupStatus {

@@ -31,7 +31,10 @@ state through the table, tests check the code against it, and the diagrams below
 | [Grid sub-stream](#grid-sub-stream) | Backend | `Onvif.Open.Recorder/Hosting/LiveViewService.cs` (`SubStreamStates.Machine`) | `LiveViewService` (its reader, and the idle sweep) | `live.mp4?stream=sub` |
 | [Gateway tunnel](#gateway-tunnel) | Backend | `Onvif.Open.Recorder/Gateways/ControlPlaneClient.cs` (`TunnelStates.Machine`) | `ControlPlaneClient` (its tunnel loop) | gateways' status (online) at the control plane |
 | [Cloud gateway](#cloud-gateway) | Backend | `Onvif.Open.Recorder/Gateways/CloudGateways.cs` (`CloudGatewayStates.Machine`, stored as `HostState`) | `CloudGateways` (create, start again, heartbeat, start timeout) | `GET /api/gateways` `hosting.state`; Settings › Gateways |
+| [Two-factor sign-in](#two-factor-sign-in) | Backend | `Onvif.Open.Recorder/Security/TwoFactor.cs` (`TwoFactorStates.Machine`, stored as `TwoFactorState`) | `TwoFactorService` (setup, enable, disable, reset) | `GET /api/auth/me` and `GET /api/users` `twoFactor`; Account, Users |
 | [Session](#session) | Web | `web/src/features/auth/session.ts` (`sessionMachine`, `sessionOf`) | `AuthContext` holds it; `RequireAuth` routes on it | sign-in, password change, sign-out |
+| [Sign-in steps](#sign-in-steps) | Web | `web/src/features/auth/signInSteps.ts` (`signInSteps`) | `LoginPage` (moves through the table) | Sign in: password, then the app's code |
+| [Two-factor setup](#two-factor-setup) | Web | `web/src/features/auth/twoFactorSetup.ts` (`twoFactorSetupSteps`) | `TwoFactorSetup` (moves through the table) | Account › Two-factor sign-in; the required setup page |
 | [Add-camera wizard](#add-camera-wizard) | Web | `web/src/features/cameras/wizard/steps.ts` (`wizardSteps`) | `AddCamerasPage` (moves through the table) | Cameras › Add cameras |
 | [Camera in the add-camera wizard](#camera-in-the-add-camera-wizard) | Web | `web/src/features/cameras/wizard/candidates.ts` (`candidateMachine`) | `changeCandidate`, `afterSharedChange`, `startTest` | each camera's state in the wizard |
 | [PTZ hold to move](#ptz-hold-to-move) | Web | `web/src/features/live/ptz/ptzHold.ts` (`ptzHoldMachine`) | `createPtzHold` (`press`, `release`) | the PTZ panel of an enlarged live tile |
@@ -199,6 +202,21 @@ stateDiagram-v2
 ```
 <!-- /machine -->
 
+### Two-factor sign-in
+
+A user's authenticator app. Signing in asks for its code (or a recovery code) once it is On; an organization can require it.
+
+<!-- machine: Two-factor sign-in -->
+```mermaid
+stateDiagram-v2
+    [*] --> Off
+    Off --> Pending : set up: the app got its secret
+    Pending --> On : a code from the app was entered
+    Pending --> Off : an administrator reset it
+    On --> Off : turned off, or reset by an administrator
+```
+<!-- /machine -->
+
 ### Session
 
 A refresh token the recorder rejects signs out from any state (`client.onSignedOut`).
@@ -209,12 +227,46 @@ stateDiagram-v2
     [*] --> resuming
     resuming --> signedIn : stored session still valid
     resuming --> mustChangePassword : stored session, temporary password
+    resuming --> mustSetUpTwoFactor : stored session; the organization requires two-factor
     resuming --> signedOut : no or expired session
     signedOut --> signedIn : signed in, or set up the organization
     signedOut --> mustChangePassword : signed in with a temporary password
+    signedOut --> mustSetUpTwoFactor : signed in; the organization requires two-factor
     mustChangePassword --> signedIn : password changed
+    mustChangePassword --> mustSetUpTwoFactor : password changed; two-factor still to set up
     mustChangePassword --> signedOut : Sign out, or session rejected
+    mustSetUpTwoFactor --> signedIn : two-factor sign-in turned on
+    mustSetUpTwoFactor --> signedOut : Sign out, or session rejected
+    signedIn --> mustSetUpTwoFactor : the organization started requiring two-factor
     signedIn --> signedOut : Sign out, or session rejected
+```
+<!-- /machine -->
+
+### Sign-in steps
+
+With two-factor sign-in on, the password gets a five-minute challenge, sent back with the app's code (or a recovery code).
+
+<!-- machine: Sign-in steps -->
+```mermaid
+stateDiagram-v2
+    [*] --> password
+    password --> code : the password was right; two-factor sign-in is on
+    code --> password : Start over, or the challenge expired
+```
+<!-- /machine -->
+
+### Two-factor setup
+
+The page's side of a user's Two-factor sign-in (Off, Pending, On on the recorder): the recovery codes are shown once, at the end.
+
+<!-- machine: Two-factor setup -->
+```mermaid
+stateDiagram-v2
+    [*] --> start
+    start --> scan : Set up: the recorder made a secret
+    scan --> start : Cancel
+    scan --> codes : a code from the app was right: two-factor is on
+    codes --> [*]
 ```
 <!-- /machine -->
 

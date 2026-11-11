@@ -19,6 +19,12 @@ export function useOrganization() {
   return useQuery({ queryKey: queryKeys.organization, queryFn: api.organization.get });
 }
 
+export function useRequireTwoFactor() {
+  const api = useApi();
+  const queries = useQueryClient();
+  return useMutation({ mutationFn: (required: boolean) => api.organization.requireTwoFactor(required), onSuccess: () => queries.invalidateQueries({ queryKey: queryKeys.organization }) });
+}
+
 export function useRenameOrganization() {
   const api = useApi();
   const queries = useQueryClient();

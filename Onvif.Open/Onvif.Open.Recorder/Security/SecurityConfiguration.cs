@@ -46,6 +46,7 @@ namespace Onvif.Open.Recorder.Security
             services.AddSingleton(options);
             services.AddSingleton<IUserStore, EfUserStore>();
             services.AddSingleton<UserService>();
+            services.AddSingleton<TwoFactorService>();
             services.AddSingleton<UserValidator>();
             services.AddMemoryCache();
             services.AddHostedService<SecurityStartup>();
@@ -220,7 +221,10 @@ namespace Onvif.Open.Recorder.Security
         }
     }
 
-    /// <summary>A user whose password was generated or reset must change it before using the API.</summary>
+    /// <summary>
+    /// A user whose password was generated or reset must change it before using the API, and one whose organization
+    /// requires a second factor must set it up (only <see cref="Policies.SignedIn"/> endpoints answer until then).
+    /// </summary>
     public sealed class PasswordChangedRequirement : IAuthorizationRequirement
     {
     }
@@ -229,7 +233,7 @@ namespace Onvif.Open.Recorder.Security
     {
         protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, PasswordChangedRequirement requirement)
         {
-            if (!context.User.HasClaim(c => c.Type == RecorderClaims.MustChangePassword))
+            if (!context.User.HasClaim(c => c.Type == RecorderClaims.MustChangePassword || c.Type == RecorderClaims.MustSetUpTwoFactor))
             {
                 context.Succeed(requirement);
             }

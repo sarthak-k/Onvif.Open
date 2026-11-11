@@ -14,6 +14,10 @@ namespace Onvif.Open.Recorder.Audit
         public const string SignIn = "auth.signin";
         public const string SignInFailed = "auth.signin_failed";
         public const string PasswordChange = "auth.password_change";
+        public const string TwoFactorOn = "auth.two_factor_on";
+        public const string TwoFactorOff = "auth.two_factor_off";
+        public const string RecoveryCodes = "auth.recovery_codes";
+        public const string TwoFactorReset = "user.two_factor_reset";
 
         public const string UserCreate = "user.create";
         public const string UserUpdate = "user.update";

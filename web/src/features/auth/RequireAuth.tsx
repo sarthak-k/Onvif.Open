@@ -4,7 +4,7 @@ import { useAuth } from './AuthContext';
 import { can, requirementOf, type Permission } from './permissions';
 import { sessionOf } from './session';
 
-/** Signed-in users only; sends a user who must change the password to that page first. */
+/** Signed-in users only; sends a user who must change the password, or set up two-factor sign-in, there first. */
 export function RequireAuth({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const location = useLocation();
@@ -16,6 +16,8 @@ export function RequireAuth({ children }: { children: ReactNode }) {
       return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
     case 'mustChangePassword':
       return location.pathname === '/change-password' ? <>{children}</> : <Navigate to="/change-password" replace />;
+    case 'mustSetUpTwoFactor':
+      return location.pathname === '/two-factor' ? <>{children}</> : <Navigate to="/two-factor" replace />;
     case 'signedIn':
       return <>{children}</>;
   }

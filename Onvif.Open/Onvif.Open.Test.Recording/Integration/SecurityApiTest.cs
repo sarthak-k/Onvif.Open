@@ -134,7 +134,7 @@ namespace Onvif.Open.Test.Recording.Integration
                 // Gateways ask for a pairing code (rate-limited; pairs nothing until an administrator enters it), collect
                 // their token with the pairing's secret, and report, hand over events and open their tunnel with their token. A share link downloads one export until it
                 // expires or is revoked.
-                Assert.Equal(new[] { "/api/auth/login", "/api/auth/refresh", "/api/cloud", "/api/gateways/events", "/api/gateways/heartbeat", "/api/gateways/pairing", "/api/gateways/pairing/{id}", "/api/gateways/tunnel", "/api/setup", "/api/setup", "/api/shared/{token}/video.mp4", "/api/signup", "/api/signup/verify", "/health" }, anonymous);
+                Assert.Equal(new[] { "/api/auth/login", "/api/auth/login/two-factor", "/api/auth/refresh", "/api/cloud", "/api/gateways/events", "/api/gateways/heartbeat", "/api/gateways/pairing", "/api/gateways/pairing/{id}", "/api/gateways/tunnel", "/api/setup", "/api/setup", "/api/shared/{token}/video.mp4", "/api/signup", "/api/signup/verify", "/health" }, anonymous);
             }
         }
 

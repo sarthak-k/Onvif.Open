@@ -4,13 +4,15 @@ import { resolve } from 'node:path';
 import { afterSharedChange, candidateMachine, changeCandidate, fromAddress, startTest, withProbe } from '../features/cameras/wizard/candidates';
 import { wizardSteps } from '../features/cameras/wizard/steps';
 import { sessionMachine, sessionOf } from '../features/auth/session';
+import { signInSteps } from '../features/auth/signInSteps';
+import { twoFactorSetupSteps } from '../features/auth/twoFactorSetup';
 import { clearMarks, clipOf, markIn, markMachine, markOut, noMarks, phaseOf } from '../features/investigate/clipMarks';
 import { ptzHoldMachine } from '../features/live/ptz/ptzHold';
 import { admin } from '../test/fakeRecorder';
 import { defineMachine, type StateMachine } from './stateMachine';
 
 /** Every web state machine; a new one is one line here (and a section in docs/STATE-MACHINES.md). */
-const machines: StateMachine<string>[] = [sessionMachine, wizardSteps, candidateMachine, markMachine, ptzHoldMachine];
+const machines: StateMachine<string>[] = [sessionMachine, signInSteps, twoFactorSetupSteps, wizardSteps, candidateMachine, markMachine, ptzHoldMachine];
 
 describe('state machines', () => {
   it('refuses moves outside the table and names the allowed ones', () => {
@@ -60,6 +62,8 @@ describe('state machines', () => {
     expect(sessionOf(null)).toBe('signedOut');
     expect(sessionOf({ ...admin, mustChangePassword: true })).toBe('mustChangePassword');
     expect(sessionOf({ ...admin, mustChangePassword: false })).toBe('signedIn');
+    expect(sessionOf({ ...admin, mustChangePassword: false, mustSetUpTwoFactor: true })).toBe('mustSetUpTwoFactor');
+    expect(sessionOf({ ...admin, mustChangePassword: true, mustSetUpTwoFactor: true })).toBe('mustChangePassword');
     expect(sessionMachine.can('signedIn', 'mustChangePassword')).toBe(false);
   });
 

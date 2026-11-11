@@ -27,6 +27,9 @@ const SettingsLayout = lazy(
 const ChangePasswordPage = lazy(
   () => import("../features/auth/ChangePasswordPage"),
 );
+const TwoFactorRequiredPage = lazy(
+  () => import("../features/auth/TwoFactorRequiredPage"),
+);
 
 export function createQueryClient(): QueryClient {
   return new QueryClient({
@@ -78,6 +81,14 @@ export function App({
                     element={
                       <RequireAuth>
                         <ChangePasswordPage />
+                      </RequireAuth>
+                    }
+                  />
+                  <Route
+                    path="/two-factor"
+                    element={
+                      <RequireAuth>
+                        <TwoFactorRequiredPage />
                       </RequireAuth>
                     }
                   />
