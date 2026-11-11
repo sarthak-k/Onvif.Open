@@ -8,9 +8,10 @@ using System.Linq;
 namespace Onvif.Open.Recorder.Billing
 {
     /// <summary>
-    /// "Billing": plans tiered by how many cameras an organization records and how much video it keeps, all in the
-    /// configuration (nothing about prices is in the code). New organizations start on <see cref="TrialPlan"/> for
-    /// <see cref="TrialDays"/>; paying goes through the payment provider (Stripe), whose price each plan names.
+    /// "Billing": plans tiered by how many cameras an organization records and how much video it keeps. Plans live in
+    /// the database (oo_plans), managed by the owners of <see cref="OperatorOrganizationId"/>; <see cref="Plans"/> only
+    /// seeds it on first start (a code already there is never overwritten). New organizations start on
+    /// <see cref="TrialPlan"/> for <see cref="TrialDays"/>; paying goes through the payment provider (Stripe).
     /// </summary>
     public sealed class BillingOptions
     {
@@ -21,11 +22,14 @@ namespace Onvif.Open.Recorder.Billing
         /// <summary>ISO 4217, as prices are shown (e.g. "USD").</summary>
         public string Currency { get; set; } = "USD";
 
-        /// <summary>From the smallest to the largest.</summary>
-        public List<Plan> Plans { get; set; } = new List<Plan>();
+        /// <summary>Plans to put in the database when their code is not there yet, from the smallest to the largest.</summary>
+        public List<PlanSeed> Plans { get; set; } = new List<PlanSeed>();
 
-        /// <summary>The plan new organizations try; one of <see cref="Plans"/>.</summary>
+        /// <summary>The code of the plan new organizations try (an active plan with it must exist).</summary>
         public string TrialPlan { get; set; }
+
+        /// <summary>The organization that runs this service: its owners manage the plans.</summary>
+        public string OperatorOrganizationId { get; set; }
 
         public int TrialDays { get; set; } = 14;
 
@@ -34,21 +38,18 @@ namespace Onvif.Open.Recorder.Billing
 
         public StripeOptions Stripe { get; set; } = new StripeOptions();
 
-        /// <summary>A new organization's start: the trial plan, for <see cref="TrialDays"/> (nothing where billing is off).</summary>
+        /// <summary>
+        /// A new organization's start: its trial, for <see cref="TrialDays"/> from now (nothing where billing is off).
+        /// The trial plan itself is set the first time billing looks at the organization.
+        /// </summary>
         public void StartTrial(Store.OrganizationRecord organization, DateTime now)
         {
-            if (Enabled && organization.PlanId == null)
+            if (Enabled && organization.SubscriptionState == null)
             {
-                organization.PlanId = FindPlan(TrialPlan)?.Id;
                 organization.SubscriptionState = SubscriptionStates.Machine.Initial;
                 organization.TrialEndsAt = now.AddDays(TrialDays);
             }
         }
-
-        public Plan FindPlan(string id) => Plans.FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase));
-
-        /// <summary>The plan whose provider price this is, or null.</summary>
-        public Plan FindPlanByPrice(string priceId) => priceId == null ? null : Plans.FirstOrDefault(p => p.ProviderPriceId == priceId);
 
         /// <summary>Problems with the configuration (empty when valid, or billing is off).</summary>
         public IReadOnlyList<string> Check()
@@ -57,11 +58,6 @@ namespace Onvif.Open.Recorder.Billing
             if (!Enabled)
             {
                 return errors;
-            }
-
-            if (Plans.Count == 0)
-            {
-                errors.Add("Billing:Plans needs at least one plan.");
             }
 
             foreach (var plan in Plans)
@@ -77,9 +73,9 @@ namespace Onvif.Open.Recorder.Billing
                 errors.Add("Billing:Plans: plan ids must differ.");
             }
 
-            if (FindPlan(TrialPlan) == null)
+            if (string.IsNullOrWhiteSpace(TrialPlan))
             {
-                errors.Add("Billing:TrialPlan must be one of Billing:Plans.");
+                errors.Add("Billing:TrialPlan must be the code of the trial plan.");
             }
 
             if (TrialDays < 0)
@@ -87,19 +83,21 @@ namespace Onvif.Open.Recorder.Billing
                 errors.Add("Billing:TrialDays cannot be negative.");
             }
 
-            if (Stripe.IsConfigured && Plans.Any(p => string.IsNullOrWhiteSpace(p.ProviderPriceId) && p.Id != TrialPlan))
+            if (Stripe.IsConfigured && Plans.Any(p => string.IsNullOrWhiteSpace(p.ProviderPriceId) && p.MonthlyPrice > 0))
             {
-                errors.Add("Billing:Plans: with Stripe, every plan but the trial needs its ProviderPriceId (price_...).");
+                errors.Add("Billing:Plans: with Stripe, every paid plan needs its ProviderPriceId (price_...).");
             }
 
             return errors;
         }
     }
 
-    /// <summary>A tier: what it includes, and what it costs a month.</summary>
-    public sealed class Plan
+    /// <summary>A plan to seed the database with: what it includes, and what it costs a month.</summary>
+    public sealed class PlanSeed
     {
+        /// <summary>The plan's code (stays across its versions).</summary>
         public string Id { get; set; }
+
         public string Name { get; set; }
 
         /// <summary>How many cameras it records; 0: no limit.</summary>

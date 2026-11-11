@@ -105,6 +105,7 @@ namespace Onvif.Open.Test.Recording.Integration
                 builder.UseSetting("Billing:Stripe:SecretKey", "sk_test_key");
                 builder.UseSetting("Billing:Stripe:WebhookSecret", WebhookSecret);
                 builder.UseSetting("Billing:Stripe:ApiUrl", "http://stripe.test");
+                builder.UseSetting("Billing:OperatorOrganizationId", TestSettings.OrganizationId);
                 builder.ConfigureTestServices(services =>
                 {
                     services.RemoveAll<IBillingProvider>();
@@ -148,13 +149,18 @@ namespace Onvif.Open.Test.Recording.Integration
 
         private async Task<JsonElement> BillingAsync() => await ReadAsync(await _owner.GetAsync("/api/billing"));
 
+        /// <summary>The id of the offered version of a plan.</summary>
+        private async Task<string> PlanIdAsync(string code) =>
+            (await BillingAsync()).GetProperty("plans").EnumerateArray().Single(p => p.GetProperty("code").GetString() == code).GetProperty("id").GetString();
+
         [Fact]
         public async Task AnOrganizationShouldTryAPlanThenPayForOne()
         {
             // On the trial: its plan, its limits, and every plan from the configuration.
             var billing = await BillingAsync();
-            Assert.Equal(("Trialing", "trial", "EUR", true), (billing.GetProperty("state").GetString(), billing.GetProperty("plan").GetProperty("id").GetString(), billing.GetProperty("currency").GetString(), billing.GetProperty("canPay").GetBoolean()));
-            Assert.Equal(new[] { "trial", "starter", "business" }, billing.GetProperty("plans").EnumerateArray().Select(p => p.GetProperty("id").GetString()));
+            Assert.Equal(("Trialing", "trial", "EUR", true), (billing.GetProperty("state").GetString(), billing.GetProperty("plan").GetProperty("code").GetString(), billing.GetProperty("currency").GetString(), billing.GetProperty("canPay").GetBoolean()));
+            Assert.Equal(new[] { "trial", "starter", "business" }, billing.GetProperty("plans").EnumerateArray().Select(p => p.GetProperty("code").GetString()));
+            var starter = await PlanIdAsync("starter");
             Assert.Equal(29m, billing.GetProperty("plans")[1].GetProperty("monthlyPrice").GetDecimal());
             var trialEnds = billing.GetProperty("trialEndsAt").GetDateTimeOffset();
             Assert.InRange((trialEnds - DateTimeOffset.UtcNow).TotalDays, 13.9, 14.1);
@@ -168,18 +174,18 @@ namespace Onvif.Open.Test.Recording.Integration
             Assert.Equal(2, (await BillingAsync()).GetProperty("usage").GetProperty("cameras").GetInt32());
 
             // Checkout at Stripe for a plan, for this organization, back to the web app.
-            var checkout = await _owner.PostAsJsonAsync("/api/billing/checkout", new { planId = "starter", returnUrl = "http://localhost/settings/billing" });
+            var checkout = await _owner.PostAsJsonAsync("/api/billing/checkout", new { planId = starter, returnUrl = "http://localhost/settings/billing" });
             Assert.Equal(HttpStatusCode.OK, checkout.StatusCode);
             Assert.Equal("https://checkout.stripe.test/cs_1", (await ReadAsync(checkout)).GetProperty("url").GetString());
             var call = _stripe.Calls.Single(c => c.Path == "/v1/checkout/sessions");
             Assert.Equal(("sk_test_key", "subscription", "price_starter", TestSettings.OrganizationId, "http://localhost/settings/billing?checkout=done"),
                 (call.Key, call.Form["mode"], call.Form["line_items[0][price]"], call.Form["client_reference_id"], call.Form["success_url"]));
-            Assert.Equal(TestSettings.OrganizationId, call.Form["subscription_data[metadata][organization_id]"]);
-            Assert.Equal(HttpStatusCode.BadRequest, (await _owner.PostAsJsonAsync("/api/billing/checkout", new { planId = "starter", returnUrl = "https://evil.example/x" })).StatusCode);
-            Assert.Equal(HttpStatusCode.BadRequest, (await _owner.PostAsJsonAsync("/api/billing/checkout", new { planId = "trial", returnUrl = "http://localhost/settings/billing" })).StatusCode);
+            Assert.Equal((TestSettings.OrganizationId, starter), (call.Form["subscription_data[metadata][organization_id]"], call.Form["subscription_data[metadata][plan]"]));
+            Assert.Equal(HttpStatusCode.BadRequest, (await _owner.PostAsJsonAsync("/api/billing/checkout", new { planId = starter, returnUrl = "https://evil.example/x" })).StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, (await _owner.PostAsJsonAsync("/api/billing/checkout", new { planId = await PlanIdAsync("trial"), returnUrl = "http://localhost/settings/billing" })).StatusCode);
 
             // Webhooks only from Stripe, and only fresh ones.
-            var session = new Dictionary<string, object> { ["id"] = "cs_1", ["object"] = "checkout.session", ["client_reference_id"] = TestSettings.OrganizationId, ["customer"] = "cus_1", ["subscription"] = "sub_1", ["metadata"] = new Dictionary<string, string> { ["plan"] = "starter" } };
+            var session = new Dictionary<string, object> { ["id"] = "cs_1", ["object"] = "checkout.session", ["client_reference_id"] = TestSettings.OrganizationId, ["customer"] = "cus_1", ["subscription"] = "sub_1", ["metadata"] = new Dictionary<string, string> { ["plan"] = starter } };
             Assert.Equal(HttpStatusCode.BadRequest, (await WebhookAsync("checkout.session.completed", session, secret: "whsec_wrong")).StatusCode);
             Assert.Equal(HttpStatusCode.BadRequest, (await WebhookAsync("checkout.session.completed", session, at: DateTimeOffset.UtcNow.AddMinutes(-10))).StatusCode);
             Assert.Equal("Trialing", (await BillingAsync()).GetProperty("state").GetString());
@@ -188,19 +194,19 @@ namespace Onvif.Open.Test.Recording.Integration
             Assert.Equal(HttpStatusCode.OK, (await WebhookAsync("checkout.session.completed", session)).StatusCode);
             Assert.Equal(HttpStatusCode.OK, (await WebhookAsync("customer.subscription.updated", Subscription("active"))).StatusCode);
             billing = await BillingAsync();
-            Assert.Equal(("Active", "starter", true), (billing.GetProperty("state").GetString(), billing.GetProperty("plan").GetProperty("id").GetString(), billing.GetProperty("canManage").GetBoolean()));
+            Assert.Equal(("Active", "starter", true), (billing.GetProperty("state").GetString(), billing.GetProperty("plan").GetProperty("code").GetString(), billing.GetProperty("canManage").GetBoolean()));
             Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1_800_000_000), billing.GetProperty("currentPeriodEnd").GetDateTimeOffset());
             Assert.Equal(HttpStatusCode.Created, (await AddCameraAsync("Dock")).StatusCode);
 
             // A subscription already: changed in Stripe's portal, not a second checkout.
-            Assert.Equal(HttpStatusCode.Conflict, (await _owner.PostAsJsonAsync("/api/billing/checkout", new { planId = "business", returnUrl = "http://localhost/settings/billing" })).StatusCode);
+            Assert.Equal(HttpStatusCode.Conflict, (await _owner.PostAsJsonAsync("/api/billing/checkout", new { planId = await PlanIdAsync("business"), returnUrl = "http://localhost/settings/billing" })).StatusCode);
             var portal = await ReadAsync(await _owner.PostAsJsonAsync("/api/billing/portal", new { returnUrl = "http://localhost/settings/billing" }));
             Assert.Equal("https://billing.stripe.test/p/bps_1", portal.GetProperty("url").GetString());
             Assert.Equal("cus_1", _stripe.Calls.Single(c => c.Path == "/v1/billing_portal/sessions").Form["customer"]);
 
             // Upgraded there: the plan follows the price.
             await WebhookAsync("customer.subscription.updated", Subscription("active", price: "price_business"));
-            Assert.Equal("business", (await BillingAsync()).GetProperty("plan").GetProperty("id").GetString());
+            Assert.Equal("business", (await BillingAsync()).GetProperty("plan").GetProperty("code").GetString());
 
             // A failed payment, paid after all, then canceled: no new cameras (the ones there keep recording).
             await WebhookAsync("invoice.payment_failed", new Dictionary<string, object> { ["id"] = "in_1", ["object"] = "invoice", ["customer"] = "cus_1", ["parent"] = new { subscription_details = new { subscription = "sub_1" } } });
@@ -262,9 +268,83 @@ namespace Onvif.Open.Test.Recording.Integration
 
             var admin = await MemberAsync("ada", "Admin");
             Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync("/api/billing")).StatusCode);
-            Assert.Equal(HttpStatusCode.Forbidden, (await admin.PostAsJsonAsync("/api/billing/checkout", new { planId = "starter", returnUrl = "http://localhost/settings/billing" })).StatusCode);
+            Assert.Equal(HttpStatusCode.Forbidden, (await admin.PostAsJsonAsync("/api/billing/checkout", new { planId = await PlanIdAsync("starter"), returnUrl = "http://localhost/settings/billing" })).StatusCode);
+            Assert.Equal(HttpStatusCode.Forbidden, (await admin.GetAsync("/api/billing/plans")).StatusCode);
             var viewer = await MemberAsync("vic", "Viewer");
             Assert.Equal(HttpStatusCode.Forbidden, (await viewer.GetAsync("/api/billing")).StatusCode);
+        }
+
+        [Fact]
+        public async Task PlansShouldBeKeptAsTheyWereSold()
+        {
+            async Task<List<JsonElement>> PlansAsync() => (await ReadAsync(await _owner.GetAsync("/api/billing/plans"))).EnumerateArray().ToList();
+            object Terms(string name, int cameras, decimal price, string priceId) => new { name, cameras, storageGB = 500, monthlyPrice = price, providerPriceId = priceId, sortOrder = 20 };
+
+            // Seeded from the configuration, with the organizations on each (this one is on the trial once it looks).
+            await BillingAsync();
+            var plans = await PlansAsync();
+            Assert.Equal(new[] { "trial", "starter", "business" }, plans.Select(p => p.GetProperty("code").GetString()));
+            Assert.Equal(1, plans[0].GetProperty("organizations").GetInt32());
+            var starter = plans[1].GetProperty("id").GetString();
+
+            // Nobody on it yet: changed in place.
+            var edited = await ReadAsync(await _owner.PutAsJsonAsync($"/api/billing/plans/{starter}", Terms("Starter", 5, 25m, "price_starter")));
+            Assert.Equal((starter, 1, 25m), (edited.GetProperty("id").GetString(), edited.GetProperty("version").GetInt32(), edited.GetProperty("monthlyPrice").GetDecimal()));
+
+            // Sold to this organization...
+            await WebhookAsync("checkout.session.completed", new Dictionary<string, object> { ["id"] = "cs_1", ["object"] = "checkout.session", ["client_reference_id"] = TestSettings.OrganizationId, ["customer"] = "cus_1", ["subscription"] = "sub_1", ["metadata"] = new Dictionary<string, string> { ["plan"] = starter } });
+            Assert.Equal(starter, (await BillingAsync()).GetProperty("plan").GetProperty("id").GetString());
+
+            // ...so a new price is a new version: new customers get it, this one keeps what it bought.
+            var next = await ReadAsync(await _owner.PutAsJsonAsync($"/api/billing/plans/{starter}", Terms("Starter", 5, 35m, "price_starter_v2")));
+            var version2 = next.GetProperty("id").GetString();
+            Assert.NotEqual(starter, version2);
+            Assert.Equal(("starter", 2, 35m, true), (next.GetProperty("code").GetString(), next.GetProperty("version").GetInt32(), next.GetProperty("monthlyPrice").GetDecimal(), next.GetProperty("active").GetBoolean()));
+            var old = (await PlansAsync()).Single(p => p.GetProperty("id").GetString() == starter);
+            Assert.Equal((false, version2, 1), (old.GetProperty("active").GetBoolean(), old.GetProperty("replacedById").GetString(), old.GetProperty("organizations").GetInt32()));
+
+            var billing = await BillingAsync();
+            Assert.Equal((starter, 25m, false), (billing.GetProperty("plan").GetProperty("id").GetString(), billing.GetProperty("plan").GetProperty("monthlyPrice").GetDecimal(), billing.GetProperty("plan").GetProperty("active").GetBoolean()));
+            Assert.Contains(version2, billing.GetProperty("plans").EnumerateArray().Select(p => p.GetProperty("id").GetString()));
+            Assert.DoesNotContain(starter, billing.GetProperty("plans").EnumerateArray().Select(p => p.GetProperty("id").GetString()));
+
+            // The old version is only kept, not changed; its Stripe price still finds it.
+            Assert.Equal(HttpStatusCode.Conflict, (await _owner.PutAsJsonAsync($"/api/billing/plans/{starter}", Terms("Starter", 9, 1m, "price_x"))).StatusCode);
+            await WebhookAsync("customer.subscription.updated", Subscription("active", price: "price_starter"));
+            Assert.Equal(starter, (await BillingAsync()).GetProperty("plan").GetProperty("id").GetString());
+
+            // Retired: not offered; the trial cannot be. New plans, once per code.
+            var business = (await PlansAsync()).Single(p => p.GetProperty("code").GetString() == "business").GetProperty("id").GetString();
+            Assert.Equal(HttpStatusCode.OK, (await _owner.PostAsync($"/api/billing/plans/{business}/retire", null)).StatusCode);
+            Assert.DoesNotContain("business", (await BillingAsync()).GetProperty("plans").EnumerateArray().Select(p => p.GetProperty("code").GetString()));
+            Assert.Equal(HttpStatusCode.Conflict, (await _owner.PostAsync($"/api/billing/plans/{(await PlansAsync())[0].GetProperty("id").GetString()}/retire", null)).StatusCode);
+            Assert.Equal(HttpStatusCode.Created, (await _owner.PostAsJsonAsync("/api/billing/plans", new { code = "enterprise", name = "Enterprise", cameras = 0, storageGB = 0, monthlyPrice = 499, providerPriceId = "price_enterprise", sortOrder = 40 })).StatusCode);
+            Assert.Equal(HttpStatusCode.Conflict, (await _owner.PostAsJsonAsync("/api/billing/plans", new { code = "enterprise", name = "Again", monthlyPrice = 1, providerPriceId = "price_y" })).StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, (await _owner.PostAsJsonAsync("/api/billing/plans", new { code = "Not A Code", name = "X" })).StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, (await _owner.PostAsJsonAsync("/api/billing/plans", new { code = "paid", name = "Paid", monthlyPrice = 10 })).StatusCode);
+
+            // Every change in the operator's audit log, with what it was and what it became.
+            await _factory.Services.GetRequiredService<Onvif.Open.Recorder.Audit.AuditLog>().FlushAsync();
+            var audit = (await ReadAsync(await _owner.GetAsync("/api/audit?action=billing"))).EnumerateArray().ToList();
+            var versioned = audit.Single(e => e.GetProperty("action").GetString() == "billing.plan_version");
+            var details = JsonDocument.Parse(versioned.GetProperty("details").ToString()).RootElement;
+            Assert.Equal((25m, 35m, starter), (details.GetProperty("before").GetProperty("monthlyPrice").GetDecimal(), details.GetProperty("after").GetProperty("monthlyPrice").GetDecimal(), details.GetProperty("replaces").GetString()));
+            Assert.Contains(audit, e => e.GetProperty("action").GetString() == "billing.plan_update");
+            Assert.Contains(audit, e => e.GetProperty("action").GetString() == "billing.plan_retire");
+            Assert.Contains(audit, e => e.GetProperty("action").GetString() == "billing.plan_create");
+        }
+
+        [Fact]
+        public async Task OnlyTheOperatorShouldManagePlans()
+        {
+            using (var other = Billing(builder => builder.UseSetting("Billing:OperatorOrganizationId", Guid.NewGuid().ToString("D"))))
+            using (var owner = TestSettings.Authenticate(other.CreateClient()))
+            {
+                Assert.Equal(HttpStatusCode.Forbidden, (await owner.GetAsync("/api/billing/plans")).StatusCode);
+                Assert.False((await ReadAsync(await owner.GetAsync("/api/auth/me"))).GetProperty("organization").GetProperty("billingOperator").GetBoolean());
+            }
+
+            Assert.True((await ReadAsync(await _owner.GetAsync("/api/auth/me"))).GetProperty("organization").GetProperty("billingOperator").GetBoolean());
         }
     }
 }

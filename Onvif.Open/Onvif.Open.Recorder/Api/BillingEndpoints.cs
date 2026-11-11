@@ -9,6 +9,7 @@ using System.Threading;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.DependencyInjection;
 using Onvif.Open.Recorder.Audit;
 using Onvif.Open.Recorder.Billing;
 using Onvif.Open.Recorder.Security;
@@ -42,7 +43,7 @@ namespace Onvif.Open.Recorder.Api
             billing.MapGet("", async (ClaimsPrincipal user, BillingService service, CancellationToken ct) =>
             {
                 var status = await service.GetAsync(user.OrganizationId(), ct);
-                return status == null ? Results.Ok(new { enabled = false }) : Results.Ok(ToDto(status, service));
+                return status == null ? Results.Ok(new { enabled = false }) : Results.Ok(ToDto(status, service, await service.Plans.GetActiveAsync(ct)));
             }).RequireAuthorization(Policies.OrganizationAdmin);
 
             billing.MapPost("/checkout", async (CheckoutRequest request, ClaimsPrincipal user, BillingService service, HttpContext http, SecurityOptions security, CloudOptions cloud, CancellationToken ct) =>
@@ -93,15 +94,92 @@ namespace Onvif.Open.Recorder.Api
                 }
             }).AllowAnonymous().DisableAntiforgery();
 
+            // The plans themselves: the operator's owners (Billing:OperatorOrganizationId). Every change is audited, before and after.
+            var plans = billing.MapGroup("/plans").RequireAuthorization(Policies.Owner)
+                .AddEndpointFilter(async (context, next) =>
+                    context.HttpContext.RequestServices.GetRequiredService<BillingService>().IsOperator(context.HttpContext.User.OrganizationId())
+                        ? await next(context)
+                        : Results.Json(new { errors = new[] { "Plans are managed by the organization that runs this service." } }, statusCode: StatusCodes.Status403Forbidden));
+
+            plans.MapGet("", async (BillingService service, CancellationToken ct) =>
+                (await service.Plans.GetAllAsync(ct)).Select(p => ToOperatorDto(p.Plan, p.Organizations)));
+
+            plans.MapPost("", async (PlanRequest request, BillingService service, AuditLog audit, HttpContext http, CancellationToken ct) =>
+            {
+                var result = await service.Plans.CreateAsync(request, ct);
+                if (result.Status != ServiceStatus.Ok)
+                {
+                    return TenancyEndpoints.ToResult(result);
+                }
+
+                audit.Record(http, AuditActions.PlanCreate, AuditTargets.Plan, result.Value.Id, result.Value.Name, new { after = Terms(result.Value) });
+                return Results.Created($"/api/billing/plans/{result.Value.Id}", ToOperatorDto(result.Value, 0));
+            });
+
+            plans.MapPut("/{id}", async (string id, PlanRequest request, BillingService service, AuditLog audit, HttpContext http, CancellationToken ct) =>
+            {
+                var result = await service.Plans.UpdateAsync(id, request, ct);
+                if (result.Status != ServiceStatus.Ok)
+                {
+                    return TenancyEndpoints.ToResult(result);
+                }
+
+                var (plan, previous) = (result.Value.Plan, result.Value.Previous);
+                var versioned = plan.Id != previous.Id;
+                audit.Record(http, versioned ? AuditActions.PlanVersion : AuditActions.PlanUpdate, AuditTargets.Plan, plan.Id, plan.Name,
+                    new { before = Terms(previous), after = Terms(plan), replaces = versioned ? previous.Id : null });
+                return Results.Ok(ToOperatorDto(plan, 0));
+            });
+
+            plans.MapPost("/{id}/retire", async (string id, BillingService service, AuditLog audit, HttpContext http, CancellationToken ct) =>
+            {
+                var result = await service.Plans.RetireAsync(id, ct);
+                if (result.Status == ServiceStatus.Ok)
+                {
+                    audit.Record(http, AuditActions.PlanRetire, AuditTargets.Plan, result.Value.Id, result.Value.Name, new { terms = Terms(result.Value) });
+                }
+
+                return TenancyEndpoints.ToResult(result, p => ToOperatorDto(p, 0));
+            });
+
             return app;
         }
+
+        /// <summary>What a plan sells, for the audit log.</summary>
+        private static object Terms(Store.PlanRecord plan) => new
+        {
+            code = plan.Code,
+            version = plan.Version,
+            name = plan.Name,
+            cameras = plan.Cameras,
+            storageGB = plan.StorageGB,
+            monthlyPrice = plan.MonthlyPrice,
+            providerPriceId = plan.ProviderPriceId
+        };
+
+        private static object ToOperatorDto(Store.PlanRecord plan, int organizations) => new
+        {
+            id = plan.Id,
+            code = plan.Code,
+            version = plan.Version,
+            name = plan.Name,
+            cameras = plan.Cameras,
+            storageGB = plan.StorageGB,
+            monthlyPrice = plan.MonthlyPrice,
+            providerPriceId = plan.ProviderPriceId,
+            sortOrder = plan.SortOrder,
+            active = plan.Active,
+            replacedById = plan.ReplacedById,
+            retiredAt = Utc(plan.RetiredAt),
+            organizations
+        };
 
         private static string Back(string returnUrl, HttpContext http, SecurityOptions security, CloudOptions cloud) =>
             SsoEndpoints.WebAppOf(returnUrl, http, security, cloud) is string origin && Uri.TryCreate(returnUrl, UriKind.Absolute, out var uri)
                 ? origin + uri.AbsolutePath
                 : null;
 
-        private static object ToDto(BillingStatus status, BillingService service)
+        private static object ToDto(BillingStatus status, BillingService service, System.Collections.Generic.IReadOnlyList<Store.PlanRecord> offered)
         {
             var organization = status.Organization;
             var options = service.Options;
@@ -119,14 +197,16 @@ namespace Onvif.Open.Recorder.Api
                 canPay = service.CanPay,
                 canManage = service.CanPay && organization.BillingCustomerId != null,
                 salesEmail = options.SalesEmail,
-                plans = options.Plans.Select(ToDto)
+                plans = offered.Select(ToDto)
             };
         }
 
-        private static object ToDto(Plan plan) => new
+        private static object ToDto(Store.PlanRecord plan) => new
         {
             id = plan.Id,
+            code = plan.Code,
             name = plan.Name,
+            active = plan.Active,
             cameras = plan.Cameras,
             storageGB = plan.StorageGB,
             monthlyPrice = plan.MonthlyPrice,

@@ -36,7 +36,7 @@ namespace Onvif.Open.Recorder.Billing
         bool IsConfigured { get; }
 
         /// <summary>The address of the provider's checkout page for the plan.</summary>
-        Task<string> CreateCheckoutAsync(string organizationId, Plan plan, string customerId, string email, string successUrl, string cancelUrl, CancellationToken cancellationToken = default);
+        Task<string> CreateCheckoutAsync(string organizationId, Store.PlanRecord plan, string customerId, string email, string successUrl, string cancelUrl, CancellationToken cancellationToken = default);
 
         /// <summary>The address of the provider's page where the customer manages its subscription, invoices and card.</summary>
         Task<string> CreatePortalAsync(string customerId, string returnUrl, CancellationToken cancellationToken = default);
@@ -68,9 +68,9 @@ namespace Onvif.Open.Recorder.Billing
 
         public bool IsConfigured => _client != null;
 
-        public async Task<string> CreateCheckoutAsync(string organizationId, Plan plan, string customerId, string email, string successUrl, string cancelUrl, CancellationToken cancellationToken = default)
+        public async Task<string> CreateCheckoutAsync(string organizationId, Store.PlanRecord plan, string customerId, string email, string successUrl, string cancelUrl, CancellationToken cancellationToken = default)
         {
-            var metadata = new Dictionary<string, string> { ["organization_id"] = organizationId, ["plan"] = plan.Id };
+            var metadata = new Dictionary<string, string> { ["organization_id"] = organizationId, ["plan"] = plan.Id, ["plan_code"] = plan.Code };
             var session = await new Stripe.Checkout.SessionService(_client).CreateAsync(new Stripe.Checkout.SessionCreateOptions
             {
                 Mode = "subscription",

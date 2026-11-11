@@ -45,7 +45,7 @@ namespace Onvif.Open.Recorder.Billing
     public sealed record BillingUsage(int Cameras, long StorageBytes);
 
     /// <summary>An organization's plan, subscription and usage.</summary>
-    public sealed record BillingStatus(OrganizationRecord Organization, Plan Plan, BillingUsage Usage)
+    public sealed record BillingStatus(OrganizationRecord Organization, PlanRecord Plan, BillingUsage Usage)
     {
         public bool OverCameras => Plan != null && Plan.Cameras > 0 && Usage.Cameras > Plan.Cameras;
         public bool OverStorage => Plan != null && Plan.StorageGB > 0 && Usage.StorageBytes > Plan.StorageGB * 1024 * 1024 * 1024;
@@ -60,9 +60,10 @@ namespace Onvif.Open.Recorder.Billing
     {
         #region Constructor
 
-        public BillingService(BillingOptions options, IBillingProvider provider, IDbContextFactory<RecorderDbContext> contexts, ISettingsStore cameras, Gateways.GatewayService gateways, ILogger<BillingService> logger, TimeProvider timeProvider = null)
+        public BillingService(BillingOptions options, IBillingProvider provider, PlanService plans, IDbContextFactory<RecorderDbContext> contexts, ISettingsStore cameras, Gateways.GatewayService gateways, ILogger<BillingService> logger, TimeProvider timeProvider = null)
         {
             Options = options ?? new BillingOptions();
+            Plans = plans ?? throw new ArgumentNullException(nameof(plans));
             _provider = provider ?? throw new ArgumentNullException(nameof(provider));
             _contexts = contexts ?? throw new ArgumentNullException(nameof(contexts));
             _cameras = cameras ?? throw new ArgumentNullException(nameof(cameras));
@@ -78,6 +79,11 @@ namespace Onvif.Open.Recorder.Billing
         public static readonly TimeSpan CheckInterval = TimeSpan.FromHours(1);
 
         public BillingOptions Options { get; }
+
+        public PlanService Plans { get; }
+
+        /// <summary>Whether this organization runs the service (its owners manage the plans).</summary>
+        public bool IsOperator(string organizationId) => Options.Enabled && organizationId != null && string.Equals(organizationId, Options.OperatorOrganizationId, StringComparison.OrdinalIgnoreCase);
 
         public bool CanPay => Options.Enabled && _provider.IsConfigured;
 
@@ -111,7 +117,7 @@ namespace Onvif.Open.Recorder.Billing
 
             var cameras = (await _cameras.GetCamerasAsync(cancellationToken).ConfigureAwait(false)).Count(c => c.OrganizationId == organizationId);
             var storage = (await _gateways.GetAsync(organizationId, cancellationToken).ConfigureAwait(false)).Sum(g => g.Health?.RecordedBytes ?? 0);
-            return new BillingStatus(organization, Options.FindPlan(organization.PlanId), new BillingUsage(cameras, storage));
+            return new BillingStatus(organization, await Plans.FindAsync(organization.PlanId, cancellationToken).ConfigureAwait(false), new BillingUsage(cameras, storage));
         }
 
         /// <summary>Why one more camera cannot be added (the plan's cameras, an ended subscription); null when it can.</summary>
@@ -141,8 +147,8 @@ namespace Onvif.Open.Recorder.Billing
                 return ServiceResult<string>.NotFound();
             }
 
-            var plan = Options.FindPlan(planId);
-            if (plan == null || string.IsNullOrWhiteSpace(plan.ProviderPriceId))
+            var plan = await Plans.FindAsync(planId, cancellationToken).ConfigureAwait(false);
+            if (plan == null || !plan.Active || string.IsNullOrWhiteSpace(plan.ProviderPriceId))
             {
                 return ServiceResult<string>.Invalid(new[] { "Choose one of the plans." });
             }
@@ -194,7 +200,7 @@ namespace Onvif.Open.Recorder.Billing
 
                     organization.BillingCustomerId = change.CustomerId ?? organization.BillingCustomerId;
                     organization.BillingSubscriptionId = change.SubscriptionId ?? organization.BillingSubscriptionId;
-                    var plan = Options.FindPlanByPrice(change.PriceId) ?? Options.FindPlan(change.PlanId);
+                    var plan = await Plans.FindByPriceAsync(change.PriceId, cancellationToken).ConfigureAwait(false) ?? await Plans.FindAsync(change.PlanId, cancellationToken).ConfigureAwait(false);
                     organization.PlanId = plan?.Id ?? organization.PlanId;
                     organization.CurrentPeriodEnd = change.PeriodEnd ?? organization.CurrentPeriodEnd;
 
@@ -244,6 +250,17 @@ namespace Onvif.Open.Recorder.Billing
 
         #region Protected and Private Methods
 
+        /// <summary>The configured plans into the database before anything asks for them.</summary>
+        public override async Task StartAsync(CancellationToken cancellationToken)
+        {
+            if (Options.Enabled)
+            {
+                await Plans.SeedAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            await base.StartAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             if (!Options.Enabled)
@@ -268,7 +285,7 @@ namespace Onvif.Open.Recorder.Billing
             }
         }
 
-        /// <summary>The organization, put on the trial when billing was turned on after it was made.</summary>
+        /// <summary>The organization on its plan: the trial plan for one that has none (new, or made before billing).</summary>
         private async Task<OrganizationRecord> EnsureAsync(string organizationId, CancellationToken cancellationToken)
         {
             await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
@@ -277,6 +294,7 @@ namespace Onvif.Open.Recorder.Billing
                 if (organization != null && organization.PlanId == null)
                 {
                     Options.StartTrial(organization, Now);
+                    organization.PlanId = (await Plans.FindActiveAsync(Options.TrialPlan, cancellationToken).ConfigureAwait(false))?.Id;
                     await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
                 }
 

@@ -248,11 +248,10 @@ namespace Onvif.Open.Test.Recording.Integration
             var client = _gateway.Services.GetRequiredService<ControlPlaneClient>();
             var lost = DateTimeOffset.UtcNow;
             recorder.OnStateChanged(this, new CameraStateChange(cameraId, Onvif.Open.Core.Recording.RecordingState.Recording, Onvif.Open.Core.Recording.RecordingState.Reconnecting, "Connection refused", lost));
-            await Eventually.True(() => outbox.Count == 1, "the event waits for the control plane");
-            Assert.Single(File.ReadAllLines(Path.Combine(_gwStorage.Path, "event-outbox.jsonl")));
 
-            // Handed over: stored at the control plane (its site, not the gateway's), and its alert rule fires.
-            await Eventually.True(() => client.UploadEventsAsync().GetAwaiter().GetResult() >= 0 && outbox.Count == 0, "the event was handed over");
+            // Handed over (by the gateway's own upload every 2 s, or this one): stored at the control plane (its site, not
+            // the gateway's), and its alert rule fires. (The outbox on disk: TheOutboxShouldOutliveARestart.)
+            await Eventually.True(() => client.UploadEventsAsync().GetAwaiter().GetResult() >= 0 && EventsAsync(cameraId).GetAwaiter().GetResult().Count == 1, "the event was handed over");
             var events = await EventsAsync(cameraId);
             var offline = Assert.Single(events);
             Assert.Equal(("offline", TestSettings.SiteId, JsonValueKind.Null), (offline.GetProperty("category").GetString(), offline.GetProperty("siteId").GetString(), offline.GetProperty("endTime").ValueKind));
@@ -262,12 +261,10 @@ namespace Onvif.Open.Test.Recording.Integration
 
             // It records again: the end follows the same way.
             recorder.OnStateChanged(this, new CameraStateChange(cameraId, Onvif.Open.Core.Recording.RecordingState.Reconnecting, Onvif.Open.Core.Recording.RecordingState.Recording, null, lost.AddSeconds(40)));
-            await Eventually.True(() => outbox.Count == 1, "the end waits for the control plane");
-            Assert.Equal(1, await client.UploadEventsAsync());
+            await Eventually.True(() => client.UploadEventsAsync().GetAwaiter().GetResult() >= 0 && EventsAsync(cameraId).GetAwaiter().GetResult().Single().GetProperty("endTime").ValueKind != JsonValueKind.Null, "the end was handed over");
             Assert.Equal(40, (Assert.Single(await EventsAsync(cameraId)).GetProperty("endTime").GetDateTimeOffset() - lost).TotalSeconds, 1);
 
-            Assert.Equal(0, outbox.Count);
-            Assert.Empty(File.ReadAllLines(Path.Combine(_gwStorage.Path, "event-outbox.jsonl")));
+            await Eventually.True(() => outbox.Count == 0 && File.ReadAllLines(Path.Combine(_gwStorage.Path, "event-outbox.jsonl")).Length == 0, "nothing is left in the outbox");
 
             // Handed over again (the answer to a stored batch was lost): stored once, and no second alert.
             var again = new Onvif.Open.Recorder.Store.EventRecord
@@ -280,6 +277,31 @@ namespace Onvif.Open.Test.Recording.Integration
             Assert.Single(await EventsAsync(cameraId));
             await Task.Delay(300);
             Assert.Equal(1, (await ReadAsync(await _owner.GetAsync("/api/alerts"))).GetArrayLength());
+        }
+
+        [Fact]
+        public async Task TheOutboxShouldOutliveARestart()
+        {
+            // What waited on disk when the gateway stopped is there when it starts again, oldest first, until stored.
+            var path = Path.Combine(_gwStorage.Path, "restart-outbox.jsonl");
+            var json = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+            var start = DateTime.UtcNow;
+            File.WriteAllLines(path, new[]
+            {
+                System.Text.Json.JsonSerializer.Serialize(new UpstreamEvent(UpstreamEvent.Started, null, "e1", "cam", start, null), json),
+                System.Text.Json.JsonSerializer.Serialize(new UpstreamEvent(UpstreamEvent.Ended, null, "e1", "cam", start, start.AddSeconds(5)), json)
+            });
+
+            var recorder = _gateway.Services.GetServices<Microsoft.Extensions.Hosting.IHostedService>().OfType<Onvif.Open.Recorder.Events.EventRecorder>().Single();
+            var outbox = new EventOutbox(recorder, _gateway.Services.GetRequiredService<AssignedCameras>(), path, null);
+            Assert.Equal(2, outbox.Count);
+            Assert.Equal(new[] { UpstreamEvent.Started, UpstreamEvent.Ended }, outbox.Peek(10).Select(e => e.Kind));
+
+            outbox.Remove(1);
+            Assert.Equal(UpstreamEvent.Ended, Assert.Single(new EventOutbox(recorder, _gateway.Services.GetRequiredService<AssignedCameras>(), path, null).Peek(10)).Kind);
+            outbox.Remove(1);
+            Assert.Empty(File.ReadAllLines(path));
+            await Task.CompletedTask;
         }
 
         [Fact]

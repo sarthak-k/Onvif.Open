@@ -40,7 +40,11 @@ export type TwoFactorState = 'Off' | 'Pending' | 'On';
 /** A tier from the server's configuration: what it includes (0: no limit) and its monthly price. */
 export interface Plan {
   id: string;
+  /** The plan across its versions, e.g. "starter". */
+  code: string;
   name: string;
+  /** Offered to new subscriptions; a retired plan stays with the organizations on it. */
+  active: boolean;
   cameras: number;
   storageGB: number;
   monthlyPrice: number;
@@ -49,6 +53,34 @@ export interface Plan {
 }
 
 export type SubscriptionState = 'Trialing' | 'Active' | 'PastDue' | 'Canceled';
+
+/** A plan as the operator manages it: every version, and how many organizations are on it. */
+export interface ManagedPlan {
+  id: string;
+  code: string;
+  version: number;
+  name: string;
+  cameras: number;
+  storageGB: number;
+  monthlyPrice: number;
+  providerPriceId: string | null;
+  sortOrder: number;
+  active: boolean;
+  replacedById: string | null;
+  retiredAt: string | null;
+  organizations: number;
+}
+
+export interface PlanRequest {
+  /** New plans only. */
+  code?: string;
+  name: string;
+  cameras: number;
+  storageGB: number;
+  monthlyPrice: number;
+  providerPriceId: string | null;
+  sortOrder: number;
+}
 
 /** The organization's plan and use of it; enabled false where billing is off. */
 export type BillingStatus =
@@ -130,6 +162,8 @@ export interface Organization {
   region: Region;
   /** Every member signs in with a second factor. */
   requireTwoFactor?: boolean;
+  /** This organization runs the service: its owners manage the plans. */
+  billingOperator?: boolean;
   /** Where billing is on. */
   subscription?: { state: SubscriptionState; trialEndsAt: string | null } | null;
 }

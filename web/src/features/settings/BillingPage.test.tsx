@@ -4,9 +4,9 @@ import { admin, tenancyRoutes, tokens } from '../../test/fakeRecorder';
 import { browser } from '../../shared/browser';
 
 const plans = [
-  { id: 'trial', name: 'Trial', cameras: 2, storageGB: 10, monthlyPrice: 0, purchasable: false },
-  { id: 'starter', name: 'Starter', cameras: 4, storageGB: 500, monthlyPrice: 29, purchasable: true },
-  { id: 'business', name: 'Business', cameras: 0, storageGB: 5000, monthlyPrice: 199, purchasable: true },
+  { id: 'trial', code: 'trial', active: true, name: 'Trial', cameras: 2, storageGB: 10, monthlyPrice: 0, purchasable: false },
+  { id: 'starter', code: 'starter', active: true, name: 'Starter', cameras: 4, storageGB: 500, monthlyPrice: 29, purchasable: true },
+  { id: 'business', code: 'business', active: true, name: 'Business', cameras: 0, storageGB: 5000, monthlyPrice: 199, purchasable: true },
 ];
 
 const trial = {

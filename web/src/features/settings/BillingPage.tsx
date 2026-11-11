@@ -82,6 +82,7 @@ function Billing({
           <h2>{plan?.name ?? 'No plan'}</h2>
           <span className={`state ${stateClass[status.state]}`}>{stateLabels[status.state]}</span>
         </div>
+        {plan && !plan.active && <p className="muted small">This plan is no longer offered: you keep it, as it is, for as long as you stay on it.</p>}
         <p className="muted small">
           {status.state === 'Trialing' && status.trialEndsAt && `Trial until ${formatDate(status.trialEndsAt)}. `}
           {status.state !== 'Trialing' && status.currentPeriodEnd && `Paid until ${formatDate(status.currentPeriodEnd)}. `}

@@ -226,6 +226,7 @@ namespace Onvif.Open.Recorder.Gateways
         private readonly AssignedCameras _assigned;
         private readonly Tunnel.TunnelExecutor _tunnel;
         private readonly EventOutbox _events;
+        private readonly SemaphoreSlim _uploading = new SemaphoreSlim(1, 1);
         private volatile Tunnel.TunnelConnection _connection;
         private ControlPlaneIdentity _identity;
         private Ticket _ticket;
@@ -274,9 +275,23 @@ namespace Onvif.Open.Recorder.Gateways
 
         /// <summary>
         /// Sends the control plane the events waiting in the outbox, oldest first, in batches; each batch leaves the outbox
-        /// once stored there. Returns how many were sent (also used by tests).
+        /// once stored there. One upload at a time: two would send the same batch and each remove it, so the second would
+        /// remove events nobody sent. Returns how many were sent (also used by tests).
         /// </summary>
         public async Task<int> UploadEventsAsync(CancellationToken cancellationToken = default)
+        {
+            await _uploading.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                return await UploadOnceAsync(cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                _uploading.Release();
+            }
+        }
+
+        private async Task<int> UploadOnceAsync(CancellationToken cancellationToken)
         {
             var identity = _identity;
             var sent = 0;

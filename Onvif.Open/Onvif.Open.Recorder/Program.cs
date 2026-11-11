@@ -81,6 +81,7 @@ if (billing.Check() is { Count: > 0 } billingErrors)
 
 builder.Services.AddSingleton(billing);
 builder.Services.AddSingleton<Onvif.Open.Recorder.Billing.IBillingProvider>(_ => new Onvif.Open.Recorder.Billing.StripeBilling(billing, new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(30) }));
+builder.Services.AddSingleton<Onvif.Open.Recorder.Billing.PlanService>();
 builder.Services.AddSingleton<Onvif.Open.Recorder.Billing.BillingService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Onvif.Open.Recorder.Billing.BillingService>());
 builder.Services.AddSingleton<Onvif.Open.Recorder.Mail.IMailSender>(sp => new Onvif.Open.Recorder.Mail.SmtpMailSender(

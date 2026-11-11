@@ -1,4 +1,5 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { PlanRequest } from '../api/types';
 import { useApi } from './ApiContext';
 import { queryKeys } from './queryKeys';
 import { browser } from '../shared/browser';
@@ -25,4 +26,25 @@ export function useBillingPortal() {
     mutationFn: () => api.billing.portal(window.location.origin + window.location.pathname),
     onSuccess: ({ url }) => browser.leave(url),
   });
+}
+
+/** Every plan and version (the operator's owners). */
+export function usePlans() {
+  const api = useApi();
+  return useQuery({ queryKey: queryKeys.plans, queryFn: api.billing.plans });
+}
+
+export function useSavePlan() {
+  const api = useApi();
+  const queries = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, plan }: { id?: string; plan: PlanRequest }) => (id ? api.billing.updatePlan(id, plan) : api.billing.createPlan(plan)),
+    onSettled: () => queries.invalidateQueries({ queryKey: queryKeys.billing }),
+  });
+}
+
+export function useRetirePlan() {
+  const api = useApi();
+  const queries = useQueryClient();
+  return useMutation({ mutationFn: (id: string) => api.billing.retirePlan(id), onSettled: () => queries.invalidateQueries({ queryKey: queryKeys.billing }) });
 }
