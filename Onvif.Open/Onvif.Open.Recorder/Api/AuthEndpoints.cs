@@ -81,9 +81,16 @@ namespace Onvif.Open.Recorder.Api
 
             // { "tokenType": "Bearer", "accessToken": "...", "expiresIn": 900, "refreshToken": "..." }
             // With two-factor sign-in on: { "twoFactorRequired": true, "challenge": "...", "expiresIn": 300 }, then the code.
-            auth.MapPost("/login", async (SignInRequest request, UserService users, TwoFactorService twoFactor, AuditLog audit, HttpContext http, CancellationToken ct) =>
+            auth.MapPost("/login", async (SignInRequest request, UserService users, TwoFactorService twoFactor, SsoService sso, AuditLog audit, HttpContext http, CancellationToken ct) =>
             {
                 var member = await users.SignInAsync(request?.UserName, request?.Password, ct);
+
+                // Where the organization requires single sign-on, only owners keep a password (to get back in).
+                if (member != null && member.Membership.Role != Roles.Owner && await sso.IsRequiredAsync(member.Membership.OrganizationId, ct))
+                {
+                    return Results.Problem("Your organization signs in with single sign-on.", statusCode: StatusCodes.Status403Forbidden);
+                }
+
                 if (member != null && TwoFactorService.IsRequiredAtSignIn(member.User))
                 {
                     return Results.Ok(new { twoFactorRequired = true, challenge = twoFactor.CreateChallenge(member.User), expiresIn = (int)TwoFactorService.ChallengeLifetime.TotalSeconds });
@@ -169,6 +176,10 @@ namespace Onvif.Open.Recorder.Api
 
                 // The user may have been disabled, or changed role, sites or password, since the token was issued.
                 var member = await users.FindMemberAsync(ticket.Principal.FindFirstValue(RecorderClaims.Organization), ticket.Principal.FindFirstValue(ClaimTypes.NameIdentifier), ct);
+                if (member != null && ticket.Principal.HasClaim(c => c.Type == RecorderClaims.SingleSignOn))
+                {
+                    member = await users.WithPolicyAsync(member with { ViaSingleSignOn = true }, ct);
+                }
                 if (member == null || !member.User.Enabled || !string.Equals(member.User.SecurityStamp, ticket.Principal.FindFirstValue(RecorderClaims.SecurityStamp), StringComparison.Ordinal))
                 {
                     return Results.Problem("Sign in again.", statusCode: StatusCodes.Status401Unauthorized);
@@ -186,6 +197,11 @@ namespace Onvif.Open.Recorder.Api
                     return Results.Unauthorized();
                 }
 
+                if (principal.HasClaim(c => c.Type == RecorderClaims.SingleSignOn))
+                {
+                    member = await users.WithPolicyAsync(member with { ViaSingleSignOn = true }, ct);
+                }
+
                 var organization = await tenancy.GetOrganizationAsync(member.Membership.OrganizationId, ct);
                 var dto = ToDto(member);
                 return Results.Ok(new
@@ -200,6 +216,7 @@ namespace Onvif.Open.Recorder.Api
                     mustSetUpTwoFactor = member.MustSetUpTwoFactor,
                     recoveryCodesLeft = TwoFactorService.RecoveryCodesLeft(member.User),
                     dto.lockedUntil,
+                    singleSignOn = member.ViaSingleSignOn,
                     dto.lastLoginAt,
                     dto.createdAt,
                     organization = new { id = organization.Id, name = organization.Name, region = organization.Region, requireTwoFactor = organization.RequireTwoFactor }
@@ -285,7 +302,7 @@ namespace Onvif.Open.Recorder.Api
                 member.Membership.Role,
                 member.Sites,
                 user.Enabled,
-                user.MustChangePassword,
+                user.MustChangePassword && !member.ViaSingleSignOn,
                 TwoFactorStates.Of(user),
                 user.LockedUntil.HasValue && user.LockedUntil.Value > DateTime.UtcNow ? new DateTimeOffset(DateTime.SpecifyKind(user.LockedUntil.Value, DateTimeKind.Utc)) : null,
                 user.LastLoginAt.HasValue ? new DateTimeOffset(DateTime.SpecifyKind(user.LastLoginAt.Value, DateTimeKind.Utc)) : null,

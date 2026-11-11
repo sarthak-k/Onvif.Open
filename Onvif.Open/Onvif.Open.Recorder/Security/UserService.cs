@@ -25,6 +25,9 @@ namespace Onvif.Open.Recorder.Security
 
         /// <summary>The organization requires a second factor and the member has none yet: setting one up comes first.</summary>
         public bool MustSetUpTwoFactor { get; init; }
+
+        /// <summary>Signed in with the organization's identity provider, which takes care of second factors.</summary>
+        public bool ViaSingleSignOn { get; init; }
     }
 
     /// <summary>
@@ -172,6 +175,15 @@ namespace Onvif.Open.Recorder.Security
             await _store.SaveAsync(user, cancellationToken).ConfigureAwait(false);
         }
 
+        /// <summary>A sign-in that succeeded another way (single sign-on): the failures are forgotten.</summary>
+        public async Task RecordSignInAsync(UserRecord user, CancellationToken cancellationToken = default)
+        {
+            user.FailedLogins = 0;
+            user.LockedUntil = null;
+            user.LastLoginAt = _timeProvider.GetUtcNow().UtcDateTime;
+            await _store.SaveAsync(user, cancellationToken).ConfigureAwait(false);
+        }
+
         /// <summary>Whether the account may sign in now (enabled, not locked).</summary>
         public bool CanSignIn(UserRecord user) =>
             user != null && user.Enabled && !(user.LockedUntil.HasValue && user.LockedUntil.Value > _timeProvider.GetUtcNow().UtcDateTime);
@@ -189,7 +201,7 @@ namespace Onvif.Open.Recorder.Security
             }
 
             var organization = await _tenancy.FindOrganizationAsync(member.Membership.OrganizationId, cancellationToken).ConfigureAwait(false);
-            return member with { MustSetUpTwoFactor = organization?.RequireTwoFactor == true && TwoFactorStates.Of(member.User) != TwoFactorStates.On };
+            return member with { MustSetUpTwoFactor = organization?.RequireTwoFactor == true && !member.ViaSingleSignOn && TwoFactorStates.Of(member.User) != TwoFactorStates.On };
         }
 
         /// <summary>
@@ -428,7 +440,8 @@ namespace Onvif.Open.Recorder.Security
                 claims.Add(new Claim(RecorderClaims.Sites, string.Join(' ', member.Sites)));
             }
 
-            if (member.User.MustChangePassword)
+            // A password set by an administrator is not in the way of who signs in with the identity provider.
+            if (member.User.MustChangePassword && !member.ViaSingleSignOn)
             {
                 claims.Add(new Claim(RecorderClaims.MustChangePassword, "true"));
             }
@@ -436,6 +449,11 @@ namespace Onvif.Open.Recorder.Security
             if (member.MustSetUpTwoFactor)
             {
                 claims.Add(new Claim(RecorderClaims.MustSetUpTwoFactor, "true"));
+            }
+
+            if (member.ViaSingleSignOn)
+            {
+                claims.Add(new Claim(RecorderClaims.SingleSignOn, "true"));
             }
 
             return new ClaimsPrincipal(new ClaimsIdentity(claims, authenticationScheme, ClaimTypes.Name, ClaimTypes.Role));
@@ -566,6 +584,12 @@ namespace Onvif.Open.Recorder.Security
 
         /// <summary>Origins of the web application(s) allowed to call the API from a browser (CORS), e.g. "https://cameras.example.com".</summary>
         public List<string> AllowedOrigins { get; set; } = new List<string>();
+
+        /// <summary>
+        /// This recorder's public address, e.g. https://recorder.example.com (what identity providers send people back
+        /// to); empty: the address the request came to.
+        /// </summary>
+        public string PublicUrl { get; set; }
 
         public TimeSpan AccessTokenLifetime { get; set; } = TimeSpan.FromMinutes(15);
         public TimeSpan RefreshTokenLifetime { get; set; } = TimeSpan.FromDays(14);

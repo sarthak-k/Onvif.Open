@@ -75,6 +75,9 @@ namespace Onvif.Open.Recorder.Security
         public const string SecurityStamp = "onvif:stamp";
         public const string MustChangePassword = "onvif:must_change_password";
 
+        /// <summary>Signed in with the organization's identity provider (kept when the session is renewed).</summary>
+        public const string SingleSignOn = "onvif:sso";
+
         /// <summary>The organization requires a second factor the user has not set up: only that is allowed until then.</summary>
         public const string MustSetUpTwoFactor = "onvif:must_set_up_two_factor";
 

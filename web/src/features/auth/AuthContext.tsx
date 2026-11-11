@@ -19,6 +19,8 @@ interface AuthState {
   completeTwoFactor(challenge: string, code: string, keepSignedIn: boolean): Promise<void>;
   /** Turns the user's two-factor sign-in on; returns the recovery codes (shown once). */
   enableTwoFactor(code: string): Promise<string[]>;
+  /** Back from the identity provider with the one-time code. */
+  completeSingleSignOn(code: string): Promise<void>;
   /** The user again, after a change to their account. */
   reload(): Promise<void>;
   signOut(): void;
@@ -84,6 +86,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [api, client],
   );
 
+  const completeSingleSignOn = useCallback(
+    async (code: string) => {
+      await client.completeSingleSignOn(code);
+      setUser(await api.auth.me());
+    },
+    [api, client],
+  );
+
   const reload = useCallback(async () => setUser(await api.auth.me()), [api]);
 
   const changePassword = useCallback(
@@ -115,8 +125,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(() => client.signOut(), [client]);
 
   const value = useMemo(
-    () => ({ user, signIn, completeTwoFactor, enableTwoFactor, reload, signOut, changePassword, completeSetup, startSignup, completeSignup }),
-    [user, signIn, completeTwoFactor, enableTwoFactor, reload, signOut, changePassword, completeSetup, startSignup, completeSignup],
+    () => ({ user, signIn, completeTwoFactor, enableTwoFactor, completeSingleSignOn, reload, signOut, changePassword, completeSetup, startSignup, completeSignup }),
+    [user, signIn, completeTwoFactor, enableTwoFactor, completeSingleSignOn, reload, signOut, changePassword, completeSetup, startSignup, completeSignup],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

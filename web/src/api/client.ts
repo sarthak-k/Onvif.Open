@@ -67,6 +67,16 @@ export class ApiClient {
     this.session.start(await this.http.send<Tokens>({ method: 'POST', path: '/api/signup/verify', body: { token } }), false);
   }
 
+  /** Where the browser goes to sign in with the organization's identity provider; it comes back to /sso. */
+  singleSignOnUrl(email: string, returnTo: string): string {
+    return `${this.http.baseUrl}/api/auth/sso/start?email=${encodeURIComponent(email)}&returnTo=${encodeURIComponent(returnTo)}`;
+  }
+
+  /** Back from the identity provider: the one-time code for the tokens. */
+  async completeSingleSignOn(code: string): Promise<void> {
+    this.session.start(await this.http.send<Tokens>({ method: 'POST', path: '/api/auth/sso/exchange', body: { code } }), false);
+  }
+
   /** A call that needs no session (setup status). */
   anonymous<T>(method: HttpMethod, path: string, body?: unknown): Promise<T> {
     return this.http.send<T>({ method, path, body });

@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { useOrganization, useRenameOrganization, useRequireTwoFactor } from '../../data/tenancy';
 import { CheckboxField, TextField } from '../../shared/form/fields';
+import { SingleSignOnSettings } from './SingleSignOnSettings';
 import { ErrorMessage } from '../../shared/ui/ErrorMessage';
 import { useCan } from '../auth/AuthContext';
 
@@ -12,6 +13,7 @@ export default function OrganizationPage() {
   const rename = useRenameOrganization();
   const requireTwoFactor = useRequireTwoFactor();
   const canRename = useCan('organization.manage');
+  const isAdmin = useCan('settings.manage');
   const [name, setName] = useState('');
 
   useEffect(() => {
@@ -63,6 +65,7 @@ export default function OrganizationPage() {
           <ErrorMessage error={requireTwoFactor.error} />
         </div>
       )}
+      {organization.data && isAdmin && <SingleSignOnSettings canEdit={canRename} />}
     </section>
   );
 }

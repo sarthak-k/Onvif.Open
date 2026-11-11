@@ -30,10 +30,32 @@ export interface Me extends User {
   organization: Organization;
   /** The organization requires a second factor and this user has none yet: they set it up before anything else. */
   mustSetUpTwoFactor?: boolean;
+  /** Signed in with the organization's identity provider. */
+  singleSignOn?: boolean;
   recoveryCodesLeft?: number;
 }
 
 export type TwoFactorState = 'Off' | 'Pending' | 'On';
+
+/** An organization's single sign-on (OpenID Connect); the client secret is never sent back. */
+export interface SsoSettings {
+  enabled: boolean;
+  issuer: string | null;
+  clientId: string | null;
+  hasClientSecret: boolean;
+  /** Email domains whose people sign in this way. */
+  domains: string[];
+  /** Accounts are made at the first sign-in (for those domains), with defaultRole. */
+  autoCreate: boolean;
+  defaultRole: Role;
+  /** Members sign in only this way; owners keep their password. */
+  required: boolean;
+}
+
+export interface SsoRequest extends Omit<SsoSettings, 'hasClientSecret'> {
+  /** Null keeps the stored secret. */
+  clientSecret: string | null;
+}
 
 /** What an authenticator app is set up with: a QR code of the URI, or the secret typed in. */
 export interface TwoFactorSetup {

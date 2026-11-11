@@ -43,9 +43,12 @@ namespace Onvif.Open.Recorder.Store
         public DbSet<AlertRuleRecord> AlertRules => Set<AlertRuleRecord>();
         public DbSet<AlertRecord> Alerts => Set<AlertRecord>();
         public DbSet<SignupRecord> Signups => Set<SignupRecord>();
+        public DbSet<SsoRecord> SingleSignOn => Set<SsoRecord>();
+        public DbSet<SsoDomainRecord> SsoDomains => Set<SsoDomainRecord>();
+        public DbSet<ExternalLoginRecord> ExternalLogins => Set<ExternalLoginRecord>();
 
         /// <summary>Every table of the model, for creating the ones a database lacks.</summary>
-        public static readonly string[] TableNames = { "oo_organizations", "oo_sites", "oo_recording_policies", "oo_cameras", "oo_users", "oo_memberships", "oo_layouts", "oo_plugins", "oo_events", "oo_audit", "oo_gateways", "oo_cases", "oo_case_clips", "oo_exports", "oo_share_links", "oo_alert_rules", "oo_alerts", "oo_signups" };
+        public static readonly string[] TableNames = { "oo_organizations", "oo_sites", "oo_recording_policies", "oo_cameras", "oo_users", "oo_memberships", "oo_layouts", "oo_plugins", "oo_events", "oo_audit", "oo_gateways", "oo_cases", "oo_case_clips", "oo_exports", "oo_share_links", "oo_alert_rules", "oo_alerts", "oo_signups", "oo_sso", "oo_sso_domains", "oo_external_logins" };
 
         #endregion
 
@@ -245,6 +248,38 @@ namespace Onvif.Open.Recorder.Store
                 signup.Property(s => s.TimeZone).HasMaxLength(64).IsRequired();
                 signup.HasIndex(s => s.TokenHash).IsUnique();
                 signup.HasIndex(s => s.Email);
+            });
+
+            modelBuilder.Entity<SsoRecord>(sso =>
+            {
+                sso.ToTable("oo_sso");
+                sso.HasKey(s => s.OrganizationId);
+                sso.Property(s => s.OrganizationId).HasMaxLength(36);
+                sso.Property(s => s.Issuer).HasMaxLength(500);
+                sso.Property(s => s.ClientId).HasMaxLength(200);
+                sso.Property(s => s.ClientSecret).HasMaxLength(2000);
+                sso.Property(s => s.DefaultRole).HasMaxLength(16);
+            });
+
+            modelBuilder.Entity<SsoDomainRecord>(domain =>
+            {
+                domain.ToTable("oo_sso_domains");
+                domain.HasKey(d => d.Domain);
+                domain.Property(d => d.Domain).HasMaxLength(253);
+                domain.Property(d => d.OrganizationId).HasMaxLength(36).IsRequired();
+                domain.HasIndex(d => d.OrganizationId);
+            });
+
+            modelBuilder.Entity<ExternalLoginRecord>(login =>
+            {
+                login.ToTable("oo_external_logins");
+                login.HasKey(l => l.Id);
+                login.Property(l => l.Id).HasMaxLength(36);
+                login.Property(l => l.UserId).HasMaxLength(36).IsRequired();
+                login.Property(l => l.Issuer).HasMaxLength(500).IsRequired();
+                login.Property(l => l.Subject).HasMaxLength(255).IsRequired();
+                login.HasIndex(l => new { l.Issuer, l.Subject }).IsUnique();
+                login.HasIndex(l => l.UserId);
             });
 
             modelBuilder.Entity<AlertRuleRecord>(rule =>
@@ -663,6 +698,50 @@ namespace Onvif.Open.Recorder.Store
         public DateTime ExpiresAt { get; set; }
         public DateTime? RevokedAt { get; set; }
         public int Downloads { get; set; }
+    }
+
+    /// <summary>An organization's single sign-on (OpenID Connect) with its identity provider.</summary>
+    public sealed class SsoRecord
+    {
+        public string OrganizationId { get; set; }
+        public bool Enabled { get; set; }
+
+        /// <summary>The provider's issuer, e.g. https://login.microsoftonline.com/{tenant}/v2.0 (its discovery document is below it).</summary>
+        public string Issuer { get; set; }
+
+        public string ClientId { get; set; }
+
+        /// <summary>Encrypted (Data Protection).</summary>
+        public string ClientSecret { get; set; }
+
+        /// <summary>Accounts are created at the first sign-in (with <see cref="DefaultRole"/>) for emails of the organization's domains.</summary>
+        public bool AutoCreate { get; set; }
+
+        public string DefaultRole { get; set; }
+
+        /// <summary>Members sign in only with it; owners keep their password, to get back in if the provider fails.</summary>
+        public bool Required { get; set; }
+
+        public DateTime UpdatedAt { get; set; }
+    }
+
+    /// <summary>An email domain whose people sign in with an organization's single sign-on; one organization each.</summary>
+    public sealed class SsoDomainRecord
+    {
+        /// <summary>Lower case, e.g. "riverside-shops.com".</summary>
+        public string Domain { get; set; }
+
+        public string OrganizationId { get; set; }
+    }
+
+    /// <summary>A user's account at an identity provider (its issuer and subject), linked at their first single sign-on.</summary>
+    public sealed class ExternalLoginRecord
+    {
+        public string Id { get; set; }
+        public string UserId { get; set; }
+        public string Issuer { get; set; }
+        public string Subject { get; set; }
+        public DateTime CreatedAt { get; set; }
     }
 
     /// <summary>A sign-up waiting for its email to be confirmed (cloud); the organization is created once it is.</summary>

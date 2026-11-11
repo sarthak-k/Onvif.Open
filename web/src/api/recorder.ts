@@ -1,5 +1,5 @@
 import type { ApiClient } from './client';
-import type { PtzPreset, PtzStatus, PtzVector, Alert, AlertRule, AlertRuleRequest, AlertSummary, DeliveryResult, CameraConfig, CameraStatus, DiscoveredDevice, AuditEntry, AuditQuery, ShareLink, VideoExport, Case, CaseClip, CaseRequest, CaseStatus, ClipRequest, EventQuery, RecordingSegment, StoredEvent, Gateway, GatewayRequest, Layout, LayoutRequest, Me, Organization, ProbeResult, RecordingPolicy, RecordingPolicyRequest, SetupStatus, CloudInfo, TwoFactorSetup, Site, SiteRequest, User, UserRequest } from './types';
+import type { PtzPreset, PtzStatus, PtzVector, Alert, AlertRule, AlertRuleRequest, AlertSummary, DeliveryResult, CameraConfig, CameraStatus, DiscoveredDevice, AuditEntry, AuditQuery, ShareLink, VideoExport, Case, CaseClip, CaseRequest, CaseStatus, ClipRequest, EventQuery, RecordingSegment, StoredEvent, Gateway, GatewayRequest, Layout, LayoutRequest, Me, Organization, ProbeResult, RecordingPolicy, RecordingPolicyRequest, SetupStatus, CloudInfo, TwoFactorSetup, SsoRequest, SsoSettings, Site, SiteRequest, User, UserRequest } from './types';
 
 // The recorder's API by area. Pages depend on these interfaces, not on HTTP, so tests and later back ends can
 // provide their own implementation (dependency inversion, interface segregation).
@@ -8,6 +8,8 @@ export interface AuthApi {
   me(): Promise<Me>;
   /** The user's own authenticator app. */
   twoFactor: TwoFactorApi;
+  /** Whether people with this email sign in with their organization's identity provider (no sign-in needed). */
+  singleSignOn(email: string): Promise<{ available: boolean }>;
 }
 
 export interface TwoFactorApi {
@@ -31,6 +33,9 @@ export interface OrganizationApi {
   rename(name: string): Promise<Organization>;
   /** Owners: whether every member signs in with a second factor. */
   requireTwoFactor(required: boolean): Promise<Organization>;
+  /** Organization administrators see it, owners change it. */
+  singleSignOn(): Promise<SsoSettings>;
+  saveSingleSignOn(settings: SsoRequest): Promise<SsoSettings>;
 }
 
 export interface SitesApi {
@@ -222,6 +227,7 @@ export function createRecorderApi(client: ApiClient): RecorderApi {
         disable: (password, code) => client.post('/api/auth/two-factor/disable', { password, code }),
         newRecoveryCodes: (code) => client.post('/api/auth/two-factor/recovery-codes', { code }),
       },
+      singleSignOn: (email) => client.anonymous('GET', `/api/auth/sso?email=${encodeURIComponent(email)}`),
     },
     setup: {
       status: () => client.anonymous('GET', '/api/setup'),
@@ -231,6 +237,8 @@ export function createRecorderApi(client: ApiClient): RecorderApi {
       get: () => client.get('/api/organization'),
       rename: (name) => client.put('/api/organization', { name }),
       requireTwoFactor: (required) => client.put('/api/organization', { requireTwoFactor: required }),
+      singleSignOn: () => client.get('/api/organization/sso'),
+      saveSingleSignOn: (settings) => client.put('/api/organization/sso', settings),
     },
     sites: {
       list: () => client.get('/api/sites'),
