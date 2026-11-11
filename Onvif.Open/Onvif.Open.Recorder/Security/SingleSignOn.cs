@@ -24,10 +24,43 @@ using Onvif.Open.Recorder.Tenancy;
 
 namespace Onvif.Open.Recorder.Security
 {
+    public static class SsoProtocols
+    {
+        public const string Oidc = "Oidc";
+        public const string Saml = "Saml";
+
+        public static string Normalize(string protocol) =>
+            protocol == null || string.Equals(protocol, Oidc, StringComparison.OrdinalIgnoreCase) ? Oidc
+            : string.Equals(protocol, Saml, StringComparison.OrdinalIgnoreCase) ? Saml
+            : null;
+    }
+
+    /// <summary>This recorder's own addresses for single sign-on (they depend on where it is reached).</summary>
+    /// <param name="OidcCallback">Where OpenID Connect providers send people back.</param>
+    /// <param name="SamlAcs">Where SAML providers post their responses (Assertion Consumer Service).</param>
+    /// <param name="SamlEntityId">This recorder's SAML entity ID (its metadata address).</param>
+    public sealed record SsoAddresses(string OidcCallback, string SamlAcs, string SamlEntityId);
+
     /// <summary>What an organization's single sign-on is set to (the client secret is never returned).</summary>
     public sealed class SsoSettings
     {
         public bool Enabled { get; set; }
+
+        /// <summary>See <see cref="SsoProtocols"/>.</summary>
+        public string Protocol { get; set; } = SsoProtocols.Oidc;
+
+        /// <summary>SAML: the provider's entity ID.</summary>
+        public string SamlEntityId { get; set; }
+
+        /// <summary>SAML: the provider's sign-in address.</summary>
+        public string SamlSsoUrl { get; set; }
+
+        /// <summary>SAML: the provider's signing certificate (PEM or base64).</summary>
+        public string SamlCertificate { get; set; }
+
+        /// <summary>SAML: who the certificate is for, and until when (read from it).</summary>
+        public string SamlCertificateSubject { get; set; }
+        public DateTime? SamlCertificateExpires { get; set; }
         public string Issuer { get; set; }
         public string ClientId { get; set; }
 
@@ -57,7 +90,8 @@ namespace Onvif.Open.Recorder.Security
     }
 
     /// <summary>Where a sign-in started: the browser goes there, then comes back to the web app.</summary>
-    public sealed record SsoStart(string AuthorizationUrl, string Binding);
+    /// <param name="CrossSite">The answer comes back as a cross-site POST (SAML): the browser cookie must be SameSite=None.</param>
+    public sealed record SsoStart(string AuthorizationUrl, string Binding, bool CrossSite = false);
 
     /// <summary>
     /// Single sign-on with OpenID Connect, one identity provider per organization, found by the email's domain. The
@@ -130,9 +164,13 @@ namespace Onvif.Open.Recorder.Security
                 var domains = await db.SsoDomains.AsNoTracking().Where(d => d.OrganizationId == organizationId).Select(d => d.Domain).OrderBy(d => d).ToListAsync(cancellationToken).ConfigureAwait(false);
                 return record == null
                     ? new SsoSettings { Domains = domains }
-                    : new SsoSettings
+                    : WithCertificate(new SsoSettings
                     {
                         Enabled = record.Enabled,
+                        Protocol = SsoProtocols.Normalize(record.Protocol) ?? SsoProtocols.Oidc,
+                        SamlEntityId = record.SamlEntityId,
+                        SamlSsoUrl = record.SamlSsoUrl,
+                        SamlCertificate = record.SamlCertificate,
                         Issuer = record.Issuer,
                         ClientId = record.ClientId,
                         HasClientSecret = !string.IsNullOrEmpty(record.ClientSecret),
@@ -140,8 +178,20 @@ namespace Onvif.Open.Recorder.Security
                         AutoCreate = record.AutoCreate,
                         DefaultRole = record.DefaultRole ?? Roles.Viewer,
                         Required = record.Required
-                    };
+                    });
             }
+        }
+
+        private static SsoSettings WithCertificate(SsoSettings settings)
+        {
+            if (!string.IsNullOrEmpty(settings.SamlCertificate))
+            {
+                using var certificate = Saml.ReadCertificate(settings.SamlCertificate);
+                settings.SamlCertificateSubject = certificate.Subject;
+                settings.SamlCertificateExpires = certificate.NotAfter.ToUniversalTime();
+            }
+
+            return settings;
         }
 
         public async Task<ServiceResult<SsoSettings>> SaveAsync(string organizationId, SsoSettings request, CancellationToken cancellationToken = default)
@@ -155,8 +205,46 @@ namespace Onvif.Open.Recorder.Security
             var issuer = request.Issuer?.Trim().TrimEnd('/');
             var domains = (request.Domains ?? new List<string>()).Select(d => d?.Trim().TrimStart('@').ToLowerInvariant()).Where(d => !string.IsNullOrEmpty(d)).Distinct().ToList();
             var role = Roles.All.FirstOrDefault(r => string.Equals(r, request.DefaultRole, StringComparison.OrdinalIgnoreCase)) ?? (request.DefaultRole == null ? Roles.Viewer : null);
+            var protocol = SsoProtocols.Normalize(request.Protocol);
+            var saml = protocol == SsoProtocols.Saml;
+            string certificate = null;
 
-            if (request.Enabled || !string.IsNullOrEmpty(issuer))
+            if (protocol == null)
+            {
+                errors.Add("Protocol is Oidc (OpenID Connect) or Saml.");
+            }
+
+            if (saml && request.Enabled)
+            {
+                if (string.IsNullOrWhiteSpace(request.SamlEntityId))
+                {
+                    errors.Add("The provider's entity ID is required (from its SAML metadata).");
+                }
+
+                if (!Uri.TryCreate(request.SamlSsoUrl?.Trim(), UriKind.Absolute, out var ssoUri) || (ssoUri.Scheme != Uri.UriSchemeHttps && (_http.RequireHttps || ssoUri.Scheme != Uri.UriSchemeHttp)))
+                {
+                    errors.Add("The provider's sign-in address must be https (its SingleSignOnService, HTTP-Redirect binding).");
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.SamlCertificate))
+            {
+                try
+                {
+                    using var parsed = Saml.ReadCertificate(request.SamlCertificate);
+                    certificate = Convert.ToBase64String(parsed.RawData);
+                }
+                catch (Exception ex) when (ex is FormatException || ex is CryptographicException)
+                {
+                    errors.Add("The signing certificate is not a certificate (paste it as PEM, or base64 as in the metadata).");
+                }
+            }
+            else if (saml && request.Enabled)
+            {
+                errors.Add("The provider's signing certificate is required.");
+            }
+
+            if (!saml && (request.Enabled || !string.IsNullOrEmpty(issuer)))
             {
                 if (!Uri.TryCreate(issuer, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttps && (_http.RequireHttps || uri.Scheme != Uri.UriSchemeHttp)) || !string.IsNullOrEmpty(uri.Query))
                 {
@@ -164,7 +252,7 @@ namespace Onvif.Open.Recorder.Security
                 }
             }
 
-            if (request.Enabled && string.IsNullOrWhiteSpace(request.ClientId))
+            if (!saml && request.Enabled && string.IsNullOrWhiteSpace(request.ClientId))
             {
                 errors.Add("Client ID is required.");
             }
@@ -202,7 +290,7 @@ namespace Onvif.Open.Recorder.Security
 
                     var record = await db.SingleSignOn.FirstOrDefaultAsync(s => s.OrganizationId == organizationId, cancellationToken).ConfigureAwait(false);
                     var secret = request.ClientSecret == null ? record?.ClientSecret : request.ClientSecret.Length == 0 ? null : _secrets.Protect(request.ClientSecret);
-                    if (request.Enabled && secret == null)
+                    if (!saml && request.Enabled && secret == null)
                     {
                         errors.Add("Client secret is required.");
                     }
@@ -219,6 +307,10 @@ namespace Onvif.Open.Recorder.Security
                     }
 
                     record.Enabled = request.Enabled;
+                    record.Protocol = protocol;
+                    record.SamlEntityId = request.SamlEntityId?.Trim();
+                    record.SamlSsoUrl = request.SamlSsoUrl?.Trim();
+                    record.SamlCertificate = certificate;
                     record.Issuer = string.IsNullOrEmpty(issuer) ? null : issuer;
                     record.ClientId = request.ClientId?.Trim();
                     record.ClientSecret = secret;
@@ -263,7 +355,7 @@ namespace Onvif.Open.Recorder.Security
             await FindByEmailAsync(email, cancellationToken).ConfigureAwait(false) != null;
 
         /// <summary>The provider's sign-in page for this email; null when its domain has no single sign-on.</summary>
-        public async Task<SsoStart> StartAsync(string email, string redirectUri, string returnTo, CancellationToken cancellationToken = default)
+        public async Task<SsoStart> StartAsync(string email, SsoAddresses addresses, string returnTo, CancellationToken cancellationToken = default)
         {
             var sso = await FindByEmailAsync(email, cancellationToken).ConfigureAwait(false);
             if (sso == null)
@@ -271,11 +363,22 @@ namespace Onvif.Open.Recorder.Security
                 return null;
             }
 
+            var redirectUri = addresses.OidcCallback;
+            var expires = (_timeProvider.GetUtcNow() + StateLifetime).ToUnixTimeSeconds();
+            if (SsoProtocols.Normalize(sso.Protocol) == SsoProtocols.Saml)
+            {
+                // The request's id goes in the state (the response must answer it); the state is the RelayState.
+                var samlBinding = Random(32);
+                var requestId = Saml.NewRequestId();
+                var relay = _states.Protect(JsonSerializer.Serialize(new State(sso.OrganizationId, requestId, null, returnTo, Hash(samlBinding), expires)));
+                return new SsoStart(Saml.CreateRequest(sso.SamlSsoUrl, requestId, addresses.SamlEntityId, addresses.SamlAcs, relay, _timeProvider.GetUtcNow(), email.Trim()), samlBinding, CrossSite: true);
+            }
+
             var provider = await ConfigurationOf(sso.Issuer).GetConfigurationAsync(cancellationToken).ConfigureAwait(false);
             var binding = Random(32);
             var verifier = Random(32);
             var nonce = Random(16);
-            var state = _states.Protect(JsonSerializer.Serialize(new State(sso.OrganizationId, nonce, verifier, returnTo, Hash(binding), (_timeProvider.GetUtcNow() + StateLifetime).ToUnixTimeSeconds())));
+            var state = _states.Protect(JsonSerializer.Serialize(new State(sso.OrganizationId, nonce, verifier, returnTo, Hash(binding), expires)));
 
             var query = new Dictionary<string, string>
             {
@@ -294,10 +397,79 @@ namespace Onvif.Open.Recorder.Security
         }
 
         /// <summary>
-        /// The provider's answer: on success the web app address with a one-time code for the tokens, else with the
-        /// reason. Null when the state is not one this recorder made for this browser (nowhere safe to send it back).
+        /// The OpenID Connect provider's answer: on success the web app address with a one-time code for the tokens,
+        /// else with the reason. Null address when the state is not one this recorder made for this browser (nowhere
+        /// safe to send it back).
         /// </summary>
-        public async Task<(string ReturnTo, string Code, string Error, Member Member)> CompleteAsync(string code, string stateText, string error, string binding, string redirectUri, CancellationToken cancellationToken = default)
+        public async Task<(string ReturnTo, string Code, string Error, Member Member)> CompleteAsync(string code, string stateText, string error, string binding, SsoAddresses addresses, CancellationToken cancellationToken = default)
+        {
+            var (state, sso, problem) = await OpenAsync(stateText, binding, cancellationToken).ConfigureAwait(false);
+            if (state == null || problem != null)
+            {
+                return (state?.ReturnTo, null, problem, null);
+            }
+
+            if (!string.IsNullOrEmpty(error) || string.IsNullOrEmpty(code))
+            {
+                return (state.ReturnTo, null, "The identity provider did not sign you in" + (string.IsNullOrEmpty(error) ? "." : $" ({Truncate(error, 100)})."), null);
+            }
+
+            JsonWebToken identity;
+            try
+            {
+                identity = await RedeemAsync(sso, code, state, addresses.OidcCallback, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is HttpRequestException || ex is SecurityTokenException || ex is InvalidOperationException || ex is JsonException || ex is TaskCanceledException || ex is ArgumentException)
+            {
+                _logger?.LogWarning(ex, "Single sign-on with {Issuer} failed", sso.Issuer);
+                return (state.ReturnTo, null, "The identity provider's answer could not be used: try again, or ask an administrator.", null);
+            }
+
+            identity.TryGetPayloadValue<string>("email", out var email);
+            var verified = identity.TryGetPayloadValue<bool>("email_verified", out var flag) && flag;
+            return await FinishAsync(state, sso, identity.Issuer, identity.Subject, email, verified, cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>The SAML provider's posted response (RelayState is the state), as <see cref="CompleteAsync"/>.</summary>
+        public async Task<(string ReturnTo, string Code, string Error, Member Member)> CompleteSamlAsync(string samlResponse, string relayState, string binding, SsoAddresses addresses, CancellationToken cancellationToken = default)
+        {
+            var (state, sso, problem) = await OpenAsync(relayState, binding, cancellationToken).ConfigureAwait(false);
+            if (state == null || problem != null)
+            {
+                return (state?.ReturnTo, null, problem, null);
+            }
+
+            if (SsoProtocols.Normalize(sso.Protocol) != SsoProtocols.Saml || string.IsNullOrEmpty(sso.SamlCertificate))
+            {
+                return (state.ReturnTo, null, "Your organization does not sign in with SAML any more: try again.", null);
+            }
+
+            SamlIdentity identity;
+            try
+            {
+                using var certificate = Saml.ReadCertificate(sso.SamlCertificate);
+                identity = Saml.Validate(samlResponse, certificate, sso.SamlEntityId, addresses.SamlEntityId, addresses.SamlAcs, state.Nonce, _timeProvider.GetUtcNow());
+            }
+            catch (SamlException ex)
+            {
+                _logger?.LogWarning("SAML sign-in with {Provider} refused: {Reason}", sso.SamlEntityId, ex.Message);
+                return (state.ReturnTo, null, $"The identity provider's answer could not be used ({ex.Message}).", null);
+            }
+
+            // SAML has no "verified" flag: the provider vouches for the emails of the organization's own domains.
+            var email = identity.Email?.Trim();
+            var domain = email?.Contains('@') == true ? email.Substring(email.LastIndexOf('@') + 1).ToLowerInvariant() : null;
+            bool ours;
+            await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
+            {
+                ours = domain != null && await db.SsoDomains.AnyAsync(d => d.Domain == domain && d.OrganizationId == sso.OrganizationId, cancellationToken).ConfigureAwait(false);
+            }
+
+            return await FinishAsync(state, sso, identity.Issuer, identity.NameId, email, ours, cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>The state, if this recorder made it for this browser and it is current, with its organization's single sign-on.</summary>
+        private async Task<(State State, SsoRecord Sso, string Problem)> OpenAsync(string stateText, string binding, CancellationToken cancellationToken)
         {
             State state;
             try
@@ -311,42 +483,25 @@ namespace Onvif.Open.Recorder.Security
 
             if (state == null || string.IsNullOrEmpty(binding) || !CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(state.BindingHash), Encoding.ASCII.GetBytes(Hash(binding))))
             {
-                return (null, null, null, null);
+                return (null, null, null);
             }
 
             if (_timeProvider.GetUtcNow().ToUnixTimeSeconds() >= state.Expires)
             {
-                return (state.ReturnTo, null, "Signing in took too long: try again.", null);
+                return (state, null, "Signing in took too long: try again.");
             }
 
-            if (!string.IsNullOrEmpty(error) || string.IsNullOrEmpty(code))
-            {
-                return (state.ReturnTo, null, "The identity provider did not sign you in" + (string.IsNullOrEmpty(error) ? "." : $" ({Truncate(error, 100)})."), null);
-            }
-
-            SsoRecord sso;
             await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
             {
-                sso = await db.SingleSignOn.AsNoTracking().FirstOrDefaultAsync(s => s.OrganizationId == state.OrganizationId && s.Enabled, cancellationToken).ConfigureAwait(false);
+                var sso = await db.SingleSignOn.AsNoTracking().FirstOrDefaultAsync(s => s.OrganizationId == state.OrganizationId && s.Enabled, cancellationToken).ConfigureAwait(false);
+                return (state, sso, sso == null ? "Single sign-on is off for your organization." : null);
             }
+        }
 
-            if (sso == null)
-            {
-                return (state.ReturnTo, null, "Single sign-on is off for your organization.", null);
-            }
-
-            JsonWebToken identity;
-            try
-            {
-                identity = await RedeemAsync(sso, code, state, redirectUri, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is HttpRequestException || ex is SecurityTokenException || ex is InvalidOperationException || ex is JsonException || ex is TaskCanceledException || ex is ArgumentException)
-            {
-                _logger?.LogWarning(ex, "Single sign-on with {Issuer} failed", sso.Issuer);
-                return (state.ReturnTo, null, "The identity provider's answer could not be used: try again, or ask an administrator.", null);
-            }
-
-            var member = await ResolveAsync(sso, identity, cancellationToken).ConfigureAwait(false);
+        /// <summary>The member for the provider's identity, and the one-time code for the web app.</summary>
+        private async Task<(string ReturnTo, string Code, string Error, Member Member)> FinishAsync(State state, SsoRecord sso, string issuer, string subject, string email, bool verified, CancellationToken cancellationToken)
+        {
+            var member = await ResolveAsync(sso, issuer, subject, email, verified, cancellationToken).ConfigureAwait(false);
             if (member.Error != null)
             {
                 return (state.ReturnTo, null, member.Error, null);
@@ -458,12 +613,8 @@ namespace Onvif.Open.Recorder.Security
         }
 
         /// <summary>The member the provider vouched for: linked before, the one with that email, or a new one.</summary>
-        private async Task<(Member Member, string Error)> ResolveAsync(SsoRecord sso, JsonWebToken identity, CancellationToken cancellationToken)
+        private async Task<(Member Member, string Error)> ResolveAsync(SsoRecord sso, string issuer, string subject, string email, bool verified, CancellationToken cancellationToken)
         {
-            var issuer = identity.Issuer;
-            var subject = identity.Subject;
-            identity.TryGetPayloadValue<string>("email", out var email);
-            var verified = identity.TryGetPayloadValue<bool>("email_verified", out var flag) ? flag : false;
             email = email?.Trim();
             if (string.IsNullOrEmpty(subject))
             {

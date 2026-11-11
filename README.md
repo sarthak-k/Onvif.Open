@@ -497,6 +497,14 @@ POST /api/auth/refresh  { "refreshToken": "..." }   → new tokens
     fails. Sessions from the provider skip the organization's own two-factor and temporary-password steps (the
     provider has its own).
   * In the cloud, providers are reached only on the internet (the camera network rule).
+  * **SAML 2.0** instead (*Protocol* in the same settings), for providers such as AD FS: the provider's entity ID,
+    sign-in address (HTTP-Redirect binding) and signing certificate (PEM, or base64 as in its metadata). Add this
+    recorder there from `https://<recorder>/api/auth/sso/saml/metadata` (its entity ID is that address; responses are
+    posted to `/api/auth/sso/saml/acs`). The response must hold one unencrypted assertion, signed (or in a signed
+    response) by that certificate with SHA-256 or stronger; the signed element is the one read (signature wrapping
+    fails), and its issuer, audience, recipient, request id and time are checked. The email is the NameID or an email
+    attribute, and only emails of the organization's domains are linked or made. Sign-ins started at the provider are
+    not supported, and SAML needs HTTPS (the browser's cookie for the round trip must be `SameSite=None; Secure`).
 * Video players and downloads that cannot send a header may pass the token as `?access_token=` on video requests only
   (playlists, segments, clips, snapshots, exports); playlists then carry it to their segments. Prefer the header
   (hls.js: `xhrSetup`).
