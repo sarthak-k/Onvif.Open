@@ -100,7 +100,7 @@ namespace Onvif.Open.Recorder.Tunnel
             var camera = services.GetRequiredService<CameraDirectory>().Find(cameraId);
             var local = services.GetRequiredService<GatewayService>().Local?.Id;
             var recordedHere = camera != null && services.GetRequiredService<Onvif.Open.Core.Abstract.Interface.Recording.IRecordingManager>().GetStatus().Any(s => string.Equals(s.CameraId, camera.Id, StringComparison.OrdinalIgnoreCase));
-            return camera?.GatewayId != null && local != null && !recordedHere && !string.Equals(camera.GatewayId, local, StringComparison.OrdinalIgnoreCase) ? camera : null;
+            return camera?.GatewayId != null && !recordedHere && !string.Equals(camera.GatewayId, local, StringComparison.OrdinalIgnoreCase) ? camera : null;
         }
 
         /// <summary>POST /api/config/cameras/test?gatewayId=…: the organization's gateway to test from, when it is not this recorder.</summary>

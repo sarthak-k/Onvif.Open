@@ -87,6 +87,11 @@ namespace Onvif.Open.Recorder.Configuration
 
                     camera.GatewayId = requested;
                 }
+                else if (local == null)
+                {
+                    // The cloud records nothing itself.
+                    return ConfigurationResult.Invalid(new[] { "Choose the gateway that records the camera: at its site, or one in the cloud." });
+                }
 
                 var (policy, errors) = await PrepareAsync(organizationId, camera, cancellationToken).ConfigureAwait(false);
                 if (errors.Count > 0)

@@ -42,9 +42,10 @@ namespace Onvif.Open.Recorder.Store
         public DbSet<ShareLinkRecord> ShareLinks => Set<ShareLinkRecord>();
         public DbSet<AlertRuleRecord> AlertRules => Set<AlertRuleRecord>();
         public DbSet<AlertRecord> Alerts => Set<AlertRecord>();
+        public DbSet<SignupRecord> Signups => Set<SignupRecord>();
 
         /// <summary>Every table of the model, for creating the ones a database lacks.</summary>
-        public static readonly string[] TableNames = { "oo_organizations", "oo_sites", "oo_recording_policies", "oo_cameras", "oo_users", "oo_memberships", "oo_layouts", "oo_plugins", "oo_events", "oo_audit", "oo_gateways", "oo_cases", "oo_case_clips", "oo_exports", "oo_share_links", "oo_alert_rules", "oo_alerts" };
+        public static readonly string[] TableNames = { "oo_organizations", "oo_sites", "oo_recording_policies", "oo_cameras", "oo_users", "oo_memberships", "oo_layouts", "oo_plugins", "oo_events", "oo_audit", "oo_gateways", "oo_cases", "oo_case_clips", "oo_exports", "oo_share_links", "oo_alert_rules", "oo_alerts", "oo_signups" };
 
         #endregion
 
@@ -227,6 +228,20 @@ namespace Onvif.Open.Recorder.Store
                 link.Property(l => l.CreatedByName).HasMaxLength(100);
                 link.HasIndex(l => l.TokenHash).IsUnique();
                 link.HasIndex(l => l.ExportId);
+            });
+
+            modelBuilder.Entity<SignupRecord>(signup =>
+            {
+                signup.ToTable("oo_signups");
+                signup.HasKey(s => s.Id);
+                signup.Property(s => s.Id).HasMaxLength(36);
+                signup.Property(s => s.TokenHash).HasMaxLength(64).IsRequired();
+                signup.Property(s => s.Email).HasMaxLength(64).IsRequired();
+                signup.Property(s => s.OrganizationName).HasMaxLength(100).IsRequired();
+                signup.Property(s => s.SiteName).HasMaxLength(100).IsRequired();
+                signup.Property(s => s.TimeZone).HasMaxLength(64).IsRequired();
+                signup.HasIndex(s => s.TokenHash).IsUnique();
+                signup.HasIndex(s => s.Email);
             });
 
             modelBuilder.Entity<AlertRuleRecord>(rule =>
@@ -622,6 +637,26 @@ namespace Onvif.Open.Recorder.Store
         public DateTime ExpiresAt { get; set; }
         public DateTime? RevokedAt { get; set; }
         public int Downloads { get; set; }
+    }
+
+    /// <summary>A sign-up waiting for its email to be confirmed (cloud); the organization is created once it is.</summary>
+    public sealed class SignupRecord
+    {
+        public string Id { get; set; }
+
+        /// <summary>SHA-256 of the token in the emailed link (the token itself is never stored).</summary>
+        public string TokenHash { get; set; }
+
+        public string Email { get; set; }
+
+        /// <summary>The password chosen, encrypted with a key that expires with the sign-up.</summary>
+        public string Password { get; set; }
+
+        public string OrganizationName { get; set; }
+        public string SiteName { get; set; }
+        public string TimeZone { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime ExpiresAt { get; set; }
     }
 
     /// <summary>When to raise an alert and whom to tell (see Alerts.AlertRule).</summary>

@@ -8,7 +8,7 @@ interface TextFieldProps extends InputProps {
   label: string;
   value: string;
   onChange(value: string): void;
-  type?: 'text' | 'password' | 'url';
+  type?: 'text' | 'password' | 'url' | 'email';
 }
 
 export function TextField({ label, value, onChange, type = 'text', ...input }: TextFieldProps) {

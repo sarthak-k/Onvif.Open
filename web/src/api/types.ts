@@ -51,6 +51,24 @@ export interface SetupStatus {
   regions: { id: Region; name: string }[];
 }
 
+/** A cloud deployment: the region it keeps data in, and where the others are. Not the cloud: enabled is false. */
+export interface CloudInfo {
+  enabled: boolean;
+  region: Region | null;
+  /** Whether people can sign up here themselves. */
+  signup: boolean;
+  regions: { id: Region; name: string; webUrl: string }[] | null;
+}
+
+/** Self-service sign-up: the account is the email, verified by a link before anything exists. */
+export interface SignupRequest {
+  email: string;
+  password: string;
+  organizationName: string;
+  siteName: string;
+  timeZone: string;
+}
+
 export interface SetupRequest {
   organizationName: string;
   region: Region;

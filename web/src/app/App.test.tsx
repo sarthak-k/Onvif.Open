@@ -10,7 +10,7 @@ describe('App', () => {
     const fail = () => Promise.reject(new Error('not used'));
     const api: RecorderApi = {
       auth: { me: async () => admin },
-      setup: { status: fail },
+      setup: { status: fail, cloud: fail },
       organization: { get: fail, rename: fail },
       sites: { list: async () => [], create: fail, update: fail, remove: fail },
       policies: { list: fail, create: fail, update: fail, remove: fail },

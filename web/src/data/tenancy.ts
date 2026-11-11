@@ -8,6 +8,12 @@ export function useSetupStatus() {
   return useQuery({ queryKey: queryKeys.setup, queryFn: api.setup.status, staleTime: 0 });
 }
 
+/** The cloud deployment this is (if any): its region and whether people can sign up. */
+export function useCloud() {
+  const api = useApi();
+  return useQuery({ queryKey: queryKeys.cloud, queryFn: api.setup.cloud, staleTime: Infinity });
+}
+
 export function useOrganization() {
   const api = useApi();
   return useQuery({ queryKey: queryKeys.organization, queryFn: api.organization.get });

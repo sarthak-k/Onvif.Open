@@ -14,6 +14,7 @@ export const queryKeys = {
     all: ['layouts'] as const,
   },
   setup: ['setup'] as const,
+  cloud: ['cloud'] as const,
   organization: ['organization'] as const,
   sites: ['sites'] as const,
   policies: ['recording-policies'] as const,

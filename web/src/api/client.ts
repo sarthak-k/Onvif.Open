@@ -2,7 +2,7 @@ import { isUnauthorized } from './errors';
 import { HttpTransport, type HttpMethod } from './http';
 import { Session } from './session';
 import { browserTokenStorage, type TokenStorage } from './tokenStorage';
-import type { SetupRequest, Tokens } from './types';
+import type { SetupRequest, SignupRequest, Tokens } from './types';
 
 export { ApiError } from './errors';
 export type { TokenStorage } from './tokenStorage';
@@ -46,6 +46,16 @@ export class ApiClient {
   /** First-run setup: creates the organization and its owner, and signs the owner in. */
   async completeSetup(request: SetupRequest): Promise<void> {
     this.session.start(await this.http.send<Tokens>({ method: 'POST', path: '/api/setup', body: request }), false);
+  }
+
+  /** Cloud sign-up: emails a link; nothing exists until it is opened. */
+  async startSignup(request: SignupRequest): Promise<void> {
+    await this.http.send({ method: 'POST', path: '/api/signup', body: request });
+  }
+
+  /** Opens the emailed link: creates the organization and its owner, and signs the owner in. */
+  async completeSignup(token: string): Promise<void> {
+    this.session.start(await this.http.send<Tokens>({ method: 'POST', path: '/api/signup/verify', body: { token } }), false);
   }
 
   /** A call that needs no session (setup status). */
