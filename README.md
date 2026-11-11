@@ -416,6 +416,50 @@ without a gateway, and there is no first-run setup.
   cameras. Cameras of a cloud gateway are checked when they are saved too. Alert webhooks get the same rule in the
   cloud. Keep the network rules of the platform as well (e.g. no route from the gateways to the metadata service).
 
+**Plans and billing** (`Billing`, off by default). Plans are tiers by how many cameras an organization records and how
+much video it keeps. They live in the database (`oo_plans`): the record of what was sold, at what price, to whom.
+The configuration only seeds it on first start, a code already there is never overwritten (these prices are
+examples):
+
+```json
+"Billing": {
+  "Enabled": true,
+  "Currency": "USD",
+  "TrialPlan": "trial",
+  "TrialDays": 14,
+  "OperatorOrganizationId": "<the organization that runs the service>",
+  "Plans": [
+    { "Id": "trial", "Name": "Trial", "Cameras": 2, "StorageGB": 50, "MonthlyPrice": 0 },
+    { "Id": "starter", "Name": "Starter", "Cameras": 4, "StorageGB": 500, "MonthlyPrice": 29, "ProviderPriceId": "price_..." },
+    { "Id": "business", "Name": "Business", "Cameras": 16, "StorageGB": 4000, "MonthlyPrice": 149, "ProviderPriceId": "price_..." },
+    { "Id": "enterprise", "Name": "Enterprise", "Cameras": 0, "StorageGB": 0, "MonthlyPrice": 499, "ProviderPriceId": "price_..." }
+  ],
+  "Stripe": { "SecretKey": "sk_...", "WebhookSecret": "whsec_..." },
+  "SalesEmail": "sales@example.com"
+}
+```
+
+* **Settings › Plans** (owners of `OperatorOrganizationId` only; `/api/billing/plans`): every plan and version, with
+  how many organizations are on it. Changing a plan's name or order changes it in place; changing its price or
+  limits does too while nobody is on it, otherwise it makes a new version (same code) for new customers while the
+  organizations on the old one keep it as they bought it. *Retire* stops offering a plan (never the trial); nothing is
+  deleted. Every change is in the operator's audit log with the plan before and after (`billing.plan_*`).
+* `Cameras` and `StorageGB` of 0 mean no limit. New organizations try the active `TrialPlan` for `TrialDays`
+  (organizations made before billing was turned on start it when they first look). The settings are checked at
+  startup, and the trial plan must exist then.
+* Settings › Billing (administrators see it, owners choose): the plan and its state, cameras and recorded video
+  (what the organization's gateways report) against the plan, and the plans with their prices. Owners pay at Stripe
+  (`ProviderPriceId` is each plan's recurring price there): Checkout for the first subscription, the customer portal
+  for changing plans, invoices and the card. Without `Stripe`, a plan shows `SalesEmail` instead.
+* Stripe's webhooks keep the subscription here: point an endpoint at `https://<recorder>/api/billing/webhook` with
+  `checkout.session.completed`, `customer.subscription.created/updated/deleted` and `invoice.payment_failed`; they
+  are checked against `WebhookSecret` (at most 5 minutes old). The plan follows the subscription's price (a retired
+  version's price still finds it).
+* A subscription is *Trialing*, *Active*, *PastDue* (a payment failed) or *Canceled* (ended, or the trial ran out);
+  administrators see a banner on every page when it needs them. A plan's cameras, or an ended subscription, stop new
+  cameras from being added (402); recording never stops for billing, and using more video than the plan includes is
+  shown, not enforced.
+
 Camera ids are UUIDs assigned by the recorder, so recordings
 never depend on a name someone typed; names can change at any time. Bring the database you use (EF Core; the `oo_*`
 tables are created on first start, also inside an existing database, and tables added by later versions are created

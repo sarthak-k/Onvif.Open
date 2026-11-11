@@ -30,6 +30,7 @@ namespace Onvif.Open.Recorder.Audit
         public const string Export = "export";
         public const string AlertRule = "alert_rule";
         public const string Alert = "alert";
+        public const string Plan = "plan";
     }
 
     /// <summary>

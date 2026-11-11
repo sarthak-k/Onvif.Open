@@ -1,5 +1,5 @@
 import type { ApiClient } from './client';
-import type { PtzPreset, PtzStatus, PtzVector, Alert, AlertRule, AlertRuleRequest, AlertSummary, DeliveryResult, CameraConfig, CameraStatus, DiscoveredDevice, AuditEntry, AuditQuery, ShareLink, VideoExport, Case, CaseClip, CaseRequest, CaseStatus, ClipRequest, EventQuery, RecordingSegment, StoredEvent, Gateway, GatewayRequest, Layout, LayoutRequest, Me, Organization, ProbeResult, RecordingPolicy, RecordingPolicyRequest, SetupStatus, CloudInfo, TwoFactorSetup, SsoRequest, SsoSettings, Site, SiteRequest, User, UserRequest } from './types';
+import type { PtzPreset, PtzStatus, PtzVector, Alert, AlertRule, AlertRuleRequest, AlertSummary, DeliveryResult, CameraConfig, CameraStatus, DiscoveredDevice, AuditEntry, AuditQuery, ShareLink, VideoExport, Case, CaseClip, CaseRequest, CaseStatus, ClipRequest, EventQuery, RecordingSegment, StoredEvent, Gateway, GatewayRequest, Layout, LayoutRequest, Me, Organization, ProbeResult, RecordingPolicy, RecordingPolicyRequest, SetupStatus, CloudInfo, TwoFactorSetup, BillingStatus, ManagedPlan, PlanRequest, SsoRequest, SsoSettings, Site, SiteRequest, User, UserRequest } from './types';
 
 // The recorder's API by area. Pages depend on these interfaces, not on HTTP, so tests and later back ends can
 // provide their own implementation (dependency inversion, interface segregation).
@@ -70,6 +70,21 @@ export interface RecordingApi {
   segments(cameraId: string, from: Date, to: Date): Promise<RecordingSegment[]>;
   start(cameraId: string): Promise<void>;
   stop(cameraId: string): Promise<void>;
+}
+
+export interface BillingApi {
+  /** Organization administrators. */
+  get(): Promise<BillingStatus>;
+  /** Owners: the payment provider's checkout page for a plan, coming back to returnUrl. */
+  checkout(planId: string, returnUrl: string): Promise<{ url: string }>;
+  /** Owners: the provider's page for the subscription, invoices and card. */
+  portal(returnUrl: string): Promise<{ url: string }>;
+  /** The operator's owners: every plan, every version. */
+  plans(): Promise<ManagedPlan[]>;
+  createPlan(plan: PlanRequest): Promise<ManagedPlan>;
+  /** A new price or limits for a plan organizations are on make a new version; they keep the old one. */
+  updatePlan(planId: string, plan: PlanRequest): Promise<ManagedPlan>;
+  retirePlan(planId: string): Promise<ManagedPlan>;
 }
 
 export interface UsersApi {
@@ -201,6 +216,7 @@ export interface RecorderApi {
   alertRules: AlertRulesApi;
   alerts: AlertsApi;
   ptz: PtzApi;
+  billing: BillingApi;
 }
 
 const segment = encodeURIComponent;
@@ -346,6 +362,15 @@ export function createRecorderApi(client: ApiClient): RecorderApi {
       createCloud: (name) => client.post('/api/gateways/cloud', { name }),
       start: (id) => client.post(`/api/gateways/${segment(id)}/start`),
       controlPlaneUrl: () => new URL(client.baseUrl || '/', window.location.origin).toString().replace(/\/$/, ''),
+    },
+    billing: {
+      get: () => client.get('/api/billing'),
+      checkout: (planId, returnUrl) => client.post('/api/billing/checkout', { planId, returnUrl }),
+      portal: (returnUrl) => client.post('/api/billing/portal', { returnUrl }),
+      plans: () => client.get('/api/billing/plans'),
+      createPlan: (plan) => client.post('/api/billing/plans', plan),
+      updatePlan: (id, plan) => client.put(`/api/billing/plans/${segment(id)}`, plan),
+      retirePlan: (id) => client.post(`/api/billing/plans/${segment(id)}/retire`),
     },
   };
 }

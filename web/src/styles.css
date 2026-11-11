@@ -265,3 +265,10 @@ a.event-card { color: inherit; text-decoration: none; border: 1px solid var(--bo
 .qr { background: #fff; padding: 8px; border-radius: var(--radius); align-self: flex-start; }
 .codes { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(2, max-content); gap: 6px 24px; }
 .codes code, .secret { font-size: 1.05em; letter-spacing: 0.04em; }
+
+/* Billing */
+.plans { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--gap); }
+.plans .current { border-color: var(--accent, #2563eb); }
+.plans .price { font-size: 1.25em; font-weight: 600; margin: 0; }
+.stack.tight { gap: 4px; }
+progress { width: 100%; height: 8px; }

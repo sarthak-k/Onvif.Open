@@ -71,6 +71,19 @@ if (cloud.Check() is { Count: > 0 } cloudErrors)
 }
 
 builder.Services.AddSingleton(cloud);
+
+// Billing: plans and their prices are configuration ("Billing"); paying goes through Stripe when it is set up.
+var billing = builder.Configuration.GetSection(Onvif.Open.Recorder.Billing.BillingOptions.SectionName).Get<Onvif.Open.Recorder.Billing.BillingOptions>() ?? new Onvif.Open.Recorder.Billing.BillingOptions();
+if (billing.Check() is { Count: > 0 } billingErrors)
+{
+    throw new InvalidOperationException("The billing settings are not valid: " + string.Join(" ", billingErrors));
+}
+
+builder.Services.AddSingleton(billing);
+builder.Services.AddSingleton<Onvif.Open.Recorder.Billing.IBillingProvider>(_ => new Onvif.Open.Recorder.Billing.StripeBilling(billing, new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(30) }));
+builder.Services.AddSingleton<Onvif.Open.Recorder.Billing.PlanService>();
+builder.Services.AddSingleton<Onvif.Open.Recorder.Billing.BillingService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<Onvif.Open.Recorder.Billing.BillingService>());
 builder.Services.AddSingleton<Onvif.Open.Recorder.Mail.IMailSender>(sp => new Onvif.Open.Recorder.Mail.SmtpMailSender(
     sp.GetRequiredService<IConfiguration>().GetSection(Onvif.Open.Recorder.Alerts.SmtpOptions.SectionName).Get<Onvif.Open.Recorder.Alerts.SmtpOptions>()));
 builder.Services.AddSingleton<SignupService>();
@@ -281,6 +294,7 @@ app.MapAlertApi();
 app.MapTunnelApi();
 app.MapSignupApi();
 app.MapSsoApi();
+app.MapBillingApi();
 
 if (Onvif.Open.Core.Networking.CameraNetwork.IsRestricted)
 {

@@ -37,6 +37,7 @@ namespace Onvif.Open.Test.Recording.Unit
             Of(TunnelStates.Machine),
             Of(CloudGatewayStates.Machine),
             Of(Onvif.Open.Recorder.Security.TwoFactorStates.Machine),
+            Of(Onvif.Open.Recorder.Billing.SubscriptionStates.Machine),
         };
 
         private static (string, string) Of<T>(StateMachine<T> machine) where T : notnull => (machine.Name, machine.ToMermaid());

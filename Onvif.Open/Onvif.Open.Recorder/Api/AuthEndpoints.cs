@@ -189,7 +189,7 @@ namespace Onvif.Open.Recorder.Api
             }).AllowAnonymous().RequireRateLimiting(SecurityConfiguration.SignInLimit);
 
             // The signed-in user, their role and sites, and their organization.
-            auth.MapGet("/me", async (ClaimsPrincipal principal, UserService users, Tenancy.TenancyService tenancy, CancellationToken ct) =>
+            auth.MapGet("/me", async (ClaimsPrincipal principal, UserService users, Tenancy.TenancyService tenancy, Billing.BillingService billing, CancellationToken ct) =>
             {
                 var member = await users.FindMemberAsync(principal.FindFirstValue(RecorderClaims.Organization), principal.FindFirstValue(ClaimTypes.NameIdentifier), ct);
                 if (member == null)
@@ -219,7 +219,15 @@ namespace Onvif.Open.Recorder.Api
                     singleSignOn = member.ViaSingleSignOn,
                     dto.lastLoginAt,
                     dto.createdAt,
-                    organization = new { id = organization.Id, name = organization.Name, region = organization.Region, requireTwoFactor = organization.RequireTwoFactor }
+                    organization = new
+                    {
+                        id = organization.Id,
+                        name = organization.Name,
+                        region = organization.Region,
+                        requireTwoFactor = organization.RequireTwoFactor,
+                        billingOperator = billing.IsOperator(organization.Id),
+                        subscription = organization.SubscriptionState == null ? null : new { state = organization.SubscriptionState.ToString(), trialEndsAt = organization.TrialEndsAt is DateTime trial ? DateTime.SpecifyKind(trial, DateTimeKind.Utc) : (DateTime?)null }
+                    }
                 });
             }).RequireAuthorization(Policies.SignedIn);
 

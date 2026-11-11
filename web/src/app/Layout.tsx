@@ -5,6 +5,7 @@ import { can } from '../features/auth/permissions';
 import { ErrorBoundary } from '../shared/ui/ErrorBoundary';
 import { useDesktopNotifications } from '../features/alerts/useDesktopNotifications';
 import { navItems } from './routes';
+import { SubscriptionBanner } from '../features/settings/SubscriptionBanner';
 
 export function Layout() {
   const user = useUser();
@@ -37,6 +38,7 @@ export function Layout() {
         </button>
       </header>
       <main className="content">
+        <SubscriptionBanner user={user} />
         <ErrorBoundary resetKey={pathname}>
           <Suspense fallback={<p className="loading">Loading…</p>}>
             <Outlet />

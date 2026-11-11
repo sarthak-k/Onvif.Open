@@ -32,6 +32,7 @@ state through the table, tests check the code against it, and the diagrams below
 | [Gateway tunnel](#gateway-tunnel) | Backend | `Onvif.Open.Recorder/Gateways/ControlPlaneClient.cs` (`TunnelStates.Machine`) | `ControlPlaneClient` (its tunnel loop) | gateways' status (online) at the control plane |
 | [Cloud gateway](#cloud-gateway) | Backend | `Onvif.Open.Recorder/Gateways/CloudGateways.cs` (`CloudGatewayStates.Machine`, stored as `HostState`) | `CloudGateways` (create, start again, heartbeat, start timeout) | `GET /api/gateways` `hosting.state`; Settings › Gateways |
 | [Two-factor sign-in](#two-factor-sign-in) | Backend | `Onvif.Open.Recorder/Security/TwoFactor.cs` (`TwoFactorStates.Machine`, stored as `TwoFactorState`) | `TwoFactorService` (setup, enable, disable, reset) | `GET /api/auth/me` and `GET /api/users` `twoFactor`; Account, Users |
+| [Subscription](#subscription) | Backend | `Onvif.Open.Recorder/Billing/BillingService.cs` (`SubscriptionStates.Machine`, stored as `SubscriptionState`) | `BillingService` (trial start and end, the payment provider's webhooks) | `GET /api/billing` `state`; Settings › Billing |
 | [Session](#session) | Web | `web/src/features/auth/session.ts` (`sessionMachine`, `sessionOf`) | `AuthContext` holds it; `RequireAuth` routes on it | sign-in, password change, sign-out |
 | [Sign-in steps](#sign-in-steps) | Web | `web/src/features/auth/signInSteps.ts` (`signInSteps`) | `LoginPage` (moves through the table) | Sign in: password, then the app's code; or single sign-on |
 | [Two-factor setup](#two-factor-setup) | Web | `web/src/features/auth/twoFactorSetup.ts` (`twoFactorSetupSteps`) | `TwoFactorSetup` (moves through the table) | Account › Two-factor sign-in; the required setup page |
@@ -214,6 +215,24 @@ stateDiagram-v2
     Pending --> On : a code from the app was entered
     Pending --> Off : an administrator reset it
     On --> Off : turned off, or reset by an administrator
+```
+<!-- /machine -->
+
+### Subscription
+
+An organization's plan where billing is on: it tries the trial plan, then pays at the payment provider, whose webhooks move it (they can come twice or out of order: a move the table does not have is skipped). Recording never stops for billing; an ended subscription adds no cameras.
+
+<!-- machine: Subscription -->
+```mermaid
+stateDiagram-v2
+    [*] --> Trialing
+    Trialing --> Active : paid for a plan
+    Trialing --> Canceled : the trial ended unpaid
+    Active --> PastDue : a payment failed
+    PastDue --> Active : paid
+    PastDue --> Canceled : unpaid for too long, or canceled
+    Active --> Canceled : canceled
+    Canceled --> Active : subscribed again
 ```
 <!-- /machine -->
 

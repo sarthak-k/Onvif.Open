@@ -46,9 +46,10 @@ namespace Onvif.Open.Recorder.Store
         public DbSet<SsoRecord> SingleSignOn => Set<SsoRecord>();
         public DbSet<SsoDomainRecord> SsoDomains => Set<SsoDomainRecord>();
         public DbSet<ExternalLoginRecord> ExternalLogins => Set<ExternalLoginRecord>();
+        public DbSet<PlanRecord> Plans => Set<PlanRecord>();
 
         /// <summary>Every table of the model, for creating the ones a database lacks.</summary>
-        public static readonly string[] TableNames = { "oo_organizations", "oo_sites", "oo_recording_policies", "oo_cameras", "oo_users", "oo_memberships", "oo_layouts", "oo_plugins", "oo_events", "oo_audit", "oo_gateways", "oo_cases", "oo_case_clips", "oo_exports", "oo_share_links", "oo_alert_rules", "oo_alerts", "oo_signups", "oo_sso", "oo_sso_domains", "oo_external_logins" };
+        public static readonly string[] TableNames = { "oo_organizations", "oo_sites", "oo_recording_policies", "oo_cameras", "oo_users", "oo_memberships", "oo_layouts", "oo_plugins", "oo_events", "oo_audit", "oo_gateways", "oo_cases", "oo_case_clips", "oo_exports", "oo_share_links", "oo_alert_rules", "oo_alerts", "oo_signups", "oo_sso", "oo_sso_domains", "oo_external_logins", "oo_plans" };
 
         #endregion
 
@@ -63,6 +64,12 @@ namespace Onvif.Open.Recorder.Store
                 organization.Property(o => o.Id).HasMaxLength(36);
                 organization.Property(o => o.Name).HasMaxLength(100).IsRequired();
                 organization.Property(o => o.Region).HasMaxLength(16).IsRequired();
+                organization.Property(o => o.PlanId).HasMaxLength(36);
+                organization.HasIndex(o => o.PlanId);
+                organization.Property(o => o.SubscriptionState).HasConversion<string>().HasMaxLength(16);
+                organization.Property(o => o.BillingCustomerId).HasMaxLength(100);
+                organization.Property(o => o.BillingSubscriptionId).HasMaxLength(100);
+                organization.HasIndex(o => o.BillingCustomerId);
             });
 
             modelBuilder.Entity<SiteRecord>(site =>
@@ -250,6 +257,20 @@ namespace Onvif.Open.Recorder.Store
                 signup.HasIndex(s => s.Email);
             });
 
+            modelBuilder.Entity<PlanRecord>(plan =>
+            {
+                plan.ToTable("oo_plans");
+                plan.HasKey(p => p.Id);
+                plan.Property(p => p.Id).HasMaxLength(36);
+                plan.Property(p => p.Code).HasMaxLength(32).IsRequired();
+                plan.Property(p => p.Name).HasMaxLength(100).IsRequired();
+                plan.Property(p => p.MonthlyPrice).HasPrecision(18, 2);
+                plan.Property(p => p.ProviderPriceId).HasMaxLength(100);
+                plan.Property(p => p.ReplacedById).HasMaxLength(36);
+                plan.HasIndex(p => new { p.Code, p.Version }).IsUnique();
+                plan.HasIndex(p => p.ProviderPriceId);
+            });
+
             modelBuilder.Entity<SsoRecord>(sso =>
             {
                 sso.ToTable("oo_sso");
@@ -360,6 +381,21 @@ namespace Onvif.Open.Recorder.Store
 
         /// <summary>Every member signs in with a second factor; those without one set it up before anything else.</summary>
         public bool RequireTwoFactor { get; set; }
+
+        /// <summary>Billing: the plan (a row of oo_plans, kept when the plan is retired or changed); null where billing is off.</summary>
+        public string PlanId { get; set; }
+
+        /// <summary>Billing: where the subscription stands (stored by name); null where billing is off.</summary>
+        public Billing.SubscriptionState? SubscriptionState { get; set; }
+
+        public DateTime? TrialEndsAt { get; set; }
+
+        /// <summary>Billing: paid until (from the payment provider).</summary>
+        public DateTime? CurrentPeriodEnd { get; set; }
+
+        /// <summary>The payment provider's customer and subscription.</summary>
+        public string BillingCustomerId { get; set; }
+        public string BillingSubscriptionId { get; set; }
 
         public DateTime CreatedAt { get; set; }
     }
@@ -702,6 +738,44 @@ namespace Onvif.Open.Recorder.Store
         public DateTime ExpiresAt { get; set; }
         public DateTime? RevokedAt { get; set; }
         public int Downloads { get; set; }
+    }
+
+    /// <summary>
+    /// A plan as sold at one time: what it includes and costs. A plan whose price or limits change while organizations
+    /// are on it gets a new version (same <see cref="Code"/>); the old one is retired and they keep it.
+    /// </summary>
+    public sealed class PlanRecord
+    {
+        public string Id { get; set; }
+
+        /// <summary>The plan across its versions, e.g. "starter".</summary>
+        public string Code { get; set; }
+
+        public int Version { get; set; }
+        public string Name { get; set; }
+
+        /// <summary>How many cameras it records; 0: no limit.</summary>
+        public int Cameras { get; set; }
+
+        /// <summary>How much recorded video it keeps, in GB; 0: no limit.</summary>
+        public double StorageGB { get; set; }
+
+        public decimal MonthlyPrice { get; set; }
+
+        /// <summary>The payment provider's recurring price (Stripe: price_...).</summary>
+        public string ProviderPriceId { get; set; }
+
+        /// <summary>Offered to new subscriptions; retired plans stay with the organizations on them.</summary>
+        public bool Active { get; set; }
+
+        public int SortOrder { get; set; }
+
+        /// <summary>The version that replaced this one.</summary>
+        public string ReplacedById { get; set; }
+
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
+        public DateTime? RetiredAt { get; set; }
     }
 
     /// <summary>An organization's single sign-on (OpenID Connect) with its identity provider.</summary>

@@ -127,7 +127,8 @@ namespace Onvif.Open.Recorder.Store
                 ("oo_signups", ct => db.Signups.AnyAsync(ct)),
                 ("oo_sso", ct => db.SingleSignOn.AnyAsync(ct)),
                 ("oo_sso_domains", ct => db.SsoDomains.AnyAsync(ct)),
-                ("oo_external_logins", ct => db.ExternalLogins.AnyAsync(ct))
+                ("oo_external_logins", ct => db.ExternalLogins.AnyAsync(ct)),
+                ("oo_plans", ct => db.Plans.AnyAsync(ct))
             };
             var missing = new List<string>();
 

@@ -19,6 +19,12 @@ namespace Onvif.Open.Recorder.Audit
         public const string RecoveryCodes = "auth.recovery_codes";
         public const string TwoFactorReset = "user.two_factor_reset";
         public const string OrganizationSso = "organization.sso";
+        public const string BillingCheckout = "billing.checkout";
+        public const string BillingChange = "billing.change";
+        public const string PlanCreate = "billing.plan_create";
+        public const string PlanUpdate = "billing.plan_update";
+        public const string PlanVersion = "billing.plan_version";
+        public const string PlanRetire = "billing.plan_retire";
 
         public const string UserCreate = "user.create";
         public const string UserUpdate = "user.update";
