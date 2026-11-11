@@ -64,7 +64,7 @@ namespace Onvif.Open.Recorder.Store
                 organization.Property(o => o.Name).HasMaxLength(100).IsRequired();
                 organization.Property(o => o.Region).HasMaxLength(16).IsRequired();
                 organization.Property(o => o.PlanId).HasMaxLength(32);
-                organization.Property(o => o.SubscriptionState).HasMaxLength(16);
+                organization.Property(o => o.SubscriptionState).HasConversion<string>().HasMaxLength(16);
                 organization.Property(o => o.BillingCustomerId).HasMaxLength(100);
                 organization.Property(o => o.BillingSubscriptionId).HasMaxLength(100);
                 organization.HasIndex(o => o.BillingCustomerId);
@@ -369,8 +369,8 @@ namespace Onvif.Open.Recorder.Store
         /// <summary>Billing: the plan (an id of "Billing:Plans"); null where billing is off.</summary>
         public string PlanId { get; set; }
 
-        /// <summary>Billing: see Billing.SubscriptionStates.</summary>
-        public string SubscriptionState { get; set; }
+        /// <summary>Billing: where the subscription stands (stored by name); null where billing is off.</summary>
+        public Billing.SubscriptionState? SubscriptionState { get; set; }
 
         public DateTime? TrialEndsAt { get; set; }
 

@@ -12,7 +12,7 @@ namespace Onvif.Open.Recorder.Billing
 {
     /// <summary>What the payment provider said happened, in this recorder's terms.</summary>
     /// <param name="State">The subscription's state now (<see cref="SubscriptionStates"/>), when the event says.</param>
-    public sealed record BillingEvent(string Id, string Kind, string OrganizationId, string CustomerId, string SubscriptionId, string PriceId, string PlanId, string State, DateTime? PeriodEnd);
+    public sealed record BillingEvent(string Id, string Kind, string OrganizationId, string CustomerId, string SubscriptionId, string PriceId, string PlanId, SubscriptionState? State, DateTime? PeriodEnd);
 
     public static class BillingEventKinds
     {
@@ -114,7 +114,7 @@ namespace Onvif.Open.Recorder.Billing
                         StateOf(status), end is DateTime at && at > DateTime.UnixEpoch ? DateTime.SpecifyKind(at, DateTimeKind.Utc) : null);
 
                 case Stripe.Invoice invoice when stripeEvent.Type == Stripe.EventTypes.InvoicePaymentFailed:
-                    return new BillingEvent(stripeEvent.Id, BillingEventKinds.PaymentFailed, null, invoice.CustomerId, invoice.Parent?.SubscriptionDetails?.SubscriptionId, null, null, SubscriptionStates.PastDue, null);
+                    return new BillingEvent(stripeEvent.Id, BillingEventKinds.PaymentFailed, null, invoice.CustomerId, invoice.Parent?.SubscriptionDetails?.SubscriptionId, null, null, SubscriptionState.PastDue, null);
 
                 default:
                     return null;
@@ -122,11 +122,11 @@ namespace Onvif.Open.Recorder.Billing
         }
 
         /// <summary>Stripe's subscription status as this recorder's state; null for ones that change nothing (incomplete).</summary>
-        public static string StateOf(string status) => status switch
+        public static SubscriptionState? StateOf(string status) => status switch
         {
-            "active" or "trialing" => SubscriptionStates.Active,
-            "past_due" or "unpaid" => SubscriptionStates.PastDue,
-            "canceled" or "incomplete_expired" => SubscriptionStates.Canceled,
+            "active" or "trialing" => SubscriptionState.Active,
+            "past_due" or "unpaid" => SubscriptionState.PastDue,
+            "canceled" or "incomplete_expired" => SubscriptionState.Canceled,
             _ => null
         };
 

@@ -14,24 +14,31 @@ using Onvif.Open.Recorder.Tenancy;
 
 namespace Onvif.Open.Recorder.Billing
 {
-    /// <summary>Where an organization's subscription stands (stored as <see cref="OrganizationRecord.SubscriptionState"/>).</summary>
+    /// <summary>
+    /// Where an organization's subscription stands. Stored by name (<see cref="OrganizationRecord.SubscriptionState"/>)
+    /// and sent by name: adding one is compatible, renaming one is not.
+    /// </summary>
+    public enum SubscriptionState
+    {
+        Trialing,
+        Active,
+        PastDue,
+        Canceled
+    }
+
+    /// <summary>The subscription's lifecycle (docs/STATE-MACHINES.md).</summary>
     public static class SubscriptionStates
     {
-        public const string Trialing = "Trialing";
-        public const string Active = "Active";
-        public const string PastDue = "PastDue";
-        public const string Canceled = "Canceled";
-
-        public static Onvif.Open.Core.StateMachines.StateMachine<string> Machine { get; } = new Onvif.Open.Core.StateMachines.StateMachine<string>(
+        public static Onvif.Open.Core.StateMachines.StateMachine<SubscriptionState> Machine { get; } = new Onvif.Open.Core.StateMachines.StateMachine<SubscriptionState>(
             "Subscription",
-            Trialing,
-            (Trialing, Active, "paid for a plan"),
-            (Trialing, Canceled, "the trial ended unpaid"),
-            (Active, PastDue, "a payment failed"),
-            (PastDue, Active, "paid"),
-            (PastDue, Canceled, "unpaid for too long, or canceled"),
-            (Active, Canceled, "canceled"),
-            (Canceled, Active, "subscribed again"));
+            SubscriptionState.Trialing,
+            (SubscriptionState.Trialing, SubscriptionState.Active, "paid for a plan"),
+            (SubscriptionState.Trialing, SubscriptionState.Canceled, "the trial ended unpaid"),
+            (SubscriptionState.Active, SubscriptionState.PastDue, "a payment failed"),
+            (SubscriptionState.PastDue, SubscriptionState.Active, "paid"),
+            (SubscriptionState.PastDue, SubscriptionState.Canceled, "unpaid for too long, or canceled"),
+            (SubscriptionState.Active, SubscriptionState.Canceled, "canceled"),
+            (SubscriptionState.Canceled, SubscriptionState.Active, "subscribed again"));
     }
 
     /// <summary>What an organization uses of its plan.</summary>
@@ -116,7 +123,7 @@ namespace Onvif.Open.Recorder.Billing
                 return null;
             }
 
-            if (status.Organization.SubscriptionState == SubscriptionStates.Canceled)
+            if (status.Organization.SubscriptionState == SubscriptionState.Canceled)
             {
                 return "Your subscription has ended: choose a plan (Settings › Billing) to add cameras. Cameras you have keep recording.";
             }
@@ -141,7 +148,7 @@ namespace Onvif.Open.Recorder.Billing
             }
 
             var organization = await EnsureAsync(organizationId, cancellationToken).ConfigureAwait(false);
-            if (organization.BillingSubscriptionId != null && organization.SubscriptionState is SubscriptionStates.Active or SubscriptionStates.PastDue)
+            if (organization.BillingSubscriptionId != null && organization.SubscriptionState is SubscriptionState.Active or SubscriptionState.PastDue)
             {
                 return ServiceResult<string>.Conflict("You have a subscription: change its plan in Manage billing.");
             }
@@ -191,13 +198,13 @@ namespace Onvif.Open.Recorder.Billing
                     organization.PlanId = plan?.Id ?? organization.PlanId;
                     organization.CurrentPeriodEnd = change.PeriodEnd ?? organization.CurrentPeriodEnd;
 
-                    var to = change.Kind == BillingEventKinds.CheckoutCompleted ? SubscriptionStates.Active : change.State;
+                    var to = change.Kind == BillingEventKinds.CheckoutCompleted ? SubscriptionState.Active : change.State;
                     var from = organization.SubscriptionState ?? SubscriptionStates.Machine.Initial;
-                    if (to != null && to != from)
+                    if (to is SubscriptionState next && next != from)
                     {
-                        if (SubscriptionStates.Machine.CanMove(from, to))
+                        if (SubscriptionStates.Machine.CanMove(from, next))
                         {
-                            organization.SubscriptionState = SubscriptionStates.Machine.Move(from, to);
+                            organization.SubscriptionState = SubscriptionStates.Machine.Move(from, next);
                         }
                         else
                         {
@@ -222,10 +229,10 @@ namespace Onvif.Open.Recorder.Billing
             var now = Now;
             await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
             {
-                var ended = await db.Organizations.Where(o => o.SubscriptionState == SubscriptionStates.Trialing && o.TrialEndsAt != null && o.TrialEndsAt <= now).ToListAsync(cancellationToken).ConfigureAwait(false);
+                var ended = await db.Organizations.Where(o => o.SubscriptionState == SubscriptionState.Trialing && o.TrialEndsAt != null && o.TrialEndsAt <= now).ToListAsync(cancellationToken).ConfigureAwait(false);
                 foreach (var organization in ended)
                 {
-                    organization.SubscriptionState = SubscriptionStates.Machine.Move(SubscriptionStates.Trialing, SubscriptionStates.Canceled);
+                    organization.SubscriptionState = SubscriptionStates.Machine.Move(SubscriptionState.Trialing, SubscriptionState.Canceled);
                 }
 
                 await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);

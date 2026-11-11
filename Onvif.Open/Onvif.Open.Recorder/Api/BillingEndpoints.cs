@@ -82,7 +82,7 @@ namespace Onvif.Open.Recorder.Api
                     var changed = await service.HandleWebhookAsync(payload, http.Request.Headers["Stripe-Signature"].ToString(), ct);
                     if (changed != null)
                     {
-                        audit.Record(http, (Member)null, changed.Id, "payment provider", AuditActions.BillingChange, new { plan = changed.PlanId, state = changed.SubscriptionState });
+                        audit.Record(http, (Member)null, changed.Id, "payment provider", AuditActions.BillingChange, new { plan = changed.PlanId, state = changed.SubscriptionState?.ToString() });
                     }
 
                     return Results.Ok();
@@ -110,7 +110,7 @@ namespace Onvif.Open.Recorder.Api
                 enabled = true,
                 currency = options.Currency,
                 plan = status.Plan == null ? null : ToDto(status.Plan),
-                state = organization.SubscriptionState,
+                state = organization.SubscriptionState?.ToString(),
                 trialEndsAt = Utc(organization.TrialEndsAt),
                 currentPeriodEnd = Utc(organization.CurrentPeriodEnd),
                 usage = new { cameras = status.Usage.Cameras, storageBytes = status.Usage.StorageBytes },

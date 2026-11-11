@@ -225,7 +225,7 @@ namespace Onvif.Open.Recorder.Api
                         name = organization.Name,
                         region = organization.Region,
                         requireTwoFactor = organization.RequireTwoFactor,
-                        subscription = organization.SubscriptionState == null ? null : new { state = organization.SubscriptionState, trialEndsAt = organization.TrialEndsAt is DateTime trial ? DateTime.SpecifyKind(trial, DateTimeKind.Utc) : (DateTime?)null }
+                        subscription = organization.SubscriptionState == null ? null : new { state = organization.SubscriptionState.ToString(), trialEndsAt = organization.TrialEndsAt is DateTime trial ? DateTime.SpecifyKind(trial, DateTimeKind.Utc) : (DateTime?)null }
                     }
                 });
             }).RequireAuthorization(Policies.SignedIn);
