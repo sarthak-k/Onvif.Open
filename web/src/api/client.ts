@@ -2,7 +2,7 @@ import { isUnauthorized } from './errors';
 import { HttpTransport, type HttpMethod } from './http';
 import { Session } from './session';
 import { browserTokenStorage, type TokenStorage } from './tokenStorage';
-import type { SetupRequest, SignupRequest, Tokens } from './types';
+import type { SetupRequest, SignInStep, SignupRequest, Tokens } from './types';
 
 export { ApiError } from './errors';
 export type { TokenStorage } from './tokenStorage';
@@ -39,8 +39,17 @@ export class ApiClient {
     return this.session.onEnded(listener);
   }
 
-  async signIn(userName: string, password: string, persistent: boolean): Promise<void> {
-    this.session.start(await this.http.send<Tokens>({ method: 'POST', path: '/api/auth/login', body: { userName, password } }), persistent);
+  /** Signed in, or (two-factor sign-in on) a challenge for {@link completeTwoFactor}. */
+  async signIn(userName: string, password: string, persistent: boolean): Promise<SignInStep | null> {
+    const answer = await this.http.send<Tokens | SignInStep>({ method: 'POST', path: '/api/auth/login', body: { userName, password } });
+    if ('twoFactorRequired' in answer) return answer;
+    this.session.start(answer, persistent);
+    return null;
+  }
+
+  /** The second step: the app's code (or a recovery code) for the challenge the password got. */
+  async completeTwoFactor(challenge: string, code: string, persistent: boolean): Promise<void> {
+    this.session.start(await this.http.send<Tokens>({ method: 'POST', path: '/api/auth/login/two-factor', body: { challenge, code } }), persistent);
   }
 
   /** First-run setup: creates the organization and its owner, and signs the owner in. */

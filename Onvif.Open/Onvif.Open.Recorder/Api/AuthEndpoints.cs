@@ -29,6 +29,26 @@ namespace Onvif.Open.Recorder.Api
             public string Password { get; set; }
         }
 
+        public sealed class TwoFactorSignInRequest
+        {
+            /// <summary>From the answer to the password.</summary>
+            public string Challenge { get; set; }
+
+            /// <summary>The app's 6 digits, or a recovery code.</summary>
+            public string Code { get; set; }
+        }
+
+        public sealed class CodeRequest
+        {
+            public string Code { get; set; }
+        }
+
+        public sealed class DisableTwoFactorRequest
+        {
+            public string Password { get; set; }
+            public string Code { get; set; }
+        }
+
         public sealed class RefreshRequest
         {
             public string RefreshToken { get; set; }
@@ -60,9 +80,14 @@ namespace Onvif.Open.Recorder.Api
             var auth = app.MapGroup("/api/auth");
 
             // { "tokenType": "Bearer", "accessToken": "...", "expiresIn": 900, "refreshToken": "..." }
-            auth.MapPost("/login", async (SignInRequest request, UserService users, AuditLog audit, HttpContext http, CancellationToken ct) =>
+            // With two-factor sign-in on: { "twoFactorRequired": true, "challenge": "...", "expiresIn": 300 }, then the code.
+            auth.MapPost("/login", async (SignInRequest request, UserService users, TwoFactorService twoFactor, AuditLog audit, HttpContext http, CancellationToken ct) =>
             {
                 var member = await users.SignInAsync(request?.UserName, request?.Password, ct);
+                if (member != null && TwoFactorService.IsRequiredAtSignIn(member.User))
+                {
+                    return Results.Ok(new { twoFactorRequired = true, challenge = twoFactor.CreateChallenge(member.User), expiresIn = (int)TwoFactorService.ChallengeLifetime.TotalSeconds });
+                }
 
                 // A failed sign-in of a known user goes to that user's organization; unknown names are kept without one.
                 var known = member == null ? await users.FindByNameAsync(request?.UserName, ct) : null;
@@ -72,6 +97,66 @@ namespace Onvif.Open.Recorder.Api
                     ? Results.Problem("Wrong user name or password, or the account is disabled or locked for a few minutes.", statusCode: StatusCodes.Status401Unauthorized)
                     : SignIn(member);
             }).AllowAnonymous().RequireRateLimiting(SecurityConfiguration.SignInLimit);
+
+            auth.MapPost("/login/two-factor", async (TwoFactorSignInRequest request, TwoFactorService twoFactor, UserService users, AuditLog audit, HttpContext http, CancellationToken ct) =>
+            {
+                var (member, user) = await twoFactor.CompleteSignInAsync(request?.Challenge, request?.Code, ct);
+                if (member == null)
+                {
+                    var organizationId = user == null ? null : (await users.FindHomeMembershipAsync(user.Id, ct))?.OrganizationId;
+                    audit.Record(http, (Member)null, organizationId, user?.UserName, AuditActions.SignInFailed, new { twoFactor = true });
+                    return Results.Problem("That code is not right, or it took too long: try again, or sign in again.", statusCode: StatusCodes.Status401Unauthorized);
+                }
+
+                audit.Record(http, member, null, null, AuditActions.SignIn, new { twoFactor = true });
+                return SignIn(member);
+            }).AllowAnonymous().RequireRateLimiting(SecurityConfiguration.SignInLimit);
+
+            // The user's own second factor. Signed-in policy: who must set it up can.
+            var twoFactorApi = auth.MapGroup("/two-factor").RequireAuthorization(Policies.SignedIn);
+
+            twoFactorApi.MapPost("/setup", async (ClaimsPrincipal principal, TwoFactorService twoFactor, CancellationToken ct) =>
+                TenancyEndpoints.ToResult(await twoFactor.BeginSetupAsync(principal.FindFirstValue(ClaimTypes.NameIdentifier), ct), setup => new { secret = setup.Secret, uri = setup.Uri }));
+
+            // Refresh the session afterwards: tokens issued before still say a second factor must be set up.
+            twoFactorApi.MapPost("/enable", async (CodeRequest request, ClaimsPrincipal principal, TwoFactorService twoFactor, UserValidator validator, AuditLog audit, HttpContext http, CancellationToken ct) =>
+            {
+                var id = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+                var result = await twoFactor.EnableAsync(id, request?.Code, ct);
+                if (result.Status == Tenancy.ServiceStatus.Ok)
+                {
+                    validator.Invalidate(id);
+                    audit.Record(http, AuditActions.TwoFactorOn, AuditTargets.User, id, principal.Identity?.Name);
+                }
+
+                return TenancyEndpoints.ToResult(result, codes => new { recoveryCodes = codes });
+            }).RequireRateLimiting(SecurityConfiguration.SignInLimit);
+
+            twoFactorApi.MapPost("/disable", async (DisableTwoFactorRequest request, ClaimsPrincipal principal, TwoFactorService twoFactor, UserValidator validator, AuditLog audit, HttpContext http, CancellationToken ct) =>
+            {
+                var id = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+                var result = await twoFactor.DisableAsync(id, request?.Password, request?.Code, ct);
+                if (result.Status != Tenancy.ServiceStatus.Ok)
+                {
+                    return TenancyEndpoints.ToResult(result);
+                }
+
+                validator.Invalidate(id);
+                audit.Record(http, AuditActions.TwoFactorOff, AuditTargets.User, id, principal.Identity?.Name);
+                return Results.NoContent();
+            }).RequireRateLimiting(SecurityConfiguration.SignInLimit);
+
+            twoFactorApi.MapPost("/recovery-codes", async (CodeRequest request, ClaimsPrincipal principal, TwoFactorService twoFactor, AuditLog audit, HttpContext http, CancellationToken ct) =>
+            {
+                var id = principal.FindFirstValue(ClaimTypes.NameIdentifier);
+                var result = await twoFactor.NewRecoveryCodesAsync(id, request?.Code, ct);
+                if (result.Status == Tenancy.ServiceStatus.Ok)
+                {
+                    audit.Record(http, AuditActions.RecoveryCodes, AuditTargets.User, id, principal.Identity?.Name);
+                }
+
+                return TenancyEndpoints.ToResult(result, codes => new { recoveryCodes = codes });
+            }).RequireRateLimiting(SecurityConfiguration.SignInLimit);
 
             auth.MapPost("/refresh", async (RefreshRequest request, IOptionsMonitor<BearerTokenOptions> bearer, UserService users, TimeProvider clock, CancellationToken ct) =>
             {
@@ -111,10 +196,13 @@ namespace Onvif.Open.Recorder.Api
                     dto.sites,
                     dto.enabled,
                     dto.mustChangePassword,
+                    dto.twoFactor,
+                    mustSetUpTwoFactor = member.MustSetUpTwoFactor,
+                    recoveryCodesLeft = TwoFactorService.RecoveryCodesLeft(member.User),
                     dto.lockedUntil,
                     dto.lastLoginAt,
                     dto.createdAt,
-                    organization = new { id = organization.Id, name = organization.Name, region = organization.Region }
+                    organization = new { id = organization.Id, name = organization.Name, region = organization.Region, requireTwoFactor = organization.RequireTwoFactor }
                 });
             }).RequireAuthorization(Policies.SignedIn);
 
@@ -157,6 +245,15 @@ namespace Onvif.Open.Recorder.Api
             })
                 .Audit(AuditActions.UserUpdate, AuditTargets.User, details: c => c.Arguments[1] is UserRequest r ? new { role = r.Role, sites = r.Sites, enabled = r.Enabled, passwordReset = r.Password != null } : null);
 
+            // A member who lost their phone and recovery codes: they sign in with the password again (and set it up anew).
+            usersApi.MapPost("/{id}/two-factor/reset", async (string id, ClaimsPrincipal principal, TwoFactorService twoFactor, UserValidator validator, CancellationToken ct) =>
+            {
+                var result = await twoFactor.ResetAsync(principal.FindFirstValue(RecorderClaims.Organization), principal.FindFirstValue(ClaimTypes.Role), id, ct);
+                validator.Invalidate(id);
+                return result.Status == Tenancy.ServiceStatus.Ok ? Results.NoContent() : TenancyEndpoints.ToResult(result);
+            })
+                .Audit(AuditActions.TwoFactorReset, AuditTargets.User);
+
             usersApi.MapDelete("/{id}", async (string id, ClaimsPrincipal principal, UserService users, UserValidator validator, CancellationToken ct) =>
             {
                 var result = await users.DeleteMemberAsync(principal.FindFirstValue(RecorderClaims.Organization), principal.FindFirstValue(ClaimTypes.Role),
@@ -189,12 +286,13 @@ namespace Onvif.Open.Recorder.Api
                 member.Sites,
                 user.Enabled,
                 user.MustChangePassword,
+                TwoFactorStates.Of(user),
                 user.LockedUntil.HasValue && user.LockedUntil.Value > DateTime.UtcNow ? new DateTimeOffset(DateTime.SpecifyKind(user.LockedUntil.Value, DateTimeKind.Utc)) : null,
                 user.LastLoginAt.HasValue ? new DateTimeOffset(DateTime.SpecifyKind(user.LastLoginAt.Value, DateTimeKind.Utc)) : null,
                 new DateTimeOffset(DateTime.SpecifyKind(user.CreatedAt, DateTimeKind.Utc)));
         }
 
-        private sealed record UserDto(string id, string userName, string role, System.Collections.Generic.IReadOnlyList<string> sites, bool enabled, bool mustChangePassword, DateTimeOffset? lockedUntil, DateTimeOffset? lastLoginAt, DateTimeOffset createdAt);
+        private sealed record UserDto(string id, string userName, string role, System.Collections.Generic.IReadOnlyList<string> sites, bool enabled, bool mustChangePassword, string twoFactor, DateTimeOffset? lockedUntil, DateTimeOffset? lastLoginAt, DateTimeOffset createdAt);
 
         private static IResult ToResult(UserResult result)
         {

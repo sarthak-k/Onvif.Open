@@ -111,6 +111,9 @@ namespace Onvif.Open.Recorder.Store
                 user.HasIndex(u => u.NormalizedUserName).IsUnique();
                 user.Property(u => u.PasswordHash).IsRequired();
                 user.Property(u => u.SecurityStamp).HasMaxLength(36).IsRequired();
+                user.Property(u => u.TwoFactorState).HasMaxLength(16);
+                user.Property(u => u.TwoFactorSecret).HasMaxLength(1000);
+                user.Property(u => u.RecoveryCodes).HasMaxLength(2000);
             });
 
             modelBuilder.Entity<MembershipRecord>(membership =>
@@ -316,6 +319,9 @@ namespace Onvif.Open.Recorder.Store
         /// <summary>Data region chosen at sign-up (see <see cref="Tenancy.Regions"/>); it does not change.</summary>
         public string Region { get; set; }
 
+        /// <summary>Every member signs in with a second factor; those without one set it up before anything else.</summary>
+        public bool RequireTwoFactor { get; set; }
+
         public DateTime CreatedAt { get; set; }
     }
 
@@ -412,6 +418,18 @@ namespace Onvif.Open.Recorder.Store
         public DateTime? LastLoginAt { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
+
+        /// <summary>Two-factor sign-in: see Security.TwoFactorStates; null is Off.</summary>
+        public string TwoFactorState { get; set; }
+
+        /// <summary>The authenticator secret, encrypted (Data Protection); set while Pending and On.</summary>
+        public string TwoFactorSecret { get; set; }
+
+        /// <summary>The time step of the last code used: each code works once.</summary>
+        public long TwoFactorLastStep { get; set; }
+
+        /// <summary>JSON array of SHA-256 hashes of the unused recovery codes.</summary>
+        public string RecoveryCodes { get; set; }
     }
 
     /// <summary>A user's role in an organization, optionally limited to some of its sites.</summary>

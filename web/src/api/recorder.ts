@@ -1,11 +1,22 @@
 import type { ApiClient } from './client';
-import type { PtzPreset, PtzStatus, PtzVector, Alert, AlertRule, AlertRuleRequest, AlertSummary, DeliveryResult, CameraConfig, CameraStatus, DiscoveredDevice, AuditEntry, AuditQuery, ShareLink, VideoExport, Case, CaseClip, CaseRequest, CaseStatus, ClipRequest, EventQuery, RecordingSegment, StoredEvent, Gateway, GatewayRequest, Layout, LayoutRequest, Me, Organization, ProbeResult, RecordingPolicy, RecordingPolicyRequest, SetupStatus, CloudInfo, Site, SiteRequest, User, UserRequest } from './types';
+import type { PtzPreset, PtzStatus, PtzVector, Alert, AlertRule, AlertRuleRequest, AlertSummary, DeliveryResult, CameraConfig, CameraStatus, DiscoveredDevice, AuditEntry, AuditQuery, ShareLink, VideoExport, Case, CaseClip, CaseRequest, CaseStatus, ClipRequest, EventQuery, RecordingSegment, StoredEvent, Gateway, GatewayRequest, Layout, LayoutRequest, Me, Organization, ProbeResult, RecordingPolicy, RecordingPolicyRequest, SetupStatus, CloudInfo, TwoFactorSetup, Site, SiteRequest, User, UserRequest } from './types';
 
 // The recorder's API by area. Pages depend on these interfaces, not on HTTP, so tests and later back ends can
 // provide their own implementation (dependency inversion, interface segregation).
 
 export interface AuthApi {
   me(): Promise<Me>;
+  /** The user's own authenticator app. */
+  twoFactor: TwoFactorApi;
+}
+
+export interface TwoFactorApi {
+  /** A new secret; it is on once a code from the app is entered. */
+  setup(): Promise<TwoFactorSetup>;
+  /** Returns the recovery codes (shown once). */
+  enable(code: string): Promise<{ recoveryCodes: string[] }>;
+  disable(password: string, code: string): Promise<void>;
+  newRecoveryCodes(code: string): Promise<{ recoveryCodes: string[] }>;
 }
 
 export interface SetupApi {
@@ -18,6 +29,8 @@ export interface SetupApi {
 export interface OrganizationApi {
   get(): Promise<Organization>;
   rename(name: string): Promise<Organization>;
+  /** Owners: whether every member signs in with a second factor. */
+  requireTwoFactor(required: boolean): Promise<Organization>;
 }
 
 export interface SitesApi {
@@ -59,6 +72,8 @@ export interface UsersApi {
   create(user: UserRequest): Promise<User>;
   update(userId: string, user: UserRequest): Promise<User>;
   remove(userId: string): Promise<void>;
+  /** For a member who lost their phone: turns their second factor off and ends their sessions. */
+  resetTwoFactor(userId: string): Promise<void>;
 }
 
 export interface LayoutsApi {
@@ -201,6 +216,12 @@ export function createRecorderApi(client: ApiClient): RecorderApi {
   return {
     auth: {
       me: () => client.get('/api/auth/me'),
+      twoFactor: {
+        setup: () => client.post('/api/auth/two-factor/setup'),
+        enable: (code) => client.post('/api/auth/two-factor/enable', { code }),
+        disable: (password, code) => client.post('/api/auth/two-factor/disable', { password, code }),
+        newRecoveryCodes: (code) => client.post('/api/auth/two-factor/recovery-codes', { code }),
+      },
     },
     setup: {
       status: () => client.anonymous('GET', '/api/setup'),
@@ -209,6 +230,7 @@ export function createRecorderApi(client: ApiClient): RecorderApi {
     organization: {
       get: () => client.get('/api/organization'),
       rename: (name) => client.put('/api/organization', { name }),
+      requireTwoFactor: (required) => client.put('/api/organization', { requireTwoFactor: required }),
     },
     sites: {
       list: () => client.get('/api/sites'),
@@ -255,6 +277,7 @@ export function createRecorderApi(client: ApiClient): RecorderApi {
       create: (user) => client.post('/api/users', user),
       update: (id, user) => client.put(`/api/users/${segment(id)}`, user),
       remove: (id) => client.delete(`/api/users/${segment(id)}`),
+      resetTwoFactor: (id) => client.post(`/api/users/${segment(id)}/two-factor/reset`),
     },
     events: {
       list: (query = {}) => client.get(`/api/events${queryString({ ...query })}`),

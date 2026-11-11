@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { Me, SetupRequest, SignupRequest } from '../../api/types';
+import type { Me, SetupRequest, SignInStep, SignupRequest } from '../../api/types';
 import { useApi, useApiClient } from '../../data/ApiContext';
 import { can, type Permission } from './permissions';
 
@@ -13,7 +13,14 @@ interface AuthState {
   startSignup(request: SignupRequest): Promise<void>;
   /** Cloud sign-up, step 2: the emailed link creates the organization and signs its owner in. */
   completeSignup(token: string): Promise<void>;
-  signIn(userName: string, password: string, keepSignedIn: boolean): Promise<void>;
+  /** Signed in, or the challenge for the app's code (two-factor sign-in on). */
+  signIn(userName: string, password: string, keepSignedIn: boolean): Promise<SignInStep | null>;
+  /** The second step of signing in. */
+  completeTwoFactor(challenge: string, code: string, keepSignedIn: boolean): Promise<void>;
+  /** Turns the user's two-factor sign-in on; returns the recovery codes (shown once). */
+  enableTwoFactor(code: string): Promise<string[]>;
+  /** The user again, after a change to their account. */
+  reload(): Promise<void>;
   signOut(): void;
   changePassword(currentPassword: string, newPassword: string): Promise<void>;
 }
@@ -51,11 +58,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = useCallback(
     async (userName: string, password: string, keepSignedIn: boolean) => {
-      await client.signIn(userName, password, keepSignedIn);
+      const step = await client.signIn(userName, password, keepSignedIn);
+      if (!step) setUser(await api.auth.me());
+      return step;
+    },
+    [api, client],
+  );
+
+  const completeTwoFactor = useCallback(
+    async (challenge: string, code: string, keepSignedIn: boolean) => {
+      await client.completeTwoFactor(challenge, code, keepSignedIn);
       setUser(await api.auth.me());
     },
     [api, client],
   );
+
+  // New tokens afterwards: those of a user who had to set it up said so.
+  const enableTwoFactor = useCallback(
+    async (code: string) => {
+      const { recoveryCodes } = await api.auth.twoFactor.enable(code);
+      await client.refresh();
+      setUser(await api.auth.me());
+      return recoveryCodes;
+    },
+    [api, client],
+  );
+
+  const reload = useCallback(async () => setUser(await api.auth.me()), [api]);
 
   const changePassword = useCallback(
     async (currentPassword: string, newPassword: string) => {
@@ -86,8 +115,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(() => client.signOut(), [client]);
 
   const value = useMemo(
-    () => ({ user, signIn, signOut, changePassword, completeSetup, startSignup, completeSignup }),
-    [user, signIn, signOut, changePassword, completeSetup, startSignup, completeSignup],
+    () => ({ user, signIn, completeTwoFactor, enableTwoFactor, reload, signOut, changePassword, completeSetup, startSignup, completeSignup }),
+    [user, signIn, completeTwoFactor, enableTwoFactor, reload, signOut, changePassword, completeSetup, startSignup, completeSignup],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

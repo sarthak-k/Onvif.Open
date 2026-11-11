@@ -58,9 +58,9 @@ namespace Onvif.Open.Recorder.Api
             });
 
             app.MapPut("/api/organization", async (OrganizationRequest request, ClaimsPrincipal user, TenancyService tenancy, CancellationToken ct) =>
-                ToResult(await tenancy.RenameOrganizationAsync(user.OrganizationId(), request?.Name, ct), ToDto))
+                ToResult(await tenancy.UpdateOrganizationAsync(user.OrganizationId(), user.FindFirstValue(ClaimTypes.NameIdentifier), request?.Name, request?.RequireTwoFactor, ct), ToDto))
                 .RequireAuthorization(Policies.Owner)
-                .Audit(AuditActions.OrganizationRename, AuditTargets.Organization);
+                .Audit(AuditActions.OrganizationRename, AuditTargets.Organization, details: context => context.GetArgument<OrganizationRequest>(0) is OrganizationRequest r ? new { renamed = r.Name != null, requireTwoFactor = r.RequireTwoFactor } : null);
 
             // Every signed-in user sees the sites they may see; administrators who see all sites manage them.
             var sites = app.MapGroup("/api/sites");
@@ -119,7 +119,7 @@ namespace Onvif.Open.Recorder.Api
 
         #region Private Methods
 
-        private static object ToDto(OrganizationRecord organization) => new { id = organization.Id, name = organization.Name, region = organization.Region };
+        private static object ToDto(OrganizationRecord organization) => new { id = organization.Id, name = organization.Name, region = organization.Region, requireTwoFactor = organization.RequireTwoFactor };
 
         private static object ToDto(SiteRecord site) => new { id = site.Id, name = site.Name, timeZone = site.TimeZone, address = site.Address };
 
@@ -160,7 +160,11 @@ namespace Onvif.Open.Recorder.Api
 
         public sealed class OrganizationRequest
         {
+            /// <summary>Null: unchanged (with <see cref="RequireTwoFactor"/>).</summary>
             public string Name { get; set; }
+
+            /// <summary>Whether every member signs in with a second factor; null: unchanged.</summary>
+            public bool? RequireTwoFactor { get; set; }
         }
     }
 }

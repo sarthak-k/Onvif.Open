@@ -210,7 +210,11 @@ namespace Onvif.Open.Recorder.Tenancy
         public Task<OrganizationRecord> GetOrganizationAsync(string organizationId, CancellationToken cancellationToken = default) => _store.FindOrganizationAsync(organizationId, cancellationToken);
 
         /// <summary>The name changes; the data region does not.</summary>
-        public async Task<ServiceResult<OrganizationRecord>> RenameOrganizationAsync(string organizationId, string name, CancellationToken cancellationToken = default)
+        /// <summary>
+        /// Renames the organization and/or sets whether every member needs a second factor (null: unchanged). Requiring
+        /// it needs it on for the owner making the change, who would otherwise be stopped at their next sign-in.
+        /// </summary>
+        public async Task<ServiceResult<OrganizationRecord>> UpdateOrganizationAsync(string organizationId, string actorUserId, string name, bool? requireTwoFactor, CancellationToken cancellationToken = default)
         {
             var organization = await _store.FindOrganizationAsync(organizationId, cancellationToken).ConfigureAwait(false);
             if (organization == null)
@@ -219,13 +223,24 @@ namespace Onvif.Open.Recorder.Tenancy
             }
 
             var errors = new List<string>();
-            CheckName(name, "Organization name", errors);
+            if (name != null || requireTwoFactor == null)
+            {
+                CheckName(name, "Organization name", errors);
+            }
+
+            if (requireTwoFactor == true && !organization.RequireTwoFactor
+                && Security.TwoFactorStates.Of(await _users.FindAsync(actorUserId, cancellationToken).ConfigureAwait(false)) != Security.TwoFactorStates.On)
+            {
+                errors.Add("Turn on two-factor sign-in for your own account first (Account), then require it for everyone.");
+            }
+
             if (errors.Count > 0)
             {
                 return ServiceResult<OrganizationRecord>.Invalid(errors);
             }
 
-            organization.Name = name.Trim();
+            organization.Name = name?.Trim() ?? organization.Name;
+            organization.RequireTwoFactor = requireTwoFactor ?? organization.RequireTwoFactor;
             await _store.SaveOrganizationAsync(organization, cancellationToken).ConfigureAwait(false);
             return ServiceResult<OrganizationRecord>.Ok(organization);
         }

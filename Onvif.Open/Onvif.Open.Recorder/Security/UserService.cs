@@ -22,6 +22,9 @@ namespace Onvif.Open.Recorder.Security
     {
         /// <summary>The sites the member is limited to; empty: all sites.</summary>
         public IReadOnlyList<string> Sites => UserService.ReadSites(Membership.Sites);
+
+        /// <summary>The organization requires a second factor and the member has none yet: setting one up comes first.</summary>
+        public bool MustSetUpTwoFactor { get; init; }
     }
 
     /// <summary>
@@ -94,7 +97,7 @@ namespace Onvif.Open.Recorder.Security
         {
             var membership = await _store.FindMembershipAsync(userId, organizationId, cancellationToken).ConfigureAwait(false);
             var user = membership == null ? null : await _store.FindByIdAsync(userId, cancellationToken).ConfigureAwait(false);
-            return user == null ? null : new Member(user, membership);
+            return user == null ? null : await WithPolicyAsync(new Member(user, membership), cancellationToken).ConfigureAwait(false);
         }
 
         /// <summary>A user (by name) with their home membership, or null.</summary>
@@ -127,16 +130,7 @@ namespace Onvif.Open.Recorder.Security
 
             if (result == PasswordVerificationResult.Failed)
             {
-                user.FailedLogins++;
-
-                if (user.FailedLogins >= _options.MaxFailedLogins)
-                {
-                    user.FailedLogins = 0;
-                    user.LockedUntil = now + _options.LockoutDuration;
-                    _logger.LogWarning("User {UserName} locked for {Duration} after repeated failed sign-ins", user.UserName, _options.LockoutDuration);
-                }
-
-                await _store.SaveAsync(user, cancellationToken).ConfigureAwait(false);
+                await RecordFailedSignInAsync(user, cancellationToken).ConfigureAwait(false);
                 return null;
             }
 
@@ -151,11 +145,51 @@ namespace Onvif.Open.Recorder.Security
                 user.PasswordHash = _hasher.HashPassword(user, password);
             }
 
-            user.FailedLogins = 0;
-            user.LockedUntil = null;
-            user.LastLoginAt = now;
+            // With a second factor, the password alone is not a sign-in: wrong codes keep counting towards the lockout.
+            if (!TwoFactorService.IsRequiredAtSignIn(user))
+            {
+                user.FailedLogins = 0;
+                user.LockedUntil = null;
+                user.LastLoginAt = now;
+            }
+
             await _store.SaveAsync(user, cancellationToken).ConfigureAwait(false);
-            return new Member(user, membership);
+            return await WithPolicyAsync(new Member(user, membership), cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>A wrong password or code: counts towards the lockout (<see cref="SecurityOptions.MaxFailedLogins"/>).</summary>
+        public async Task RecordFailedSignInAsync(UserRecord user, CancellationToken cancellationToken = default)
+        {
+            user.FailedLogins++;
+
+            if (user.FailedLogins >= _options.MaxFailedLogins)
+            {
+                user.FailedLogins = 0;
+                user.LockedUntil = _timeProvider.GetUtcNow().UtcDateTime + _options.LockoutDuration;
+                _logger.LogWarning("User {UserName} locked for {Duration} after repeated failed sign-ins", user.UserName, _options.LockoutDuration);
+            }
+
+            await _store.SaveAsync(user, cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>Whether the account may sign in now (enabled, not locked).</summary>
+        public bool CanSignIn(UserRecord user) =>
+            user != null && user.Enabled && !(user.LockedUntil.HasValue && user.LockedUntil.Value > _timeProvider.GetUtcNow().UtcDateTime);
+
+        /// <summary>Whether <paramref name="password"/> is the user's (for confirming sensitive changes; no lockout).</summary>
+        public bool IsPassword(UserRecord user, string password) =>
+            user != null && !string.IsNullOrEmpty(password) && _hasher.VerifyHashedPassword(user, user.PasswordHash, password) != PasswordVerificationResult.Failed;
+
+        /// <summary>The member with what its organization asks of it (a second factor).</summary>
+        public async Task<Member> WithPolicyAsync(Member member, CancellationToken cancellationToken = default)
+        {
+            if (member == null)
+            {
+                return null;
+            }
+
+            var organization = await _tenancy.FindOrganizationAsync(member.Membership.OrganizationId, cancellationToken).ConfigureAwait(false);
+            return member with { MustSetUpTwoFactor = organization?.RequireTwoFactor == true && TwoFactorStates.Of(member.User) != TwoFactorStates.On };
         }
 
         /// <summary>
@@ -374,7 +408,7 @@ namespace Onvif.Open.Recorder.Security
             user.MustChangePassword = false;
             user.SecurityStamp = NewStamp();
             await _store.SaveAsync(user, cancellationToken).ConfigureAwait(false);
-            return UserResult.Ok(new Member(user, membership));
+            return UserResult.Ok(await WithPolicyAsync(new Member(user, membership), cancellationToken).ConfigureAwait(false));
         }
 
         /// <summary>The identity carried by the member's tokens: user, role and sites in the organization.</summary>
@@ -397,6 +431,11 @@ namespace Onvif.Open.Recorder.Security
             if (member.User.MustChangePassword)
             {
                 claims.Add(new Claim(RecorderClaims.MustChangePassword, "true"));
+            }
+
+            if (member.MustSetUpTwoFactor)
+            {
+                claims.Add(new Claim(RecorderClaims.MustSetUpTwoFactor, "true"));
             }
 
             return new ClaimsPrincipal(new ClaimsIdentity(claims, authenticationScheme, ClaimTypes.Name, ClaimTypes.Role));
@@ -472,7 +511,7 @@ namespace Onvif.Open.Recorder.Security
             return errors;
         }
 
-        private static string NewStamp()
+        internal static string NewStamp()
         {
             return Guid.NewGuid().ToString("N");
         }

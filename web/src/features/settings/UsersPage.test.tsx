@@ -63,6 +63,31 @@ describe('users', () => {
     client.signOut();
   });
 
+  it('resets the two-factor sign-in of a member who lost their phone', async () => {
+    let bob = { ...admin, id: 'u2', userName: 'bob', role: 'Viewer' as const, twoFactor: 'On' as const };
+    const reset: string[] = [];
+    const { user, client } = renderApp('/settings/users', {
+      ...tenancyRoutes,
+      'POST /api/auth/refresh': () => ({ body: tokens(1) }),
+      'GET /api/auth/me': () => ({ body: admin }),
+      'GET /api/users': () => ({ body: [admin, bob] }),
+      'POST /api/users/u2/two-factor/reset': () => {
+        reset.push('u2');
+        bob = { ...bob, twoFactor: 'Off' as never };
+        return { status: 204 };
+      },
+    });
+
+    const row = (await screen.findByText('bob')).closest('tr')!;
+    expect(within(row).getByText('two-factor')).toBeInTheDocument();
+    await user.click(within(row).getByRole('button', { name: 'Reset two-factor' }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Reset' }));
+
+    await vi.waitFor(() => expect(within(screen.getByText('bob').closest('tr')!).queryByText('two-factor')).not.toBeInTheDocument());
+    expect(reset).toEqual(['u2']);
+    client.signOut();
+  });
+
   it('is for administrators who see every site', async () => {
     const { client } = renderApp('/settings/users', {
       ...tenancyRoutes,

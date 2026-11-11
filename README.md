@@ -470,6 +470,16 @@ POST /api/auth/refresh  { "refreshToken": "..." }   → new tokens
   `/api/auth/password` work.
 * Changing a user's password, role, sites or state, or the user's own password change, ends its sessions (within 30 s).
 * After 5 wrong passwords an account is locked for 5 minutes; sign-ins are limited to 10 per minute and address.
+* **Two-factor sign-in** (Account › Two-factor sign-in): an authenticator app (TOTP, RFC 6238: 6 digits, 30 s, one
+  step of clock drift either way) set up with a QR code or the key typed in, and confirmed with a code. It comes with
+  ten recovery codes, shown once, each good for one sign-in without the phone (new ones replace them). Then the
+  password answers `{ "twoFactorRequired": true, "challenge": "...", "expiresIn": 300 }` instead of tokens, and
+  `POST /api/auth/login/two-factor` with the challenge and the code (or a recovery code) signs in. Each code works
+  once; wrong codes count towards the lockout like wrong passwords, and the right password does not reset that count.
+  The secret is stored encrypted, recovery codes only as hashes. Turning it off takes the password and a code.
+* **Required for everyone** (owners, Settings › Organization, once it is on for themselves): members without it can
+  only set it up, after their own password if they must change it, before any other call answers. An administrator
+  resets it for someone who lost their phone (Settings › Users › Reset two-factor), which also ends their sessions.
 * Video players and downloads that cannot send a header may pass the token as `?access_token=` on video requests only
   (playlists, segments, clips, snapshots, exports); playlists then carry it to their segments. Prefer the header
   (hls.js: `xhrSetup`).

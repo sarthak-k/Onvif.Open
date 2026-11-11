@@ -12,10 +12,11 @@ interface Props {
   onEditSites(user: User): void;
   onChange(id: string, change: UserRequest): void;
   onResetPassword(user: User): void;
+  onResetTwoFactor(user: User): void;
   onDelete(user: User): void;
 }
 
-export const UserRow = memo(function UserRow({ user, isMe, roleOptions, sites, onEditSites, onChange, onResetPassword, onDelete }: Props) {
+export const UserRow = memo(function UserRow({ user, isMe, roleOptions, sites, onEditSites, onChange, onResetPassword, onResetTwoFactor, onDelete }: Props) {
   // An owner's row can only be changed by an owner.
   const locked = !roleOptions.includes(user.role);
 
@@ -26,6 +27,7 @@ export const UserRow = memo(function UserRow({ user, isMe, roleOptions, sites, o
         {isMe && <span className="badge">you</span>}
         {user.lockedUntil && <span className="badge warn">locked</span>}
         {user.mustChangePassword && <span className="badge">must change password</span>}
+        {user.twoFactor === 'On' && <span className="badge">two-factor</span>}
       </td>
       <td>
         <select aria-label={`Role of ${user.userName}`} value={user.role} disabled={locked} onChange={(e) => onChange(user.id, { role: e.target.value as Role })}>
@@ -50,6 +52,11 @@ export const UserRow = memo(function UserRow({ user, isMe, roleOptions, sites, o
         <button type="button" disabled={locked} onClick={() => onResetPassword(user)}>
           Reset password
         </button>
+        {user.twoFactor && user.twoFactor !== 'Off' && !isMe && (
+          <button type="button" disabled={locked} onClick={() => onResetTwoFactor(user)}>
+            Reset two-factor
+          </button>
+        )}
         <button type="button" className="danger" disabled={isMe || locked} onClick={() => onDelete(user)}>
           Delete
         </button>

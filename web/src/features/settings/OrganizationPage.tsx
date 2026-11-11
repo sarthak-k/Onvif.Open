@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { useOrganization, useRenameOrganization } from '../../data/tenancy';
-import { TextField } from '../../shared/form/fields';
+import { useOrganization, useRenameOrganization, useRequireTwoFactor } from '../../data/tenancy';
+import { CheckboxField, TextField } from '../../shared/form/fields';
 import { ErrorMessage } from '../../shared/ui/ErrorMessage';
 import { useCan } from '../auth/AuthContext';
 
@@ -10,6 +10,7 @@ const regionNames: Record<string, string> = { asia: 'Asia', us: 'United States' 
 export default function OrganizationPage() {
   const organization = useOrganization();
   const rename = useRenameOrganization();
+  const requireTwoFactor = useRequireTwoFactor();
   const canRename = useCan('organization.manage');
   const [name, setName] = useState('');
 
@@ -48,6 +49,19 @@ export default function OrganizationPage() {
             </div>
           )}
         </form>
+      )}
+      {organization.data && (
+        <div className="stack narrow">
+          <h2>Sign-in</h2>
+          <CheckboxField
+            label="Require two-factor sign-in for everyone"
+            checked={organization.data.requireTwoFactor === true}
+            disabled={!canRename || requireTwoFactor.isPending}
+            onChange={(required) => requireTwoFactor.mutate(required)}
+          />
+          <p className="muted small">Members without an authenticator app set one up at their next sign-in, before anything else.</p>
+          <ErrorMessage error={requireTwoFactor.error} />
+        </div>
       )}
     </section>
   );
