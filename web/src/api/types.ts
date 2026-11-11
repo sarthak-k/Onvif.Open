@@ -40,6 +40,15 @@ export type TwoFactorState = 'Off' | 'Pending' | 'On';
 /** An organization's single sign-on (OpenID Connect); the client secret is never sent back. */
 export interface SsoSettings {
   enabled: boolean;
+  /** OpenID Connect, or SAML 2.0. */
+  protocol: 'Oidc' | 'Saml';
+  /** SAML: the provider's entity ID, sign-in address and signing certificate (PEM or base64). */
+  samlEntityId: string | null;
+  samlSsoUrl: string | null;
+  samlCertificate: string | null;
+  /** SAML: read from the certificate. */
+  samlCertificateSubject?: string | null;
+  samlCertificateExpires?: string | null;
   issuer: string | null;
   clientId: string | null;
   hasClientSecret: boolean;
@@ -52,7 +61,7 @@ export interface SsoSettings {
   required: boolean;
 }
 
-export interface SsoRequest extends Omit<SsoSettings, 'hasClientSecret'> {
+export interface SsoRequest extends Omit<SsoSettings, 'hasClientSecret' | 'samlCertificateSubject' | 'samlCertificateExpires'> {
   /** Null keeps the stored secret. */
   clientSecret: string | null;
 }

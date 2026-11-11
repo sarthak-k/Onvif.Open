@@ -259,6 +259,10 @@ namespace Onvif.Open.Recorder.Store
                 sso.Property(s => s.ClientId).HasMaxLength(200);
                 sso.Property(s => s.ClientSecret).HasMaxLength(2000);
                 sso.Property(s => s.DefaultRole).HasMaxLength(16);
+                sso.Property(s => s.Protocol).HasMaxLength(8);
+                sso.Property(s => s.SamlEntityId).HasMaxLength(500);
+                sso.Property(s => s.SamlSsoUrl).HasMaxLength(1000);
+                sso.Property(s => s.SamlCertificate).HasMaxLength(8000);
             });
 
             modelBuilder.Entity<SsoDomainRecord>(domain =>
@@ -713,6 +717,18 @@ namespace Onvif.Open.Recorder.Store
 
         /// <summary>Encrypted (Data Protection).</summary>
         public string ClientSecret { get; set; }
+
+        /// <summary>"Oidc" (default) or "Saml".</summary>
+        public string Protocol { get; set; }
+
+        /// <summary>SAML: the provider's entity ID (the Issuer of its assertions).</summary>
+        public string SamlEntityId { get; set; }
+
+        /// <summary>SAML: where the provider takes sign-in requests (HTTP-Redirect binding).</summary>
+        public string SamlSsoUrl { get; set; }
+
+        /// <summary>SAML: the certificate the provider signs with (base64 DER).</summary>
+        public string SamlCertificate { get; set; }
 
         /// <summary>Accounts are created at the first sign-in (with <see cref="DefaultRole"/>) for emails of the organization's domains.</summary>
         public bool AutoCreate { get; set; }
