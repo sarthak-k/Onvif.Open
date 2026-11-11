@@ -10,7 +10,7 @@ const status = (cameraId: string, name: string, state: string, siteId = mainSite
 const gateway = (extra: Partial<Gateway>): Gateway => ({
   id: 'gw', name: 'Back office', location: 'Local', embedded: true, status: 'Online', version: '1', startedAt: null, lastSeenAt: new Date().toISOString(),
   health: { cameras: 3, recording: 2, failing: 1, freeBytes: 500 * 1024 ** 3, recordedBytes: 0, backupProvider: null, pendingUploads: null, backupError: null },
-  restartRequired: false, storage: null, backup: null, discovery: null, ...extra,
+  restartRequired: false, storage: null, backup: null, discovery: null, hosting: null, ...extra,
 });
 const event = (id: string, category: StoredEvent['category'], siteId: string, minutesAgo: number): StoredEvent => ({
   id, cameraId: 'front', cameraName: 'Front door', siteId, category, severity: 'Info', source: 'camera', title: category, topic: null,

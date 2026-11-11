@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import type { Gateway } from '../../api/types';
 import { useApi } from '../../data/ApiContext';
-import { useGateways, usePairGateway, useRemoveGateway, useUpdateGateway } from '../../data/gateways';
+import { useCreateCloudGateway, useGateways, usePairGateway, useRemoveGateway, useStartGateway, useUpdateGateway } from '../../data/gateways';
+import { useCloud } from '../../data/tenancy';
 import { CheckboxField, NumberField, RadioGroup, Section, SelectField, TextAreaField, TextField } from '../../shared/form/fields';
 import { formatDate } from '../../shared/format';
 import { useForm } from '../../shared/form/useForm';
@@ -13,6 +14,7 @@ import { backupDestinations, backupSettingHints, describeBackup, describeCameras
 
 const locationLabels: Record<Gateway['location'], string> = { Local: 'On a local machine', Cloud: 'In the cloud' };
 const statusClass: Record<Gateway['status'], string> = { Online: 'state-recording', Offline: 'state-reconnecting', Waiting: 'state-stopped' };
+const hostingLabels: Record<NonNullable<Gateway['hosting']>['state'], string> = { Starting: 'Starting…', Running: 'Running', Failed: 'Could not start' };
 
 /** What records the cameras, whether it is healthy, and its settings: storage, cloud backup, discovery. */
 export default function GatewaysPage() {
@@ -22,6 +24,7 @@ export default function GatewaysPage() {
   const [adding, setAdding] = useState(false);
   const [removing, setRemoving] = useState<Gateway | null>(null);
   const remove = useRemoveGateway();
+  const start = useStartGateway();
   const manage = can(user, 'settings.manage');
 
   return (
@@ -35,7 +38,7 @@ export default function GatewaysPage() {
         )}
       </div>
       <p className="muted">A gateway records the cameras of a site and keeps their video. This server is your first gateway.</p>
-      <ErrorMessage error={gateways.error ?? remove.error} />
+      <ErrorMessage error={gateways.error ?? remove.error ?? start.error} />
 
       {gateways.data?.map((gateway) => (
         <article key={gateway.id} className="card stack" aria-label={gateway.name}>
@@ -51,6 +54,11 @@ export default function GatewaysPage() {
                     Edit
                   </button>
                 )}
+                {gateway.hosting && gateway.hosting.state !== 'Starting' && (
+                  <button type="button" onClick={() => start.mutate(gateway.id)} disabled={start.isPending}>
+                    Start again
+                  </button>
+                )}
                 {!gateway.embedded && (
                   <button type="button" className="danger" onClick={() => setRemoving(gateway)}>
                     Remove
@@ -60,6 +68,7 @@ export default function GatewaysPage() {
             )}
           </div>
           {gateway.restartRequired && <p className="alert alert-error">Restart the recorder to apply the new backup settings.</p>}
+          {gateway.hosting?.state === 'Failed' && gateway.hosting.error && <p className="alert alert-error">{gateway.hosting.error}</p>}
           <dl className="facts">
             <dt>Status</dt>
             <dd>
@@ -67,7 +76,10 @@ export default function GatewaysPage() {
               {gateway.lastSeenAt && <span className="muted small"> · last report {formatDate(gateway.lastSeenAt)}</span>}
             </dd>
             <dt>Runs</dt>
-            <dd>{locationLabels[gateway.location]}</dd>
+            <dd>
+              {gateway.hosting ? 'In the cloud, run for you' : locationLabels[gateway.location]}
+              {gateway.hosting && <span className="muted small"> · {hostingLabels[gateway.hosting.state]}</span>}
+            </dd>
             <dt>Cameras</dt>
             <dd>{describeCameras(gateway)}</dd>
             <dt>Storage</dt>
@@ -93,7 +105,7 @@ export default function GatewaysPage() {
             setRemoving(null);
           }}
         >
-          It stops reporting here. To use it again, restart it and enter its new code.
+          {removing.hosting ? 'It is stopped and stops recording.' : 'It stops reporting here. To use it again, restart it and enter its new code.'}
         </ConfirmDialog>
       )}
     </section>
@@ -161,10 +173,15 @@ const placeOptions = [
   { value: 'cloud' as const, label: 'In the cloud' },
 ];
 
-/** Pairs a gateway installed on a machine at a site: it shows a 6-digit code, entered here. */
+/**
+ * Pairs a gateway installed on a machine at a site (it shows a 6-digit code, entered here), or, where the cloud offers
+ * it, starts one in the cloud for cameras on the internet.
+ */
 function AddGatewayDialog({ onClose }: { onClose(): void }) {
   const api = useApi();
   const pair = usePairGateway();
+  const createCloud = useCreateCloudGateway();
+  const hosted = useCloud().data?.cloudGateways ?? false;
   const { values, set } = useForm({ place: 'local' as 'local' | 'cloud', code: '', name: '' });
   const digits = values.code.replace(/\D/g, '');
   const local = values.place === 'local';
@@ -173,11 +190,14 @@ function AddGatewayDialog({ onClose }: { onClose(): void }) {
     event?.preventDefault();
     if (local && digits.length === 6) {
       pair.mutate({ code: digits, name: values.name.trim() || null }, { onSuccess: onClose });
+    } else if (!local && hosted) {
+      createCloud.mutate(values.name.trim() || null, { onSuccess: onClose });
     }
   }
 
+  const busy = local ? digits.length !== 6 || pair.isPending : !hosted || createCloud.isPending;
   return (
-    <ConfirmDialog title="Add gateway" confirmLabel="Pair" busy={!local || digits.length !== 6 || pair.isPending} onCancel={onClose} onConfirm={() => submit()}>
+    <ConfirmDialog title="Add gateway" confirmLabel={local ? 'Pair' : 'Start gateway'} busy={busy} onCancel={onClose} onConfirm={() => submit()}>
       <form className="stack" onSubmit={submit} aria-label="Add gateway">
         <RadioGroup legend="Where does it run?" value={values.place} options={placeOptions} onChange={(v) => set('place', v)} />
         {local ? (
@@ -193,10 +213,18 @@ function AddGatewayDialog({ onClose }: { onClose(): void }) {
             <TextField label="Pairing code" inputMode="numeric" autoComplete="off" placeholder="123 456" maxLength={7} value={values.code} onChange={(v) => set('code', v)} />
             <TextField label="Name (optional)" maxLength={100} placeholder="The name the gateway gives" value={values.name} onChange={(v) => set('name', v)} />
           </>
+        ) : hosted ? (
+          <>
+            <p className="small">
+              We run a gateway for you, for cameras reachable on the internet (a public address or a port forward). Cameras on a site's own network need a gateway
+              there.
+            </p>
+            <TextField label="Name (optional)" maxLength={100} placeholder="Cloud gateway" value={values.name} onChange={(v) => set('name', v)} />
+          </>
         ) : (
           <p className="muted">Gateways run for you in the cloud come with cloud hosting. Until then, add one on a local machine.</p>
         )}
-        <ErrorMessage error={pair.error} />
+        <ErrorMessage error={pair.error ?? createCloud.error} />
       </form>
     </ConfirmDialog>
   );

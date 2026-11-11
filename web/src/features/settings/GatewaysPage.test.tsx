@@ -18,6 +18,7 @@ const gateway: Gateway = {
   storage: { minFreeSpaceGB: 1, maxSizePerCameraGB: null, maxTotalSizeGB: null },
   backup: { provider: 'FileSystem', prefix: null, keepLocalCopyHours: 0, settings: ['Path'] },
   discovery: { multicast: true, addresses: [] },
+  hosting: null,
 };
 
 const signedIn = (role = 'Admin') => ({
@@ -128,6 +129,48 @@ describe('gateways', () => {
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
     await vi.waitFor(() => expect(screen.queryByRole('article', { name: 'Warehouse' })).not.toBeInTheDocument());
     expect(removed).toEqual(['gw-2']);
+    client.signOut();
+  });
+
+  it('starts a gateway in the cloud, says why it could not start, and starts it again', async () => {
+    const failed: Gateway = {
+      ...gateway, id: 'gw-c', name: 'Cloud gateway', location: 'Cloud', embedded: false, status: 'Waiting', lastSeenAt: null, health: null,
+      hosting: { state: 'Failed', error: 'docker exited with 125: no such image', changedAt: '2026-11-11T08:00:00Z' },
+    };
+    let list: Gateway[] = [];
+    let createdWith: unknown;
+    const started: string[] = [];
+    const { user, client } = renderApp('/settings/gateways', {
+      ...signedIn(),
+      'GET /api/cloud': () => ({ body: { enabled: true, region: 'us', signup: true, cloudGateways: true, regions: [] } }),
+      'GET /api/gateways': () => ({ body: list }),
+      'POST /api/gateways/cloud': ({ body }) => {
+        createdWith = body;
+        list = [failed];
+        return { status: 201, body: failed };
+      },
+      'POST /api/gateways/gw-c/start': () => {
+        started.push('gw-c');
+        list = [{ ...failed, hosting: { state: 'Starting', error: null, changedAt: '2026-11-11T08:01:00Z' } }];
+        return { body: list[0] };
+      },
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Add gateway' }));
+    const dialog = screen.getByRole('dialog');
+    await user.click(within(dialog).getByLabelText('In the cloud'));
+    expect(within(dialog).getByText(/cameras reachable on the internet/)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Start gateway' }));
+
+    const card = await screen.findByRole('article', { name: 'Cloud gateway' });
+    expect(createdWith).toEqual({ name: null });
+    expect(within(card).getByText('docker exited with 125: no such image')).toBeInTheDocument();
+    expect(within(card).getByText(/Could not start/)).toBeInTheDocument();
+
+    await user.click(within(card).getByRole('button', { name: 'Start again' }));
+    expect(await within(card).findByText(/Starting…/)).toBeInTheDocument();
+    expect(within(card).queryByRole('button', { name: 'Start again' })).not.toBeInTheDocument();
+    expect(started).toEqual(['gw-c']);
     client.signOut();
   });
 

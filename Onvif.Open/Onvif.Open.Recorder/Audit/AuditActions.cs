@@ -51,6 +51,8 @@ namespace Onvif.Open.Recorder.Audit
         public const string AlertAcknowledge = "alert.acknowledge";
         public const string GatewayPair = "gateway.pair";
         public const string GatewayRemove = "gateway.remove";
+        public const string GatewayCloudCreate = "gateway.cloud.create";
+        public const string GatewayCloudStart = "gateway.cloud.start";
         public const string PluginDelete = "plugin.delete";
 
         public const string LayoutCreate = "layout.create";

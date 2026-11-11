@@ -4,6 +4,7 @@ import type { AuditEntry } from '../../api/types';
 const actionLabels: Record<string, string> = {
   'organization.setup': 'Set up the organization',
   'organization.rename': 'Renamed the organization',
+  'organization.signup': 'Signed up',
   'auth.signin': 'Signed in',
   'auth.signin_failed': 'Failed to sign in',
   'auth.password_change': 'Changed their password',
@@ -22,6 +23,8 @@ const actionLabels: Record<string, string> = {
   'gateway.update': 'Changed a gateway',
   'gateway.pair': 'Paired a gateway',
   'gateway.remove': 'Removed a gateway',
+  'gateway.cloud.create': 'Started a cloud gateway',
+  'gateway.cloud.start': 'Started a cloud gateway again',
   'case.create': 'Opened a case',
   'case.update': 'Changed a case',
   'case.delete': 'Deleted a case',

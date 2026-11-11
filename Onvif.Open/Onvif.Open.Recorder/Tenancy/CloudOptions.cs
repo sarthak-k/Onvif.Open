@@ -28,6 +28,9 @@ namespace Onvif.Open.Recorder.Tenancy
         /// <summary>How long a sign-up link works.</summary>
         public TimeSpan SignupLifetime { get; set; } = TimeSpan.FromHours(24);
 
+        /// <summary>Gateways hosted here for customers whose cameras are on the internet (one per customer).</summary>
+        public Gateways.CloudGatewayOptions Gateways { get; set; } = new Gateways.CloudGatewayOptions();
+
         /// <summary>This region's web app (links in emails point there).</summary>
         public string WebUrl => Region != null && Regions.TryGetValue(Region, out var region) ? region.WebUrl?.TrimEnd('/') : null;
 
@@ -57,6 +60,8 @@ namespace Onvif.Open.Recorder.Tenancy
             {
                 errors.Add("Cloud:Regions must include this deployment's own region, with its WebUrl.");
             }
+
+            errors.AddRange(Gateways.Check());
 
             return errors;
         }

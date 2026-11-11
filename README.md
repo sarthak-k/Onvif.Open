@@ -387,6 +387,34 @@ without a gateway, and there is no first-run setup.
   tell who has one. The owner signs in with the email.
 * **Regions**: the sign-up page lists `Cloud:Regions` and sends people choosing another region to its deployment.
   `GET /api/cloud` (no sign-in) says whether this is the cloud, its region, the others, and whether sign-up is open.
+* **Gateways in the cloud**, for customers whose cameras are on the internet (a public address or a port forward):
+  Settings › Gateways › Add gateway › In the cloud starts one, dedicated to the organization (`Cloud:Gateways:PerOrganization`,
+  1), with commands you configure, so any platform works (Docker, Kubernetes, a VM script):
+
+  ```json
+  "Gateways": {
+    "Start": { "Command": "docker", "Arguments": [ "run", "-d", "--name", "oo-gateway-{gatewayId}", "--restart", "unless-stopped",
+      "-e", "ControlPlane__Url", "-e", "ControlPlane__GatewayId", "-e", "ControlPlane__Token", "-e", "Gateway__Location",
+      "-v", "oo-gateway-{gatewayId}:/app/data", "onvif-open/recorder:1.0" ] },
+    "Stop": { "Command": "docker", "Arguments": [ "rm", "-f", "oo-gateway-{gatewayId}" ] }
+  }
+  ```
+
+  `{gatewayId}` is the only placeholder (a UUID); no shell runs the command. The gateway's identity is in the command's
+  environment, never its arguments: `ControlPlane__Url` (`Cloud:Gateways:ControlPlaneUrl`, default this region's web
+  address), `ControlPlane__GatewayId`, `ControlPlane__Token` and `Gateway__Location=Cloud`. A gateway started with
+  `ControlPlane:GatewayId` and `ControlPlane:Token` uses them as they are and never pairs. It is *Starting* until it
+  first reports, *Running* after; *Failed* (with what the command said) when the command fails or it has not reported
+  within `Cloud:Gateways:StartTimeout` (10 minutes). *Start again* stops it and starts it with a new token; removing it
+  stops it (its token stops working at once, even if the stop command fails).
+* **Nothing inside the cloud is reachable through a camera.** A gateway with `Gateway:Location=Cloud` connects to
+  cameras on the internet only: every connection (RTSP, ONVIF, snapshots) is checked at the address it actually uses,
+  after DNS, so neither a camera's address nor one it hands back (stream and service addresses), nor its DNS, can point
+  it at private (10/8, 172.16/12, 192.168/16, fc00::/7), loopback, link-local (169.254/16, the cloud's metadata service;
+  fe80::/10), CGNAT (100.64/10), multicast or other special-purpose ranges, including IPv6 forms that carry such an IPv4
+  address. A name with any such address is refused, it does not follow HTTP redirects, and it does not search for
+  cameras. Cameras of a cloud gateway are checked when they are saved too. Alert webhooks get the same rule in the
+  cloud. Keep the network rules of the platform as well (e.g. no route from the gateways to the metadata service).
 
 Camera ids are UUIDs assigned by the recorder, so recordings
 never depend on a name someone typed; names can change at any time. Bring the database you use (EF Core; the `oo_*`

@@ -57,6 +57,8 @@ export interface CloudInfo {
   region: Region | null;
   /** Whether people can sign up here themselves. */
   signup: boolean;
+  /** Whether organizations can have a gateway run for them in the cloud (cameras on the internet). */
+  cloudGateways: boolean;
   regions: { id: Region; name: string; webUrl: string }[] | null;
 }
 
@@ -294,6 +296,15 @@ export interface Gateway {
   storage: StorageLimits | null;
   backup: { provider: string | null; prefix: string | null; keepLocalCopyHours: number; settings: string[] } | null;
   discovery: { multicast: boolean; addresses: string[] } | null;
+  /** A gateway the cloud runs for this organization: where starting it stands; null for the others. */
+  hosting: GatewayHosting | null;
+}
+
+export interface GatewayHosting {
+  state: 'Starting' | 'Running' | 'Failed';
+  /** Why it could not be started (Failed). */
+  error: string | null;
+  changedAt: string | null;
 }
 
 export interface GatewayRequest {

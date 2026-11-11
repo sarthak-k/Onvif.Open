@@ -37,6 +37,16 @@ namespace Onvif.Open.Recorder.Gateways
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
 
+        /// <summary>A gateway this server runs in the cloud: where starting it stands (<see cref="CloudGatewayStates"/>); null for the others.</summary>
+        public string HostState { get; set; }
+
+        /// <summary>Why it could not be started (with <see cref="CloudGatewayStates.Failed"/>).</summary>
+        public string HostError { get; set; }
+
+        public DateTime? HostChangedAt { get; set; }
+
+        public bool IsHosted => HostState != null;
+
         /// <summary>SHA-256 of the token a paired gateway reports with (never the token); null for the embedded one.</summary>
         public string TokenHash { get; set; }
 

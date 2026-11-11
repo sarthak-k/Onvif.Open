@@ -74,6 +74,10 @@ export interface GatewaysApi {
   /** Pairs the gateway that shows this 6-digit code; null name: the one it gave. */
   pair(code: string, name: string | null): Promise<Gateway>;
   remove(gatewayId: string): Promise<void>;
+  /** A gateway the cloud runs for the organization (no pairing); it reports once it is up. */
+  createCloud(name: string | null): Promise<Gateway>;
+  /** Starts a cloud gateway again (with a new token). */
+  start(gatewayId: string): Promise<Gateway>;
   /** The address a new gateway is set up with ("ControlPlane:Url"): this recorder's. */
   controlPlaneUrl(): string;
 }
@@ -308,6 +312,8 @@ export function createRecorderApi(client: ApiClient): RecorderApi {
       update: (id, gateway) => client.put(`/api/gateways/${segment(id)}`, gateway),
       pair: (code, name) => client.post('/api/gateways/pair', { code, name }),
       remove: (id) => client.delete(`/api/gateways/${segment(id)}`),
+      createCloud: (name) => client.post('/api/gateways/cloud', { name }),
+      start: (id) => client.post(`/api/gateways/${segment(id)}/start`),
       controlPlaneUrl: () => new URL(client.baseUrl || '/', window.location.origin).toString().replace(/\/$/, ''),
     },
   };

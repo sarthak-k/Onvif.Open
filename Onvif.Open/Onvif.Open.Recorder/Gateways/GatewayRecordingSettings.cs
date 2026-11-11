@@ -49,7 +49,8 @@ namespace Onvif.Open.Recorder.Gateways
 
         private ICameraDiscovery Create()
         {
-            var settings = _settings();
+            // A gateway in the cloud sends no probes: neither multicast nor to addresses an administrator listed.
+            var settings = Onvif.Open.Core.Networking.CameraNetwork.IsRestricted ? new DiscoverySettings { Multicast = false } : _settings();
             return DiscoveryConfiguration.CreateDiscovery(new DiscoveryOptions { Timeout = _timeout, Multicast = settings.Multicast, Targets = settings.Addresses ?? new List<string>() });
         }
     }

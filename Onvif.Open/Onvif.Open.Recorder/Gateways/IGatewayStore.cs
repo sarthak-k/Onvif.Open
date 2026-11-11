@@ -31,6 +31,12 @@ namespace Onvif.Open.Recorder.Gateways
         /// <summary>Stores a heartbeat without touching the settings.</summary>
         Task ReportAsync(string id, string version, DateTime startedAt, DateTime seenAt, GatewayHealth health, CancellationToken cancellationToken = default);
 
+        /// <summary>Where starting a hosted gateway stands; a new token hash replaces the old one when given.</summary>
+        Task UpdateHostAsync(string id, string state, string error, DateTime changedAt, string tokenHash = null, CancellationToken cancellationToken = default);
+
+        /// <summary>The hosted gateways (of every organization) in this state.</summary>
+        Task<IReadOnlyList<Gateway>> GetHostedAsync(string state, CancellationToken cancellationToken = default);
+
         /// <summary>The organization this recorder serves (all-in-one: the only one), or null before setup.</summary>
         Task<string> FindOrganizationIdAsync(CancellationToken cancellationToken = default);
     }
@@ -115,6 +121,9 @@ namespace Onvif.Open.Recorder.Gateways
                 record.Location = gateway.Location;
                 record.Embedded = gateway.Embedded;
                 record.TokenHash = gateway.TokenHash;
+                record.HostState = gateway.HostState;
+                record.HostError = gateway.HostError;
+                record.HostChangedAt = gateway.HostChangedAt;
                 record.MinFreeSpaceGB = gateway.Storage.MinFreeSpaceGB;
                 record.MaxSizePerCameraGB = gateway.Storage.MaxSizePerCameraGB;
                 record.MaxTotalSizeGB = gateway.Storage.MaxTotalSizeGB;
@@ -141,6 +150,27 @@ namespace Onvif.Open.Recorder.Gateways
                     .SetProperty(g => g.StartedAt, startedAt)
                     .SetProperty(g => g.LastSeenAt, seenAt)
                     .SetProperty(g => g.Health, json), cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        public async Task UpdateHostAsync(string id, string state, string error, DateTime changedAt, string tokenHash = null, CancellationToken cancellationToken = default)
+        {
+            await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
+            {
+                await db.Gateways.Where(g => g.Id == id).ExecuteUpdateAsync(s => s
+                    .SetProperty(g => g.HostState, state)
+                    .SetProperty(g => g.HostError, error)
+                    .SetProperty(g => g.HostChangedAt, changedAt)
+                    .SetProperty(g => g.TokenHash, g => tokenHash ?? g.TokenHash), cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        public async Task<IReadOnlyList<Gateway>> GetHostedAsync(string state, CancellationToken cancellationToken = default)
+        {
+            await using (var db = await _contexts.CreateDbContextAsync(cancellationToken).ConfigureAwait(false))
+            {
+                var records = await db.Gateways.AsNoTracking().Where(g => g.HostState == state).ToListAsync(cancellationToken).ConfigureAwait(false);
+                return records.Select(ToGateway).ToList();
             }
         }
 
@@ -182,7 +212,10 @@ namespace Onvif.Open.Recorder.Gateways
                 },
                 CreatedAt = record.CreatedAt,
                 UpdatedAt = record.UpdatedAt,
-                TokenHash = record.TokenHash
+                TokenHash = record.TokenHash,
+                HostState = record.HostState,
+                HostError = record.HostError,
+                HostChangedAt = record.HostChangedAt
             };
         }
     }

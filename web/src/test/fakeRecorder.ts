@@ -72,5 +72,5 @@ export const tenancyRoutes = {
   'GET /api/sites': () => ({ body: [mainSite, lyonSite] }),
   'GET /api/recording-policies': () => ({ body: policies }),
   'GET /api/setup': () => ({ body: { required: false, tokenRequired: false, regions: [] } }),
-  'GET /api/cloud': () => ({ body: { enabled: false, region: null, signup: false, regions: null } }),
+  'GET /api/cloud': () => ({ body: { enabled: false, region: null, signup: false, cloudGateways: false, regions: null } }),
 };

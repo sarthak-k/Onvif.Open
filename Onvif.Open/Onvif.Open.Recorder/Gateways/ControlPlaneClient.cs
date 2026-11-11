@@ -69,6 +69,30 @@ namespace Onvif.Open.Recorder.Gateways
     }
 
     /// <summary>
+    /// An identity given in the configuration ("ControlPlane:GatewayId" and "ControlPlane:Token", e.g. by the control
+    /// plane that started this gateway): used as is, never replaced.
+    /// </summary>
+    public sealed class ConfiguredControlPlaneCredentials : IControlPlaneCredentials
+    {
+        public ConfiguredControlPlaneCredentials(string gatewayId, string token)
+        {
+            _identity = new ControlPlaneIdentity(gatewayId ?? throw new ArgumentNullException(nameof(gatewayId)), token ?? throw new ArgumentNullException(nameof(token)));
+        }
+
+        private readonly ControlPlaneIdentity _identity;
+
+        public ControlPlaneIdentity Load() => _identity;
+
+        public void Save(ControlPlaneIdentity identity)
+        {
+        }
+
+        public void Clear()
+        {
+        }
+    }
+
+    /// <summary>
     /// Runs this recorder as a gateway of another one (the control plane, "ControlPlane:Url"): until it is paired it asks
     /// for a 6-digit code and writes it to the log for the installer to enter in the web app (Settings › Gateways › Add
     /// gateway); then it reports its health every <see cref="HeartbeatInterval"/>. A removed gateway pairs again.
@@ -457,10 +481,17 @@ namespace Onvif.Open.Recorder.Gateways
 
                 if (response.StatusCode == HttpStatusCode.Unauthorized)
                 {
-                    // Removed at the control plane: forget the token and pair again.
-                    _logger?.LogWarning("The control plane no longer knows this gateway: pairing again");
+                    // Removed at the control plane: forget the token and pair again. A gateway started with its identity
+                    // (hosted in the cloud) never pairs: whoever started it stops it, or starts it again with a new one.
                     _credentials.Clear();
-                    _identity = null;
+                    _identity = _credentials.Load();
+                    if (_identity != null)
+                    {
+                        _logger?.LogWarning("The control plane does not accept this gateway's configured token");
+                        return RetryInterval;
+                    }
+
+                    _logger?.LogWarning("The control plane no longer knows this gateway: pairing again");
                     return TimeSpan.Zero;
                 }
 

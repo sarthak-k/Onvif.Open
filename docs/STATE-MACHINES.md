@@ -30,6 +30,7 @@ state through the table, tests check the code against it, and the diagrams below
 | [Low-latency live stream](#low-latency-live-stream) | Backend | `Onvif.Open.Recording/Implementation/Mp4/Mp4LiveStream.cs` (`Mp4LiveStates.Machine`) | `Mp4LiveStream.Add`, `Close` | `GET /api/cameras/{id}/live.mp4` (503 while waiting, 415 when unsupported) |
 | [Grid sub-stream](#grid-sub-stream) | Backend | `Onvif.Open.Recorder/Hosting/LiveViewService.cs` (`SubStreamStates.Machine`) | `LiveViewService` (its reader, and the idle sweep) | `live.mp4?stream=sub` |
 | [Gateway tunnel](#gateway-tunnel) | Backend | `Onvif.Open.Recorder/Gateways/ControlPlaneClient.cs` (`TunnelStates.Machine`) | `ControlPlaneClient` (its tunnel loop) | gateways' status (online) at the control plane |
+| [Cloud gateway](#cloud-gateway) | Backend | `Onvif.Open.Recorder/Gateways/CloudGateways.cs` (`CloudGatewayStates.Machine`, stored as `HostState`) | `CloudGateways` (create, start again, heartbeat, start timeout) | `GET /api/gateways` `hosting.state`; Settings › Gateways |
 | [Session](#session) | Web | `web/src/features/auth/session.ts` (`sessionMachine`, `sessionOf`) | `AuthContext` holds it; `RequireAuth` routes on it | sign-in, password change, sign-out |
 | [Add-camera wizard](#add-camera-wizard) | Web | `web/src/features/cameras/wizard/steps.ts` (`wizardSteps`) | `AddCamerasPage` (moves through the table) | Cameras › Add cameras |
 | [Camera in the add-camera wizard](#camera-in-the-add-camera-wizard) | Web | `web/src/features/cameras/wizard/candidates.ts` (`candidateMachine`) | `changeCandidate`, `afterSharedChange`, `startTest` | each camera's state in the wizard |
@@ -179,6 +180,22 @@ stateDiagram-v2
     Open --> Retrying : the tunnel closed
     Retrying --> Connecting : after 1 s, doubling up to 30 s
     Retrying --> Unpaired : removed at the control plane: pairing again
+```
+<!-- /machine -->
+
+### Cloud gateway
+
+A gateway the cloud runs for a customer whose cameras are on the internet. Starting it again gives it a new token; removing it stops it.
+
+<!-- machine: Cloud gateway -->
+```mermaid
+stateDiagram-v2
+    [*] --> Starting
+    Starting --> Running : it connected
+    Starting --> Failed : it could not be started, or did not connect in time
+    Failed --> Running : it connected after all
+    Failed --> Starting : an administrator started it again
+    Running --> Starting : an administrator started it again
 ```
 <!-- /machine -->
 

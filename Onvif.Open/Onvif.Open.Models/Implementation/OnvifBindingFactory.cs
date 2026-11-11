@@ -34,7 +34,42 @@ namespace Onvif.Open.Core.Implementation
             transport.MaxReceivedMessageSize = MaxMessageSize;
             transport.MaxBufferSize = (int)MaxMessageSize;
 
-            return new CustomBinding(encoding, transport);
+            // Every SOAP request asks the camera network rule first (a gateway in the cloud reaches only public addresses).
+            return new CustomBinding(encoding, CreateCameraNetworkElement(), transport);
+        }
+
+        /// <summary>
+        /// Goes before the HTTP transport of every ONVIF binding: each request asks the camera network rule
+        /// (<see cref="Networking.CameraNetwork"/>) before it is sent.
+        /// </summary>
+        public static BindingElement CreateCameraNetworkElement() => new CameraNetworkBindingElement();
+
+        /// <summary>Puts <see cref="Networking.CameraNetwork.CheckingHandler"/> in front of WCF's HTTP handler.</summary>
+        private sealed class CameraNetworkBindingElement : BindingElement
+        {
+            private static readonly Func<System.Net.Http.HttpClientHandler, System.Net.Http.HttpMessageHandler> Wrap = handler =>
+            {
+                if (Networking.CameraNetwork.IsRestricted)
+                {
+                    // A redirect would be followed below the check.
+                    handler.AllowAutoRedirect = false;
+                }
+
+                return new Networking.CameraNetwork.CheckingHandler(handler);
+            };
+
+            public override BindingElement Clone() => new CameraNetworkBindingElement();
+
+            public override T GetProperty<T>(BindingContext context) => context.GetInnerProperty<T>();
+
+            public override bool CanBuildChannelFactory<TChannel>(BindingContext context) => context.CanBuildInnerChannelFactory<TChannel>();
+
+            public override IChannelFactory<TChannel> BuildChannelFactory<TChannel>(BindingContext context)
+            {
+                context.BindingParameters.Remove<Func<System.Net.Http.HttpClientHandler, System.Net.Http.HttpMessageHandler>>();
+                context.BindingParameters.Add(Wrap);
+                return context.BuildInnerChannelFactory<TChannel>();
+            }
         }
     }
 }
