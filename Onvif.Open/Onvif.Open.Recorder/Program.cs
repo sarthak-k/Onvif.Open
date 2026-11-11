@@ -106,8 +106,14 @@ builder.Services.AddSingleton<Onvif.Open.Recorder.Alerts.IAlertStore, Onvif.Open
 builder.Services.AddSingleton<Onvif.Open.Recorder.Alerts.AlertRuleCache>();
 builder.Services.AddSingleton<Onvif.Open.Recorder.Alerts.IAlertNotifier>(sp => new Onvif.Open.Recorder.Alerts.EmailNotifier(
     sp.GetRequiredService<IConfiguration>().GetSection(Onvif.Open.Recorder.Alerts.SmtpOptions.SectionName).Get<Onvif.Open.Recorder.Alerts.SmtpOptions>()));
-builder.Services.AddSingleton<Onvif.Open.Recorder.Alerts.IAlertNotifier>(_ => new Onvif.Open.Recorder.Alerts.WebhookNotifier(
-    new System.Net.Http.HttpClient(new System.Net.Http.SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5), AllowAutoRedirect = false })));
+// In the cloud a webhook is a customer's address: posted to only on the internet, never the cloud's own network.
+builder.Services.AddSingleton<Onvif.Open.Recorder.Alerts.IAlertNotifier>(_ =>
+{
+    var handler = Onvif.Open.Core.Networking.CameraNetwork.CreateHttpHandler(cloud.Enabled ? Onvif.Open.Core.Networking.CameraNetwork.PublicOnly : Onvif.Open.Core.Networking.CameraNetwork.Any);
+    handler.PooledConnectionLifetime = TimeSpan.FromMinutes(5);
+    handler.AllowAutoRedirect = false;
+    return new Onvif.Open.Recorder.Alerts.WebhookNotifier(new System.Net.Http.HttpClient(handler));
+});
 builder.Services.AddSingleton(sp => new Onvif.Open.Recorder.Alerts.AlertDelivery(
     sp.GetServices<Onvif.Open.Recorder.Alerts.IAlertNotifier>(),
     sp.GetRequiredService<ITenancyStore>(),
@@ -125,11 +131,22 @@ builder.Services.AddSingleton<ClipSource>();
 builder.Services.AddSingleton<GatewayWatch>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<GatewayWatch>());
 
+// In the cloud: the gateways this control plane runs for customers whose cameras are on the internet ("Cloud:Gateways").
+builder.Services.AddSingleton<ICloudGatewayHost>(sp => new CommandCloudGatewayHost(cloud.Gateways, sp.GetRequiredService<ILogger<CommandCloudGatewayHost>>()));
+builder.Services.AddSingleton<CloudGateways>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<CloudGateways>());
+
 // With "ControlPlane:Url" this recorder is also a gateway of another one: it pairs with a code, then keeps a tunnel open
 // there, records the cameras it is given and reports how they do.
 var controlPlane = builder.Configuration["ControlPlane:Url"];
 if (!string.IsNullOrWhiteSpace(controlPlane))
 {
+    // A gateway in the cloud connects to cameras on the internet only, never to the network it runs in.
+    if (GatewayLocations.Normalize(builder.Configuration["Gateway:Location"]) == GatewayLocations.Cloud)
+    {
+        Onvif.Open.Core.Networking.CameraNetwork.Allowed = Onvif.Open.Core.Networking.CameraNetwork.PublicOnly;
+    }
+
     builder.Services.AddSingleton(sp => new AssignedCameras(
         sp.GetRequiredService<ConfiguredRecording>(),
         sp.GetRequiredService<CameraDirectory>(),
@@ -147,9 +164,7 @@ if (!string.IsNullOrWhiteSpace(controlPlane))
             BaseAddress = new Uri(controlPlane.TrimEnd('/') + "/"),
             Timeout = TimeSpan.FromSeconds(30)
         },
-        new FileControlPlaneCredentials(
-            Path.GetFullPath(Path.Combine(sp.GetRequiredService<IHostEnvironment>().ContentRootPath, sp.GetRequiredService<IConfiguration>()["ControlPlane:CredentialsFile"] ?? Path.Combine("data", "control-plane.json"))),
-            sp.GetRequiredService<IDataProtectionProvider>()),
+        ControlPlaneCredentials(sp),
         () => GatewayHeartbeat.Measure(sp.GetRequiredService<IRecordingManager>()),
         sp.GetRequiredService<IConfiguration>()["Gateway:Name"] is string name && name.Length > 0 ? name : Environment.MachineName,
         sp.GetRequiredService<IConfiguration>()["Gateway:Location"],
@@ -265,8 +280,31 @@ app.MapExportApi();
 app.MapAlertApi();
 app.MapTunnelApi();
 app.MapSignupApi();
+
+if (Onvif.Open.Core.Networking.CameraNetwork.IsRestricted)
+{
+    // The rule is for the process; a host that set it gives it back when it stops (tests run several in one process).
+    app.Lifetime.ApplicationStopped.Register(() => Onvif.Open.Core.Networking.CameraNetwork.Allowed = Onvif.Open.Core.Networking.CameraNetwork.Any);
+}
+
 app.Run();
 
 public partial class Program
 {
+    /// <summary>
+    /// A gateway's identity at its control plane: given in the configuration (a gateway the control plane started), or
+    /// collected by pairing and kept in a file, the token encrypted.
+    /// </summary>
+    private static IControlPlaneCredentials ControlPlaneCredentials(IServiceProvider services)
+    {
+        var configuration = services.GetRequiredService<IConfiguration>();
+        if (!string.IsNullOrWhiteSpace(configuration["ControlPlane:GatewayId"]) && !string.IsNullOrWhiteSpace(configuration["ControlPlane:Token"]))
+        {
+            return new ConfiguredControlPlaneCredentials(configuration["ControlPlane:GatewayId"].Trim(), configuration["ControlPlane:Token"].Trim());
+        }
+
+        return new FileControlPlaneCredentials(
+            Path.GetFullPath(Path.Combine(services.GetRequiredService<IHostEnvironment>().ContentRootPath, configuration["ControlPlane:CredentialsFile"] ?? Path.Combine("data", "control-plane.json"))),
+            services.GetRequiredService<IDataProtectionProvider>());
+    }
 }

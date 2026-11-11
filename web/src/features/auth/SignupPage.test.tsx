@@ -6,6 +6,7 @@ const cloud = {
   enabled: true,
   region: 'us',
   signup: true,
+  cloudGateways: false,
   regions: [
     { id: 'asia', name: 'Asia', webUrl: 'https://asia.cameras.example.com' },
     { id: 'us', name: 'United States', webUrl: 'https://us.cameras.example.com' },

@@ -94,6 +94,7 @@ namespace Onvif.Open.Recorder.Configuration
                 }
 
                 var (policy, errors) = await PrepareAsync(organizationId, camera, cancellationToken).ConfigureAwait(false);
+                errors.AddRange(await CheckAddressesAsync(organizationId, camera, cancellationToken).ConfigureAwait(false));
                 if (errors.Count > 0)
                 {
                     return ConfigurationResult.Invalid(errors);
@@ -145,6 +146,7 @@ namespace Onvif.Open.Recorder.Configuration
                 camera.Password = camera.Password == null ? existing.Password : camera.Password.Length == 0 ? null : camera.Password;
 
                 var (policy, errors) = await PrepareAsync(organizationId, camera, cancellationToken).ConfigureAwait(false);
+                errors.AddRange(await CheckAddressesAsync(organizationId, camera, cancellationToken).ConfigureAwait(false));
                 if (errors.Count > 0)
                 {
                     return ConfigurationResult.Invalid(errors);
@@ -265,6 +267,38 @@ namespace Onvif.Open.Recorder.Configuration
         #region Private Methods
 
         /// <summary>Validates name, site and policy (both of this organization; the default policy when none is given) and applies the policy.</summary>
+        /// <summary>
+        /// A gateway in the cloud reaches only cameras on the internet: their addresses are checked when they are saved
+        /// (the gateway checks again at each connection, and refuses what resolves elsewhere by then).
+        /// </summary>
+        private async Task<List<string>> CheckAddressesAsync(string organizationId, CameraOptions camera, CancellationToken cancellationToken)
+        {
+            var errors = new List<string>();
+            var gateway = camera.GatewayId == null ? null : await _gateways.FindAsync(organizationId, camera.GatewayId, cancellationToken).ConfigureAwait(false);
+            if (gateway?.Location != Gateways.GatewayLocations.Cloud)
+            {
+                return errors;
+            }
+
+            foreach (var (field, url) in new[] { ("ONVIF URL", camera.OnvifUrl), ("RTSP URL", camera.RtspUrl), ("Smaller stream for grids", camera.SubRtspUrl) })
+            {
+                try
+                {
+                    await Onvif.Open.Core.Networking.CameraNetwork.EnsureAllowedAsync(url, Onvif.Open.Core.Networking.CameraNetwork.PublicOnly, cancellationToken).ConfigureAwait(false);
+                }
+                catch (Onvif.Open.Core.Networking.CameraAddressRefusedException ex)
+                {
+                    errors.Add($"{field}: {ex.Message}");
+                }
+                catch (System.Net.Sockets.SocketException)
+                {
+                    errors.Add($"{field}: {new Uri(url).Host} could not be found.");
+                }
+            }
+
+            return errors;
+        }
+
         private async Task<(RecordingPolicyRecord Policy, List<string> Errors)> PrepareAsync(string organizationId, CameraOptions camera, CancellationToken cancellationToken)
         {
             var errors = new List<string>();

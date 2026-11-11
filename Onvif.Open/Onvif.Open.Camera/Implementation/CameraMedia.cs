@@ -185,7 +185,9 @@ namespace Onvif.Open.Camera.Implementation
         private HttpClient CreateSnapshotClient()
         {
             // Devices protect snapshots with HTTP Basic or Digest; HttpClientHandler answers either challenge.
-            var handler = new HttpClientHandler();
+            // Connects only where the camera network rule allows; no redirects (they could lead elsewhere).
+            var handler = Onvif.Open.Core.Networking.CameraNetwork.CreateHttpHandler();
+            handler.AllowAutoRedirect = false;
 
             if (!string.IsNullOrEmpty(_camera.Username))
             {

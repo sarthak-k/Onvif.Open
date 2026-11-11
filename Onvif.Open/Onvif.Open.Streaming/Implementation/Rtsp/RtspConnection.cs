@@ -75,7 +75,9 @@ namespace Onvif.Open.Streaming.Implementation.Rtsp
                 timeoutSource.CancelAfter(timeout);
                 try
                 {
-                    await client.ConnectAsync(host, port, timeoutSource.Token).ConfigureAwait(false);
+                    // At an address the camera network rule allows (and the one checked is the one connected to).
+                    client.Client.Dispose();
+                    client.Client = await Onvif.Open.Core.Networking.CameraNetwork.ConnectAsync(host, port, null, timeoutSource.Token).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
                 {

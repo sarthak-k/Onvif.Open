@@ -37,6 +37,11 @@ namespace Onvif.Open.Recorder.Api
             public string Location { get; set; }
         }
 
+        public sealed class CloudGatewayRequest
+        {
+            public string Name { get; set; }
+        }
+
         public sealed class PairRequest
         {
             public string Code { get; set; }
@@ -111,7 +116,23 @@ namespace Onvif.Open.Recorder.Api
                 .Audit(AuditActions.GatewayPair, AuditTargets.Gateway);
 
             // A paired gateway reports its health with its token.
-            gateways.MapPost("/heartbeat", async (HeartbeatRequest request, HttpRequest http, GatewayService service, Tunnel.RemoteCameras remote, CancellationToken ct) =>
+            // A gateway this cloud runs for the organization (its cameras are on the internet): started here, nothing to pair.
+            gateways.MapPost("/cloud", async ([Microsoft.AspNetCore.Mvc.FromBody(EmptyBodyBehavior = Microsoft.AspNetCore.Mvc.ModelBinding.EmptyBodyBehavior.Allow)] CloudGatewayRequest request, ClaimsPrincipal user, CloudGateways cloud, GatewayService service, CancellationToken ct) =>
+            {
+                var result = await cloud.CreateAsync(user.OrganizationId(), request?.Name, ct);
+                return result.Status == ServiceStatus.Ok
+                    ? Results.Created($"/api/gateways/{result.Value.Id}", ToDto(result.Value, service, true))
+                    : TenancyEndpoints.ToResult(result);
+            })
+                .RequireAuthorization(Policies.OrganizationAdmin)
+                .Audit(AuditActions.GatewayCloudCreate, AuditTargets.Gateway);
+
+            gateways.MapPost("/{id}/start", async (string id, ClaimsPrincipal user, CloudGateways cloud, GatewayService service, CancellationToken ct) =>
+                TenancyEndpoints.ToResult(await cloud.StartAgainAsync(user.OrganizationId(), id, ct), g => ToDto(g, service, true)))
+                .RequireAuthorization(Policies.OrganizationAdmin)
+                .Audit(AuditActions.GatewayCloudStart, AuditTargets.Gateway);
+
+            gateways.MapPost("/heartbeat", async (HeartbeatRequest request, HttpRequest http, GatewayService service, Tunnel.RemoteCameras remote, CloudGateways cloud, CancellationToken ct) =>
             {
                 var gateway = await service.AuthenticateAsync(http.Headers[GatewayTokenHeader].ToString(), ct);
                 if (gateway == null)
@@ -121,6 +142,7 @@ namespace Onvif.Open.Recorder.Api
 
                 await service.ReportAsync(gateway, request?.Version, request?.StartedAt?.UtcDateTime ?? DateTime.UtcNow, request?.Health, ct);
                 remote.Report(gateway.Id, request?.Cameras);
+                await cloud.ReportedAsync(gateway, ct);
                 return Results.Ok(new { id = gateway.Id, name = gateway.Name });
             }).AllowAnonymous();
 
@@ -144,10 +166,15 @@ namespace Onvif.Open.Recorder.Api
                 return Results.Ok(new { accepted = adds.Count + closes.Count, rejected });
             }).AllowAnonymous();
 
-            gateways.MapDelete("/{id}", async (string id, ClaimsPrincipal user, GatewayService service, Store.ISettingsStore cameras, CancellationToken ct) =>
+            gateways.MapDelete("/{id}", async (string id, ClaimsPrincipal user, GatewayService service, CloudGateways cloud, Store.ISettingsStore cameras, CancellationToken ct) =>
             {
                 var recorded = (await cameras.GetCamerasAsync(ct)).Count(c => string.Equals(c.GatewayId, id, StringComparison.OrdinalIgnoreCase));
                 var result = await service.RemoveAsync(user.OrganizationId(), id, recorded, ct);
+                if (result.Status == ServiceStatus.Ok)
+                {
+                    await cloud.RemovedAsync(result.Value, ct);
+                }
+
                 return result.Status == ServiceStatus.Ok ? Results.NoContent() : TenancyEndpoints.ToResult(result);
             })
                 .RequireAuthorization(Policies.OrganizationAdmin)
@@ -192,6 +219,7 @@ namespace Onvif.Open.Recorder.Api
                 lastSeenAt = gateway.LastSeenAt,
                 health = gateway.Health,
                 restartRequired = service.IsRestartRequired(gateway),
+                hosting = gateway.IsHosted ? new { state = gateway.HostState, error = gateway.HostError, changedAt = gateway.HostChangedAt } : null,
                 storage = settings ? gateway.Storage : null,
                 backup = settings
                     ? new

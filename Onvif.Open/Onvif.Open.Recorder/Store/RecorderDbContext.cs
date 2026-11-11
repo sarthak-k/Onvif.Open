@@ -287,7 +287,10 @@ namespace Onvif.Open.Recorder.Store
                 gateway.Property(g => g.BackupProvider).HasMaxLength(200);
                 gateway.Property(g => g.BackupPrefix).HasMaxLength(200);
                 gateway.Property(g => g.TokenHash).HasMaxLength(64);
+                gateway.Property(g => g.HostState).HasMaxLength(16);
+                gateway.Property(g => g.HostError).HasMaxLength(500);
                 gateway.HasIndex(g => g.OrganizationId);
+                gateway.HasIndex(g => g.HostState);
                 gateway.HasIndex(g => g.TokenHash);
             });
 
@@ -545,6 +548,11 @@ namespace Onvif.Open.Recorder.Store
 
         /// <summary>SHA-256 (hex) of a paired gateway's token.</summary>
         public string TokenHash { get; set; }
+
+        /// <summary>Gateways run in the cloud by this server: see Gateways.CloudGatewayStates.</summary>
+        public string HostState { get; set; }
+        public string HostError { get; set; }
+        public DateTime? HostChangedAt { get; set; }
 
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }

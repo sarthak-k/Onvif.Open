@@ -75,7 +75,7 @@ namespace Onvif.Open.Device.Management.Implementation.Builder
                 throw new InvalidOperationException("This operation can not be called directly.");
             }
 
-            _customBinding = new CustomBinding(_messageElement, _httpTransportBinding);
+            _customBinding = new CustomBinding(_messageElement, OnvifBindingFactory.CreateCameraNetworkElement(), _httpTransportBinding);
             return this;
         }
 

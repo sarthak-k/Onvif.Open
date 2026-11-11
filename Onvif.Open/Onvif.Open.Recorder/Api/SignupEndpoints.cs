@@ -25,11 +25,12 @@ namespace Onvif.Open.Recorder.Api
 
         public static IEndpointRouteBuilder MapSignupApi(this IEndpointRouteBuilder app)
         {
-            app.MapGet("/api/cloud", (CloudOptions cloud, SignupService signup) => new
+            app.MapGet("/api/cloud", (CloudOptions cloud, SignupService signup, Gateways.CloudGateways gateways) => new
             {
                 enabled = cloud.Enabled,
                 region = cloud.Enabled ? cloud.Region : null,
                 signup = signup.IsAvailable,
+                cloudGateways = gateways.IsAvailable,
                 regions = cloud.Enabled
                     ? Regions.All.Where(r => cloud.Regions.ContainsKey(r.Id)).Select(r => new { id = r.Id, name = r.Name, webUrl = cloud.Regions[r.Id].WebUrl.TrimEnd('/') })
                     : null

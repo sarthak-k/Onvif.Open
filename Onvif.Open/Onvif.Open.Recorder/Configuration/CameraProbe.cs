@@ -47,6 +47,11 @@ namespace Onvif.Open.Recorder.Configuration
                 {
                     return ProbeResult.Failed("unreachable", $"The camera did not answer within {Timeout.TotalSeconds:0} seconds.");
                 }
+                catch (Exception ex) when (Refused(ex) is Core.Networking.CameraAddressRefusedException refused)
+                {
+                    // A gateway in the cloud, and the camera (or an address it handed back) is not on the internet.
+                    return ProbeResult.Failed("unreachable", refused.Message);
+                }
                 catch (UnauthorizedAccessException ex)
                 {
                     return ProbeResult.Failed("unauthorized", ex.Message);
@@ -65,6 +70,19 @@ namespace Onvif.Open.Recorder.Configuration
         #endregion
 
         #region Private Methods
+
+        private static Core.Networking.CameraAddressRefusedException Refused(Exception ex)
+        {
+            for (var inner = ex; inner != null; inner = inner.InnerException)
+            {
+                if (inner is Core.Networking.CameraAddressRefusedException refused)
+                {
+                    return refused;
+                }
+            }
+
+            return null;
+        }
 
         private static async Task<ProbeResult> ProbeOnvifAsync(CameraOptions options, bool snapshot, CancellationToken cancellationToken)
         {

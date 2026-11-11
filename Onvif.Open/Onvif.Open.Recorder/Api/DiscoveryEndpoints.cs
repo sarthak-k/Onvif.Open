@@ -32,6 +32,12 @@ namespace Onvif.Open.Recorder.Api
                     return Results.Problem("Cameras are found by the gateway at their site.", statusCode: StatusCodes.Status501NotImplemented);
                 }
 
+                // A gateway in the cloud has no cameras on its network to find (and must not look around it).
+                if (Onvif.Open.Core.Networking.CameraNetwork.IsRestricted)
+                {
+                    return Results.Problem("A gateway in the cloud does not search for cameras: add them by address.", statusCode: StatusCodes.Status501NotImplemented);
+                }
+
                 var devices = await discovery.FindAsync(ct);
                 var organizationId = Tenancy.CameraAccess.OrganizationId(user);
                 var cameras = (await settings.GetCamerasAsync(ct)).Where(c => c.OrganizationId == organizationId).ToList();
