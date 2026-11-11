@@ -47,6 +47,17 @@ namespace Onvif.Open.Recorder.Security
             services.AddSingleton<IUserStore, EfUserStore>();
             services.AddSingleton<UserService>();
             services.AddSingleton<TwoFactorService>();
+
+            // Identity providers are an organization administrator's addresses: in the cloud, only ones on the internet.
+            services.AddSingleton(_ =>
+            {
+                var cloud = string.Equals(configuration["Cloud:Enabled"], "true", StringComparison.OrdinalIgnoreCase);
+                var handler = Onvif.Open.Core.Networking.CameraNetwork.CreateHttpHandler(cloud ? Onvif.Open.Core.Networking.CameraNetwork.PublicOnly : Onvif.Open.Core.Networking.CameraNetwork.Any);
+                handler.AllowAutoRedirect = false;
+                handler.PooledConnectionLifetime = TimeSpan.FromMinutes(5);
+                return new SsoHttp(handler);
+            });
+            services.AddSingleton<SsoService>();
             services.AddSingleton<UserValidator>();
             services.AddMemoryCache();
             services.AddHostedService<SecurityStartup>();

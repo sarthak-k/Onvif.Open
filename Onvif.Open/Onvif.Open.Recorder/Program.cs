@@ -280,6 +280,7 @@ app.MapExportApi();
 app.MapAlertApi();
 app.MapTunnelApi();
 app.MapSignupApi();
+app.MapSsoApi();
 
 if (Onvif.Open.Core.Networking.CameraNetwork.IsRestricted)
 {

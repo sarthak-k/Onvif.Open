@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { RecordingPolicyRequest, SiteRequest } from '../api/types';
+import type { RecordingPolicyRequest, SiteRequest, SsoRequest } from '../api/types';
 import { useApi } from './ApiContext';
 import { queryKeys } from './queryKeys';
 
@@ -17,6 +17,18 @@ export function useCloud() {
 export function useOrganization() {
   const api = useApi();
   return useQuery({ queryKey: queryKeys.organization, queryFn: api.organization.get });
+}
+
+/** The organization's single sign-on (organization administrators). */
+export function useSingleSignOn(enabled = true) {
+  const api = useApi();
+  return useQuery({ queryKey: queryKeys.singleSignOn, queryFn: api.organization.singleSignOn, enabled });
+}
+
+export function useSaveSingleSignOn() {
+  const api = useApi();
+  const queries = useQueryClient();
+  return useMutation({ mutationFn: (settings: SsoRequest) => api.organization.saveSingleSignOn(settings), onSuccess: (saved) => queries.setQueryData(queryKeys.singleSignOn, saved) });
 }
 
 export function useRequireTwoFactor() {

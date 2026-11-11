@@ -9,9 +9,9 @@ describe('App', () => {
   it('runs on any RecorderApi implementation', async () => {
     const fail = () => Promise.reject(new Error('not used'));
     const api: RecorderApi = {
-      auth: { me: async () => admin, twoFactor: { setup: fail, enable: fail, disable: fail, newRecoveryCodes: fail } },
+      auth: { me: async () => admin, twoFactor: { setup: fail, enable: fail, disable: fail, newRecoveryCodes: fail }, singleSignOn: fail },
       setup: { status: fail, cloud: fail },
-      organization: { get: fail, rename: fail, requireTwoFactor: fail },
+      organization: { get: fail, rename: fail, requireTwoFactor: fail, singleSignOn: fail, saveSingleSignOn: fail },
       sites: { list: async () => [], create: fail, update: fail, remove: fail },
       policies: { list: fail, create: fail, update: fail, remove: fail },
       cameras: { list: async () => [], get: fail, create: fail, update: fail, remove: fail, test: fail, discover: fail },

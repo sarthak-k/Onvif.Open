@@ -33,7 +33,7 @@ state through the table, tests check the code against it, and the diagrams below
 | [Cloud gateway](#cloud-gateway) | Backend | `Onvif.Open.Recorder/Gateways/CloudGateways.cs` (`CloudGatewayStates.Machine`, stored as `HostState`) | `CloudGateways` (create, start again, heartbeat, start timeout) | `GET /api/gateways` `hosting.state`; Settings › Gateways |
 | [Two-factor sign-in](#two-factor-sign-in) | Backend | `Onvif.Open.Recorder/Security/TwoFactor.cs` (`TwoFactorStates.Machine`, stored as `TwoFactorState`) | `TwoFactorService` (setup, enable, disable, reset) | `GET /api/auth/me` and `GET /api/users` `twoFactor`; Account, Users |
 | [Session](#session) | Web | `web/src/features/auth/session.ts` (`sessionMachine`, `sessionOf`) | `AuthContext` holds it; `RequireAuth` routes on it | sign-in, password change, sign-out |
-| [Sign-in steps](#sign-in-steps) | Web | `web/src/features/auth/signInSteps.ts` (`signInSteps`) | `LoginPage` (moves through the table) | Sign in: password, then the app's code |
+| [Sign-in steps](#sign-in-steps) | Web | `web/src/features/auth/signInSteps.ts` (`signInSteps`) | `LoginPage` (moves through the table) | Sign in: password, then the app's code; or single sign-on |
 | [Two-factor setup](#two-factor-setup) | Web | `web/src/features/auth/twoFactorSetup.ts` (`twoFactorSetupSteps`) | `TwoFactorSetup` (moves through the table) | Account › Two-factor sign-in; the required setup page |
 | [Add-camera wizard](#add-camera-wizard) | Web | `web/src/features/cameras/wizard/steps.ts` (`wizardSteps`) | `AddCamerasPage` (moves through the table) | Cameras › Add cameras |
 | [Camera in the add-camera wizard](#camera-in-the-add-camera-wizard) | Web | `web/src/features/cameras/wizard/candidates.ts` (`candidateMachine`) | `changeCandidate`, `afterSharedChange`, `startTest` | each camera's state in the wizard |
@@ -244,7 +244,7 @@ stateDiagram-v2
 
 ### Sign-in steps
 
-With two-factor sign-in on, the password gets a five-minute challenge, sent back with the app's code (or a recovery code).
+With two-factor sign-in on, the password gets a five-minute challenge, sent back with the app's code (or a recovery code). Single sign-on asks for the work email and leaves for the identity provider, which sends people back to `/sso`.
 
 <!-- machine: Sign-in steps -->
 ```mermaid
@@ -252,6 +252,8 @@ stateDiagram-v2
     [*] --> password
     password --> code : the password was right; two-factor sign-in is on
     code --> password : Start over, or the challenge expired
+    password --> singleSignOn : Use single sign-on, or back from the provider with a problem
+    singleSignOn --> password : Use a password
 ```
 <!-- /machine -->
 

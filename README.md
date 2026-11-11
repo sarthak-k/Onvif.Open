@@ -480,6 +480,23 @@ POST /api/auth/refresh  { "refreshToken": "..." }   → new tokens
 * **Required for everyone** (owners, Settings › Organization, once it is on for themselves): members without it can
   only set it up, after their own password if they must change it, before any other call answers. An administrator
   resets it for someone who lost their phone (Settings › Users › Reset two-factor), which also ends their sessions.
+* **Single sign-on** (OpenID Connect; owners, Settings › Organization): the organization's identity provider
+  (Microsoft Entra ID, Google Workspace, Okta…) with its issuer, a client ID and secret (stored encrypted, never shown
+  again) and the email domains whose people sign in there (a domain belongs to one organization). Register the
+  redirect address `https://<recorder>/api/auth/sso/callback` there (`Security:PublicUrl` when the recorder is behind
+  a proxy that changes its address). On the sign-in page, *Use single sign-on* takes the work email: the browser goes
+  to the provider (authorization code with PKCE, a nonce, and state tied to the browser by a cookie), the recorder
+  redeems the code and checks the ID token (the provider's keys, issuer, audience, lifetime, nonce), then sends the
+  browser to the web app's `/sso` with a one-time code (one minute) for the tokens; tokens never travel in addresses.
+  * Accounts are linked by the provider's subject; at the first sign-in, to the member whose user name is that email
+    (only when the provider says the email is verified), or made with a chosen role (Viewer, Operator or Admin)
+    where *Make accounts* is on, for the organization's domains. A provider signs in only its own organization's
+    members. The return address must be the web app's (`Security:AllowedOrigins`, the cloud's web address, or the
+    recorder's own).
+  * *Require it*: members cannot sign in with a password any more; owners can, to get back in if the provider
+    fails. Sessions from the provider skip the organization's own two-factor and temporary-password steps (the
+    provider has its own).
+  * In the cloud, providers are reached only on the internet (the camera network rule).
 * Video players and downloads that cannot send a header may pass the token as `?access_token=` on video requests only
   (playlists, segments, clips, snapshots, exports); playlists then carry it to their segments. Prefer the header
   (hls.js: `xhrSetup`).

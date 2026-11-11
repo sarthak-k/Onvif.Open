@@ -20,6 +20,7 @@ import { SettingsHome } from "./SettingsHome";
 const LoginPage = lazy(() => import("../features/auth/LoginPage"));
 const SetupPage = lazy(() => import("../features/auth/SetupPage"));
 const SignupPage = lazy(() => import("../features/auth/SignupPage"));
+const SingleSignOnPage = lazy(() => import("../features/auth/SingleSignOnPage"));
 const VerifySignupPage = lazy(() => import("../features/auth/VerifySignupPage"));
 const SettingsLayout = lazy(
   () => import("../features/settings/SettingsLayout"),
@@ -75,6 +76,7 @@ export function App({
                   <Route path="/login" element={<LoginPage />} />
                   <Route path="/setup" element={<SetupPage />} />
                   <Route path="/signup" element={<SignupPage />} />
+                  <Route path="/sso" element={<SingleSignOnPage />} />
                   <Route path="/signup/verify" element={<VerifySignupPage />} />
                   <Route
                     path="/change-password"
