@@ -11,6 +11,7 @@ export const settingsSections: readonly { path: string; label: string; permissio
   { path: '/settings/users', label: 'Users', permission: 'users.manage' },
   { path: '/settings/audit', label: 'Audit log', permission: 'audit.view' },
   { path: '/settings/organization', label: 'Organization', permission: 'cameras.view' },
+  { path: '/settings/billing', label: 'Billing', permission: 'settings.manage' },
 ];
 
 export default function SettingsLayout() {

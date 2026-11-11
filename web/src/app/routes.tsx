@@ -17,6 +17,7 @@ const UsersPage = lazy(() => import('../features/settings/UsersPage'));
 const SitesPage = lazy(() => import('../features/settings/SitesPage'));
 const PoliciesPage = lazy(() => import('../features/settings/PoliciesPage'));
 const OrganizationPage = lazy(() => import('../features/settings/OrganizationPage'));
+const BillingPage = lazy(() => import('../features/settings/BillingPage'));
 const GatewaysPage = lazy(() => import('../features/settings/GatewaysPage'));
 const AuditPage = lazy(() => import('../features/settings/AuditPage'));
 const AccountPage = lazy(() => import('../features/auth/AccountPage'));
@@ -51,6 +52,7 @@ export const appRoutes: readonly AppRoute[] = [
   { path: '/settings/users', page: UsersPage, permission: 'users.manage', settings: true },
   { path: '/settings/audit', page: AuditPage, permission: 'audit.view', settings: true },
   { path: '/settings/organization', page: OrganizationPage, permission: 'cameras.view', settings: true },
+  { path: '/settings/billing', page: BillingPage, permission: 'settings.manage', settings: true },
   { path: '/account', page: AccountPage, permission: 'cameras.view', nav: 'Account' },
 ];
 

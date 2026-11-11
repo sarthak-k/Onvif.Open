@@ -49,11 +49,17 @@ namespace Onvif.Open.Recorder.Api
                 return camera == null ? Results.NotFound() : Results.Ok(ToDto(camera));
             });
 
-            cameras.MapPost("", async (CameraOptions camera, ClaimsPrincipal user, CameraConfigurationService service, CancellationToken ct) =>
+            cameras.MapPost("", async (CameraOptions camera, ClaimsPrincipal user, CameraConfigurationService service, Billing.BillingService billing, CancellationToken ct) =>
             {
                 camera ??= new CameraOptions();
-                return !user.CanSeeSite(user.OrganizationId(), camera.SiteId)
-                    ? SiteNotAllowed()
+                if (!user.CanSeeSite(user.OrganizationId(), camera.SiteId))
+                {
+                    return SiteNotAllowed();
+                }
+
+                // The plan's cameras (where billing is on).
+                return await billing.CheckNewCameraAsync(user.OrganizationId(), ct) is string why
+                    ? Results.Json(new { errors = new[] { why } }, statusCode: StatusCodes.Status402PaymentRequired)
                     : ToResult(await service.AddAsync(user.OrganizationId(), camera, ct), created: true);
             })
                 .Audit(AuditActions.CameraCreate, AuditTargets.Camera);

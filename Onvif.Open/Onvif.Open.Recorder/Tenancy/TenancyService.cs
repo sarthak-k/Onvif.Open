@@ -58,9 +58,10 @@ namespace Onvif.Open.Recorder.Tenancy
     {
         #region Constructor
 
-        public TenancyService(ITenancyStore store, UserService users, CameraConfigurationService cameras, SecurityOptions security, ILogger<TenancyService> logger, TimeProvider timeProvider = null, CloudOptions cloud = null)
+        public TenancyService(ITenancyStore store, UserService users, CameraConfigurationService cameras, SecurityOptions security, ILogger<TenancyService> logger, TimeProvider timeProvider = null, CloudOptions cloud = null, Billing.BillingOptions billing = null)
         {
             _cloud = cloud ?? new CloudOptions();
+            _billing = billing ?? new Billing.BillingOptions();
             _store = store ?? throw new ArgumentNullException(nameof(store));
             _users = users ?? throw new ArgumentNullException(nameof(users));
             _cameras = cameras ?? throw new ArgumentNullException(nameof(cameras));
@@ -81,6 +82,7 @@ namespace Onvif.Open.Recorder.Tenancy
         public const int DefaultEventRetentionDays = 30;
 
         private readonly CloudOptions _cloud;
+        private readonly Billing.BillingOptions _billing;
         private readonly ITenancyStore _store;
         private readonly UserService _users;
         private readonly CameraConfigurationService _cameras;
@@ -152,6 +154,7 @@ namespace Onvif.Open.Recorder.Tenancy
 
             var now = _timeProvider.GetUtcNow().UtcDateTime;
             var organization = new OrganizationRecord { Id = NewId(), Name = request.OrganizationName.Trim(), Region = region, CreatedAt = now };
+            _billing.StartTrial(organization, now);
             await _store.SaveOrganizationAsync(organization, cancellationToken).ConfigureAwait(false);
             await _store.SaveSiteAsync(new SiteRecord { Id = NewId(), OrganizationId = organization.Id, Name = request.SiteName.Trim(), TimeZone = request.TimeZone.Trim(), CreatedAt = now, UpdatedAt = now }, cancellationToken).ConfigureAwait(false);
 

@@ -219,7 +219,14 @@ namespace Onvif.Open.Recorder.Api
                     singleSignOn = member.ViaSingleSignOn,
                     dto.lastLoginAt,
                     dto.createdAt,
-                    organization = new { id = organization.Id, name = organization.Name, region = organization.Region, requireTwoFactor = organization.RequireTwoFactor }
+                    organization = new
+                    {
+                        id = organization.Id,
+                        name = organization.Name,
+                        region = organization.Region,
+                        requireTwoFactor = organization.RequireTwoFactor,
+                        subscription = organization.SubscriptionState == null ? null : new { state = organization.SubscriptionState, trialEndsAt = organization.TrialEndsAt is DateTime trial ? DateTime.SpecifyKind(trial, DateTimeKind.Utc) : (DateTime?)null }
+                    }
                 });
             }).RequireAuthorization(Policies.SignedIn);
 

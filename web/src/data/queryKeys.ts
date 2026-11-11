@@ -17,6 +17,7 @@ export const queryKeys = {
   cloud: ['cloud'] as const,
   organization: ['organization'] as const,
   singleSignOn: ['organization', 'sso'] as const,
+  billing: ['billing'] as const,
   sites: ['sites'] as const,
   policies: ['recording-policies'] as const,
   audit: (filter: object) => ['audit', filter] as const,

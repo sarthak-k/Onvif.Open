@@ -63,6 +63,11 @@ namespace Onvif.Open.Recorder.Store
                 organization.Property(o => o.Id).HasMaxLength(36);
                 organization.Property(o => o.Name).HasMaxLength(100).IsRequired();
                 organization.Property(o => o.Region).HasMaxLength(16).IsRequired();
+                organization.Property(o => o.PlanId).HasMaxLength(32);
+                organization.Property(o => o.SubscriptionState).HasMaxLength(16);
+                organization.Property(o => o.BillingCustomerId).HasMaxLength(100);
+                organization.Property(o => o.BillingSubscriptionId).HasMaxLength(100);
+                organization.HasIndex(o => o.BillingCustomerId);
             });
 
             modelBuilder.Entity<SiteRecord>(site =>
@@ -360,6 +365,21 @@ namespace Onvif.Open.Recorder.Store
 
         /// <summary>Every member signs in with a second factor; those without one set it up before anything else.</summary>
         public bool RequireTwoFactor { get; set; }
+
+        /// <summary>Billing: the plan (an id of "Billing:Plans"); null where billing is off.</summary>
+        public string PlanId { get; set; }
+
+        /// <summary>Billing: see Billing.SubscriptionStates.</summary>
+        public string SubscriptionState { get; set; }
+
+        public DateTime? TrialEndsAt { get; set; }
+
+        /// <summary>Billing: paid until (from the payment provider).</summary>
+        public DateTime? CurrentPeriodEnd { get; set; }
+
+        /// <summary>The payment provider's customer and subscription.</summary>
+        public string BillingCustomerId { get; set; }
+        public string BillingSubscriptionId { get; set; }
 
         public DateTime CreatedAt { get; set; }
     }

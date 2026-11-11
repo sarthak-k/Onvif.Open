@@ -37,6 +37,40 @@ export interface Me extends User {
 
 export type TwoFactorState = 'Off' | 'Pending' | 'On';
 
+/** A tier from the server's configuration: what it includes (0: no limit) and its monthly price. */
+export interface Plan {
+  id: string;
+  name: string;
+  cameras: number;
+  storageGB: number;
+  monthlyPrice: number;
+  /** Can be bought at the payment provider (the trial cannot). */
+  purchasable: boolean;
+}
+
+export type SubscriptionState = 'Trialing' | 'Active' | 'PastDue' | 'Canceled';
+
+/** The organization's plan and use of it; enabled false where billing is off. */
+export type BillingStatus =
+  | { enabled: false }
+  | {
+      enabled: true;
+      currency: string;
+      plan: Plan | null;
+      state: SubscriptionState;
+      trialEndsAt: string | null;
+      currentPeriodEnd: string | null;
+      usage: { cameras: number; storageBytes: number };
+      overCameras: boolean;
+      overStorage: boolean;
+      /** A payment provider is set up. */
+      canPay: boolean;
+      /** There is a subscription to manage at the provider. */
+      canManage: boolean;
+      salesEmail: string | null;
+      plans: Plan[];
+    };
+
 /** An organization's single sign-on (OpenID Connect); the client secret is never sent back. */
 export interface SsoSettings {
   enabled: boolean;
@@ -96,6 +130,8 @@ export interface Organization {
   region: Region;
   /** Every member signs in with a second factor. */
   requireTwoFactor?: boolean;
+  /** Where billing is on. */
+  subscription?: { state: SubscriptionState; trialEndsAt: string | null } | null;
 }
 
 export interface SetupStatus {

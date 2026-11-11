@@ -163,7 +163,7 @@ namespace Onvif.Open.Recorder.Api
         }
 
         /// <summary>The web app to go back to: one this recorder serves (its allowed origins, the cloud's address, or its own).</summary>
-        private static string WebAppOf(string returnTo, HttpContext http, SecurityOptions options, CloudOptions cloud)
+        internal static string WebAppOf(string returnTo, HttpContext http, SecurityOptions options, CloudOptions cloud)
         {
             if (!Uri.TryCreate(returnTo, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp))
             {
